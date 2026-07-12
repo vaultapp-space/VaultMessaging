@@ -1,0 +1,265 @@
+// ============================================================
+// Vault — WebSocket Route
+// Real-time message relay + pending queue flush on connect
+// Auth via HTTP-only cookie during WebSocket upgrade
+// ============================================================
+
+import { WS_EVENTS, WS_HEARTBEAT_INTERVAL_MS } from '../utils/constants.js';
+import config from '../config.js';
+
+/**
+ * Flush pending messages to a WebSocket.
+ * Extracted to avoid code duplication between cookie and message auth paths.
+ */
+function flushPendingMessages(fastify, userId, socket) {
+  const pendingIds = fastify.store.dequeuePending(userId);
+  if (pendingIds.length === 0) return;
+
+  const messages = fastify.store.getUndeliveredMessages(userId);
+
+  // Batch user lookups — collect unique sender IDs first
+  const senderIds = new Set(messages.map(m => m.sender_id));
+  const senderMap = new Map();
+  for (const sid of senderIds) {
+    const sender = fastify.store.getUserById(sid);
+    senderMap.set(sid, sender?.username || 'unknown');
+  }
+
+  for (const msg of messages) {
+    socket.send(JSON.stringify({
+      type: 'message',
+      data: {
+        id: msg.id,
+        senderId: msg.sender_id,
+        senderUsername: senderMap.get(msg.sender_id),
+        ciphertext: msg.ciphertext,
+        ephemeralKey: msg.ephemeral_key,
+        iv: msg.iv,
+        messageNumber: msg.message_number,
+        previousChain: msg.previous_chain,
+        sentAt: msg.sent_at,
+        expiresAt: msg.expires_at,
+        groupId: msg.group_id,
+        groupName: msg.group_id ? fastify.store.getGroup(msg.group_id)?.name : null,
+        groupMembers: msg.group_id ? fastify.store.getGroup(msg.group_id)?.members : null
+      },
+    }));
+    fastify.store.markDelivered(msg.id);
+  }
+}
+
+/**
+ * Start the heartbeat timer for a WebSocket connection.
+ */
+function startHeartbeat(socket) {
+  return setInterval(() => {
+    if (socket.readyState === 1) {
+      socket.send(JSON.stringify({ type: WS_EVENTS.HEARTBEAT }));
+    }
+  }, WS_HEARTBEAT_INTERVAL_MS);
+}
+
+async function wsRoutes(fastify) {
+  fastify.get('/ws', { websocket: true }, (socket, request) => {
+    // Verify Origin header to prevent Cross-Site WebSocket Hijacking (CSWSH)
+    const origin = request.headers.origin;
+    const isDev = process.env.NODE_ENV !== 'production';
+    const isAllowedOrigin = !origin || origin === config.clientOrigin || 
+      (isDev && (origin.startsWith('http://localhost:') || origin.match(/^http:\/\/\d+\.\d+\.\d+\.\d+:5173$/) || origin.endsWith(':5173')));
+
+    if (origin && !isAllowedOrigin) {
+      fastify.log.warn({ origin }, 'WebSocket connection rejected: Origin mismatch');
+      socket.close(4003, 'Forbidden Origin');
+      return;
+    }
+
+    let userId = null;
+    let heartbeatTimer = null;
+    let authenticated = false;
+
+    // ─── Authenticate via cookie on connection ────────────────
+    // The cookie is sent during the WebSocket HTTP upgrade request
+    try {
+      const cookieValue = request.cookies?.[config.cookieName];
+      if (cookieValue) {
+        const decoded = fastify.jwt.verify(cookieValue);
+        const session = fastify.store.getSession(decoded.jti);
+        if (session) {
+          userId = decoded.id;
+          authenticated = true;
+
+          // Register WebSocket connection
+          fastify.store.registerConnection(userId, socket);
+
+          // Start heartbeat
+          heartbeatTimer = startHeartbeat(socket);
+
+          // Flush pending delivery queue
+          flushPendingMessages(fastify, userId, socket);
+
+          socket.send(JSON.stringify({ type: 'auth_ok', userId }));
+          fastify.log.info({ userId }, 'WebSocket authenticated via cookie');
+        }
+      }
+    } catch (err) {
+      fastify.log.warn({ err }, 'WebSocket cookie auth failed');
+    }
+
+    // If cookie auth failed, try message-based auth with timeout
+    const authTimeout = !authenticated ? setTimeout(() => {
+      if (!authenticated) {
+        socket.send(JSON.stringify({ type: 'error', message: 'Auth timeout' }));
+        socket.close();
+      }
+    }, 5000) : null;
+
+    socket.on('message', async (raw) => {
+      let data;
+      try {
+        data = JSON.parse(raw.toString());
+      } catch {
+        socket.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
+        return;
+      }
+
+      // ─── AUTH message (fallback if cookie auth failed) ─────────
+      if (data.type === 'auth' && !authenticated) {
+        if (authTimeout) clearTimeout(authTimeout);
+        try {
+          const decoded = fastify.jwt.verify(data.token);
+          const session = fastify.store.getSession(decoded.jti);
+          if (!session) {
+            socket.send(JSON.stringify({ type: 'error', message: 'Session expired' }));
+            socket.close();
+            return;
+          }
+
+          userId = decoded.id;
+          authenticated = true;
+          fastify.store.registerConnection(userId, socket);
+
+          heartbeatTimer = startHeartbeat(socket);
+
+          // Flush pending
+          flushPendingMessages(fastify, userId, socket);
+
+          socket.send(JSON.stringify({ type: 'auth_ok', userId }));
+          fastify.log.info({ userId }, 'WebSocket authenticated via message');
+        } catch (err) {
+          socket.send(JSON.stringify({ type: 'error', message: 'Invalid token' }));
+          socket.close();
+        }
+        return;
+      }
+
+      // ─── Reject unauthenticated messages ───────────────────
+      if (!authenticated) {
+        socket.send(JSON.stringify({ type: 'error', message: 'Not authenticated' }));
+        return;
+      }
+
+      // ─── HEARTBEAT ACK ────────────────────────────────────────
+      if (data.type === WS_EVENTS.HEARTBEAT_ACK || data.type === 'pong') {
+        return;
+      }
+
+      // ─── TYPING indicator ─────────────────────────────────────
+      if (data.type === WS_EVENTS.TYPING && data.recipientId) {
+        const recipientSockets = fastify.store.getConnections(data.recipientId);
+        const payload = JSON.stringify({
+          type: WS_EVENTS.TYPING,
+          senderId: userId,
+        });
+        for (const s of recipientSockets) {
+          try { s.send(payload); } catch {}
+        }
+        return;
+      }
+
+      // ─── WebRTC Signaling Relay ────────────────────────────────
+      const callEventTypes = ['call_invite', 'call_accept', 'call_reject', 'call_hangup', 'webrtc_sdp', 'webrtc_ice'];
+      if (callEventTypes.includes(data.type) && data.recipientId) {
+        if (data.type === 'call_invite' || data.type === 'call_accept') {
+          fastify.store.registerCall(userId, data.recipientId);
+        } else if (data.type === 'call_reject' || data.type === 'call_hangup') {
+          fastify.store.unregisterCall(userId);
+        }
+
+        const recipientSockets = fastify.store.getConnections(data.recipientId);
+        const payload = JSON.stringify({
+          ...data,
+          senderId: userId,
+        });
+        for (const s of recipientSockets) {
+          try { s.send(payload); } catch {}
+        }
+        return;
+      }
+
+      // ─── DELIVERED acknowledgment ──────────────────────────────
+      if (data.type === WS_EVENTS.DELIVERED && data.messageId) {
+        fastify.store.markDelivered(data.messageId);
+        const msg = fastify.store.getMessage(data.messageId);
+        if (msg) {
+          const senderSockets = fastify.store.getConnections(msg.sender_id);
+          const payload = JSON.stringify({
+            type: WS_EVENTS.DELIVERED,
+            messageId: data.messageId,
+            recipientId: userId
+          });
+          for (const s of senderSockets) {
+            try { s.send(payload); } catch {}
+          }
+        }
+        return;
+      }
+
+      // ─── READ acknowledgment ───────────────────────────────────
+      if (data.type === 'read' && data.messageId) {
+        const msg = fastify.store.getMessage(data.messageId);
+        if (msg) {
+          const senderSockets = fastify.store.getConnections(msg.sender_id);
+          const payload = JSON.stringify({
+            type: 'read',
+            messageId: data.messageId,
+            recipientId: userId
+          });
+          for (const s of senderSockets) {
+            try { s.send(payload); } catch {}
+          }
+        }
+        return;
+      }
+    });
+
+    // ─── Cleanup on disconnect ───────────────────────────────
+    socket.on('close', () => {
+      if (authTimeout) clearTimeout(authTimeout);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (userId) {
+        // Automatic WebRTC Call Cleanup
+        const activeCallPeer = fastify.store.getActiveCall(userId);
+        if (activeCallPeer) {
+          const peerSockets = fastify.store.getConnections(activeCallPeer);
+          const payload = JSON.stringify({
+            type: 'call_hangup',
+            senderId: userId
+          });
+          for (const s of peerSockets) {
+            try { s.send(payload); } catch {}
+          }
+          fastify.store.unregisterCall(userId);
+        }
+
+        fastify.store.unregisterConnection(userId, socket);
+        fastify.log.info({ userId }, 'WebSocket disconnected');
+      }
+    });
+
+    socket.on('error', (err) => {
+      fastify.log.error({ err, userId }, 'WebSocket error');
+    });
+  });
+}
+
+export default wsRoutes;
