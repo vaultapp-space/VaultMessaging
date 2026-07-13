@@ -761,8 +761,8 @@
       solBalance = '0.00';
       solUsdcBalance = '0.00';
       btcBalance = '0.00000000';
-      portfolioValue = 0;
-      portfolioSnapshots = [];
+      portfolioHistory = [];
+      localStorage.removeItem(`vault_portfolio_history_${$currentUser.id}`);
       
       biometricActive = false;
       walletBioEnabled.set(false);
