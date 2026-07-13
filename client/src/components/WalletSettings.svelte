@@ -377,14 +377,25 @@
 
   function selectContactForSend(contact) {
     // Determine which address to use based on current send chain
-    const chain = AVAILABLE_CHAINS.find(c => c.id === sendChain);
-    if (chain?.type === 'bitcoin') {
-      sendRecipient = contact.btcAddress || '';
-    } else if (chain?.type === 'solana') {
-      sendRecipient = contact.solAddress || '';
+    let address = '';
+    if (sendChain === 'bitcoin') {
+      address = contact.btcAddress || '';
+    } else if (sendChain === 'solana-mainnet') {
+      address = contact.solAddress || '';
     } else {
-      sendRecipient = contact.evmAddress || '';
+      address = contact.evmAddress || '';
     }
+
+    if (!address) {
+      sendError = `Contact "${contact.label}" does not have a saved address for this network.`;
+      sendStatus = 'error';
+      sendRecipient = '';
+    } else {
+      sendRecipient = address;
+      sendError = '';
+      sendStatus = 'idle';
+    }
+
     showContactPicker = false;
     showAddressBook = false;
   }
@@ -2553,7 +2564,13 @@
                     >
                       <span class="font-bold">{contact.label}</span>
                       <span class="text-[8px] font-mono text-vault-text-dim truncate max-w-[120px]">
-                        {contact.evmAddress ? contact.evmAddress.slice(0, 8) + '...' : contact.solAddress ? contact.solAddress.slice(0, 8) + '...' : contact.btcAddress ? contact.btcAddress.slice(0, 8) + '...' : 'No address'}
+                        {#if sendChain === 'bitcoin'}
+                          {contact.btcAddress ? 'BTC: ' + contact.btcAddress.slice(0, 8) + '...' : 'No BTC Address'}
+                        {:else if sendChain === 'solana-mainnet'}
+                          {contact.solAddress ? 'SOL: ' + contact.solAddress.slice(0, 8) + '...' : 'No SOL Address'}
+                        {:else}
+                          {contact.evmAddress ? 'EVM: ' + contact.evmAddress.slice(0, 8) + '...' : 'No EVM Address'}
+                        {/if}
                       </span>
                     </button>
                   {/each}
