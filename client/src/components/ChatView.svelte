@@ -53,6 +53,9 @@
   let remoteStream = null;
   let hasCollision = false;
   let initializingPeerConnection = false;
+  let peerConnectionPromise = null;
+  let localStreamPromise = null;
+  let iceCandidatesQueue = [];
 
   $: isCallActive = $activeCall && ($activeCall.status === 'ongoing' || $activeCall.status === 'ringing') && $activeCall.peerId === $activePeer?.id;
   $: callType = $activeCall ? $activeCall.type : null;
@@ -70,7 +73,7 @@
   }
 
   $: if ($activeCall && $activeCall.status === 'ongoing' && !localStream && $activeCall.direction === 'incoming') {
-    acquireMediaForIncomingCall();
+    localStreamPromise = acquireMediaForIncomingCall();
   }
 
   $: if (!$activeCall && localStream) {
@@ -1055,6 +1058,7 @@
         audio: audioConstraints,
         video: videoConstraints
       });
+      localStreamPromise = Promise.resolve(localStream);
       if (localVideo) localVideo.srcObject = localStream;
     } catch (err) {
       console.error('Failed to get media devices:', err);
@@ -1103,82 +1107,78 @@
     });
   }
 
-  async function initializePeerConnection(peerId) {
-    if (peerConnection || initializingPeerConnection) return;
-    initializingPeerConnection = true;
+  function initializePeerConnection(peerId) {
+    if (peerConnectionPromise) return peerConnectionPromise;
 
-    let iceServers = [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ];
+    peerConnectionPromise = (async () => {
+      let iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ];
 
-    try {
-      const data = await fetchTurnCredentials();
-      if (data && data.iceServers) {
-        iceServers = data.iceServers;
-      }
-    } catch (e) {
-      console.warn('Failed to fetch ephemeral TURN credentials, falling back to public STUN:', e);
-    }
-
-    if (peerConnection) {
-      initializingPeerConnection = false;
-      return;
-    }
-
-    peerConnection = new RTCPeerConnection({ iceServers });
-
-    if (localStream) {
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-    }
-
-    let remoteAudioElement = null;
-
-    peerConnection.ontrack = (event) => {
-      remoteStream = event.streams[0];
-      if (callType === 'video') {
-        if (remoteVideo) remoteVideo.srcObject = remoteStream;
-      } else {
-        // Reuse or create a single audio element
-        if (!remoteAudioElement) {
-          remoteAudioElement = new Audio();
+      try {
+        const data = await fetchTurnCredentials();
+        if (data && data.iceServers) {
+          iceServers = data.iceServers;
         }
-        remoteAudioElement.srcObject = remoteStream;
-        remoteAudioElement.play().catch(e => console.error("Failed to autoplay remote audio:", e));
+      } catch (e) {
+        console.warn('Failed to fetch ephemeral TURN credentials, falling back to public STUN:', e);
       }
-    };
 
-    // ICE connection state monitoring for auto-reconnection
-    peerConnection.oniceconnectionstatechange = () => {
-      const state = peerConnection?.iceConnectionState;
-      if (state === 'failed') {
-        // Attempt ICE restart
-        peerConnection.restartIce();
-      } else if (state === 'disconnected') {
-        // Give 5 seconds before considering it dead
-        setTimeout(() => {
-          if (peerConnection?.iceConnectionState === 'disconnected') {
-            peerConnection.restartIce();
+      peerConnection = new RTCPeerConnection({ iceServers });
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      }
+
+      let remoteAudioElement = null;
+
+      peerConnection.ontrack = (event) => {
+        remoteStream = event.streams[0];
+        if (callType === 'video') {
+          if (remoteVideo) remoteVideo.srcObject = remoteStream;
+        } else {
+          // Reuse or create a single audio element
+          if (!remoteAudioElement) {
+            remoteAudioElement = new Audio();
           }
-        }, 5000);
-      }
-    };
-
-    peerConnection.onicecandidate = async (event) => {
-      if (event.candidate) {
-        try {
-          const encrypted = await encryptStaticSignalingPayload(event.candidate);
-          wsSend({
-            type: 'webrtc_ice',
-            recipientId: peerId,
-            ...encrypted
-          });
-        } catch (e) {
-          console.error('Failed to encrypt ICE candidate:', e);
+          remoteAudioElement.srcObject = remoteStream;
+          remoteAudioElement.play().catch(e => console.error("Failed to autoplay remote audio:", e));
         }
-      }
-    };
+      };
 
-    initializingPeerConnection = false;
+      // ICE connection state monitoring for auto-reconnection
+      peerConnection.oniceconnectionstatechange = () => {
+        const state = peerConnection?.iceConnectionState;
+        if (state === 'failed') {
+          // Attempt ICE restart
+          peerConnection.restartIce();
+        } else if (state === 'disconnected') {
+          // Give 5 seconds before considering it dead
+          setTimeout(() => {
+            if (peerConnection?.iceConnectionState === 'disconnected') {
+              peerConnection.restartIce();
+            }
+          }, 5000);
+        }
+      };
+
+      peerConnection.onicecandidate = async (event) => {
+        if (event.candidate) {
+          try {
+            const encrypted = await encryptStaticSignalingPayload(event.candidate);
+            wsSend({
+              type: 'webrtc_ice',
+              recipientId: peerId,
+              ...encrypted
+            });
+          } catch (e) {
+            console.error('Failed to encrypt ICE candidate:', e);
+          }
+        }
+      };
+    })();
+
+    return peerConnectionPromise;
   }
 
   async function startOfferNegotiation(peerId) {
@@ -1221,10 +1221,31 @@
       if (peerConnection) {
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
       }
+      return localStream;
     } catch (err) {
       console.error('Failed to get media devices for incoming call:', err);
       alert('Could not access microphone/camera');
       hangupCall();
+      throw err;
+    }
+  }
+
+  async function ensureLocalStream() {
+    if (localStreamPromise) {
+      await localStreamPromise;
+    }
+  }
+
+  async function processQueuedIceCandidates() {
+    if (!peerConnection || !peerConnection.remoteDescription) return;
+    const candidates = [...iceCandidatesQueue];
+    iceCandidatesQueue = [];
+    for (const candidate of candidates) {
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        console.error('Failed to add queued ICE candidate:', err);
+      }
     }
   }
 
@@ -1250,6 +1271,9 @@
     cameraOff = false;
     currentCallKey = null;
     initializingPeerConnection = false;
+    peerConnectionPromise = null;
+    localStreamPromise = null;
+    iceCandidatesQueue = [];
   }
 
   onMount(() => {
@@ -1261,12 +1285,15 @@
       try {
         const decryptedSdp = await decryptStaticSignalingPayload(data);
         if (!decryptedSdp) return;
-        if (!peerConnection && $activePeer) {
-          initializePeerConnection($activePeer.id);
-        }
+
+        await initializePeerConnection(data.senderId);
         if (!peerConnection) return;
+
         await peerConnection.setRemoteDescription(new RTCSessionDescription(decryptedSdp));
+        await processQueuedIceCandidates();
+
         if (decryptedSdp.type === 'offer') {
+          await ensureLocalStream();
           const answer = await peerConnection.createAnswer();
           await peerConnection.setLocalDescription(answer);
           const encrypted = await encryptStaticSignalingPayload(answer);
@@ -1285,11 +1312,14 @@
       try {
         const decryptedCandidate = await decryptStaticSignalingPayload(data);
         if (!decryptedCandidate) return;
-        if (!peerConnection && $activePeer) {
-          initializePeerConnection($activePeer.id);
-        }
-        if (peerConnection && decryptedCandidate) {
+
+        await initializePeerConnection(data.senderId);
+        if (!peerConnection) return;
+
+        if (peerConnection.remoteDescription) {
           await peerConnection.addIceCandidate(new RTCIceCandidate(decryptedCandidate));
+        } else {
+          iceCandidatesQueue.push(decryptedCandidate);
         }
       } catch (err) {
         console.error('Failed to process incoming ICE candidate:', err);

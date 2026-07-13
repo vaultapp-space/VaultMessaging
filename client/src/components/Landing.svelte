@@ -93,12 +93,7 @@
 
   <!-- Hero Section -->
   <section class="max-w-4xl mx-auto px-6 pt-12 pb-16 text-center flex flex-col items-center gap-6 z-10">
-    <div class="shield-badge">
-      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-      </svg>
-      Zero-Knowledge Messaging
-    </div>
+
     
     <h1 class="text-4xl sm:text-6xl font-black tracking-tight leading-[1.1] max-w-2xl bg-gradient-to-b from-vault-text to-vault-text-secondary bg-clip-text text-transparent">
       Decentralized Trust.<br/>Absolute Privacy.

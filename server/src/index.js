@@ -35,6 +35,8 @@ const fastify = Fastify({
 
 // ─── Global Plugins ─────────────────────────────────────────
 
+const isProd = process.env.NODE_ENV === 'production';
+
 await fastify.register(fastifyHelmet, {
   contentSecurityPolicy: {
     directives: {
@@ -42,7 +44,9 @@ await fastify.register(fastifyHelmet, {
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'", "ws:", "wss:", "http://localhost:3001"],
+      connectSrc: isProd
+        ? ["'self'", "wss:", "https://vaultapp.space", "https://www.vaultapp.space"]
+        : ["'self'", "ws:", "wss:", "http://localhost:3001"],
       fontSrc: ["'self'", "https:", "data:"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: [],
