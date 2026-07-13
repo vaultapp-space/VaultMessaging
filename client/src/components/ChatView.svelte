@@ -1,7 +1,7 @@
 <script>
   import { onMount, afterUpdate, onDestroy, tick } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase } from '../lib/stores/session.js';
+  import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls } from '../lib/stores/session.js';
   import { messagesByPeer, addMessage, addMessages, addOptimisticMessage, confirmMessage, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
   import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey } from '../lib/api/http.js';
   import { sendTyping, wsConnected, onWsEvent, wsSend } from '../lib/api/ws.js';
@@ -51,11 +51,28 @@
   let peerConnection = null;
   let localStream = null;
   let remoteStream = null;
-  let isCallActive = false;
-  let isIncomingCall = false;
-  let callingPeer = null;
-  let callType = null;
   let hasCollision = false;
+
+  $: isCallActive = $activeCall && $activeCall.status === 'ongoing' && $activeCall.peerId === $activePeer?.id;
+  $: callType = $activeCall ? $activeCall.type : null;
+  $: callingPeer = $activeCall ? $activeCall.peerUsername : null;
+
+  $: if (isCallActive && $activeCall.currentCallKey && !currentCallKey) {
+    currentCallKey = $activeCall.currentCallKey;
+    if ($activeCall.direction === 'outgoing') {
+      startOfferNegotiation($activeCall.peerId);
+    } else {
+      initializePeerConnection($activeCall.peerId);
+    }
+  }
+
+  $: if (isCallActive && !localStream && $activeCall && $activeCall.direction === 'incoming') {
+    acquireMediaForIncomingCall();
+  }
+
+  $: if (!isCallActive && localStream) {
+    resetCallState();
+  }
 
   let showMembersModal = false;
   let micMuted = false;
@@ -1017,13 +1034,23 @@
 
   async function startCall(type) {
     if (!$activePeer) return;
-    callType = type;
-    callingPeer = $activePeer.username;
+
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    };
+    const videoConstraints = type === 'video' ? {
+      width: { ideal: 1280, max: 1920 },
+      height: { ideal: 720, max: 1080 },
+      frameRate: { ideal: 30, max: 60 },
+      facingMode: "user"
+    } : false;
 
     try {
       localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: type === 'video'
+        audio: audioConstraints,
+        video: videoConstraints
       });
       if (localVideo) localVideo.srcObject = localStream;
     } catch (err) {
@@ -1040,6 +1067,30 @@
     // Encrypt static key using Double Ratchet E2EE
     const encryptedKey = await encryptSignalingPayload($activePeer.id, { key: staticCallKeyBase64 });
 
+    const callId = crypto.randomUUID();
+    activeCall.set({
+      id: callId,
+      status: 'ongoing',
+      peerId: $activePeer.id,
+      peerUsername: $activePeer.username,
+      type: type,
+      direction: 'outgoing',
+      currentCallKey: currentCallKey
+    });
+
+    recentCalls.update(calls => [
+      {
+        id: callId,
+        peerId: $activePeer.id,
+        peerUsername: $activePeer.username,
+        type: type,
+        direction: 'outgoing',
+        status: 'ongoing',
+        timestamp: new Date().toISOString()
+      },
+      ...calls
+    ]);
+
     wsSend({
       type: 'call_invite',
       recipientId: $activePeer.id,
@@ -1047,7 +1098,6 @@
       senderUsername: $currentUser.username,
       encryptedKey
     });
-    isCallActive = true;
   }
 
   function initializePeerConnection(peerId) {
@@ -1113,40 +1163,40 @@
     }
   }
 
-  async function acceptCall() {
-    if (!$activePeer) return;
-    isIncomingCall = false;
-    isCallActive = true;
+  async function acquireMediaForIncomingCall() {
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    };
+    const videoConstraints = callType === 'video' ? {
+      width: { ideal: 1280, max: 1920 },
+      height: { ideal: 720, max: 1080 },
+      frameRate: { ideal: 30, max: 60 },
+      facingMode: "user"
+    } : false;
 
     try {
       localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: callType === 'video'
+        audio: audioConstraints,
+        video: videoConstraints
       });
       if (localVideo) localVideo.srcObject = localStream;
+      if (peerConnection) {
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      }
     } catch (err) {
-      console.error('Failed to get media devices:', err);
+      console.error('Failed to get media devices for incoming call:', err);
       alert('Could not access microphone/camera');
-      wsSend({ type: 'call_reject', recipientId: $activePeer.id, reason: 'media_failed' });
-      resetCallState();
-      return;
+      hangupCall();
     }
-
-    wsSend({ type: 'call_accept', recipientId: $activePeer.id });
-    initializePeerConnection($activePeer.id);
-  }
-
-  function rejectCall() {
-    if (!$activePeer) return;
-    isIncomingCall = false;
-    wsSend({ type: 'call_reject', recipientId: $activePeer.id, reason: 'declined' });
-    resetCallState();
   }
 
   function hangupCall() {
     if ($activePeer) {
       wsSend({ type: 'call_hangup', recipientId: $activePeer.id });
     }
+    activeCall.set(null);
     resetCallState();
   }
 
@@ -1172,42 +1222,6 @@
   onMount(() => {
     wsUnsubscribes.push(onWsEvent('session_collision', () => {
       hasCollision = true;
-    }));
-
-    wsUnsubscribes.push(onWsEvent('call_invite', async (data) => {
-      if (isCallActive || isIncomingCall) {
-        wsSend({ type: 'call_reject', recipientId: data.senderId, reason: 'busy' });
-        return;
-      }
-      // Decrypt the call session key
-      try {
-        const decrypted = await decryptSignalingPayload(data.senderId, data.encryptedKey);
-        if (decrypted && decrypted.key) {
-          const rawBytes = fromBase64(decrypted.key);
-          currentCallKey = await importStaticKey(rawBytes);
-        }
-      } catch (err) {
-        console.error('Failed to decrypt call invite key:', err);
-        return;
-      }
-      callingPeer = data.senderUsername;
-      callType = data.callType;
-      isIncomingCall = true;
-    }));
-
-    wsUnsubscribes.push(onWsEvent('call_accept', async (data) => {
-      isIncomingCall = false;
-      isCallActive = true;
-      await startOfferNegotiation(data.senderId);
-    }));
-
-    wsUnsubscribes.push(onWsEvent('call_reject', (data) => {
-      alert(`${callingPeer || 'Peer'} rejected the call: ${data.reason || 'declined'}`);
-      resetCallState();
-    }));
-
-    wsUnsubscribes.push(onWsEvent('call_hangup', () => {
-      resetCallState();
     }));
 
     wsUnsubscribes.push(onWsEvent('webrtc_sdp', async (data) => {
@@ -1608,35 +1622,6 @@
         >
           Hang Up
         </button>
-      </div>
-    {/if}
-
-    <!-- Incoming Call Dialog -->
-    {#if isIncomingCall}
-      <div class="absolute top-4 left-1/2 -translate-x-1/2 z-40 w-80 p-4 bg-vault-surface border border-vault-border rounded-2xl shadow-2xl flex flex-col gap-3 animate-slide-down text-center text-vault-text">
-        <div class="w-12 h-12 rounded-full bg-vault-accent/10 flex items-center justify-center mx-auto text-vault-accent">
-          <svg class="w-6 h-6 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-          </svg>
-        </div>
-        <div>
-          <h4 class="text-sm font-semibold text-vault-text animate-pulse">Incoming Call</h4>
-          <p class="text-[10px] text-vault-text-dim mt-0.5">{callingPeer} is calling you via E2EE {callType}...</p>
-        </div>
-        <div class="flex gap-2">
-          <button
-            on:click={rejectCall}
-            class="btn-ghost flex-1 py-2 text-xs border-vault-danger/30 text-vault-danger hover:bg-vault-danger/5 rounded-xl cursor-pointer focus:outline-none"
-          >
-            Decline
-          </button>
-          <button
-            on:click={acceptCall}
-            class="btn-primary flex-1 py-2 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none"
-          >
-            Accept
-          </button>
-        </div>
       </div>
     {/if}
 

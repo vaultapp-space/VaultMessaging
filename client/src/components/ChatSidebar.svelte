@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
-  import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, loginPassword, identityKeyPair, signedPrekeyPair } from '../lib/stores/session.js';
+  import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, loginPassword, identityKeyPair, signedPrekeyPair, activeCall, recentCalls } from '../lib/stores/session.js';
   import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, joinGroup } from '../lib/api/http.js';
   import { wsConnected } from '../lib/api/ws.js';
@@ -99,8 +99,8 @@
   let searchResults = [];
   let searching = false;
 
-  // Group creation states
   let showGroupModal = false;
+  let activeTab = 'chats';
   let groupName = '';
   let groupAddedUsers = [];
   let groupMembersSearch = [];
@@ -380,111 +380,194 @@
     </div>
   </div>
 
-  <!-- Search -->
-  <div class="px-3 py-2">
-    <div class="relative">
-      <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-vault-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8" />
-        <path d="M21 21l-4.35-4.35" stroke-linecap="round" />
-      </svg>
-      <input
-        type="text"
-        bind:value={searchQuery}
-        on:input={handleSearch}
-        placeholder="Search users..."
-        class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle"
-        style="padding-left: 2.25rem;"
-      />
-    </div>
+  <!-- Tab Navigation -->
+  <div class="flex border-b border-vault-border text-xs px-2 pt-1 gap-1">
+    <button
+      on:click={() => activeTab = 'chats'}
+      class="flex-1 py-2 font-semibold transition-all border-b-2 text-center cursor-pointer focus:outline-none
+        {activeTab === 'chats' ? 'border-vault-accent text-vault-accent' : 'border-transparent text-vault-text-dim hover:text-vault-text'}"
+    >
+      Chats
+    </button>
+    <button
+      on:click={() => activeTab = 'calls'}
+      class="flex-1 py-2 font-semibold transition-all border-b-2 text-center cursor-pointer focus:outline-none
+        {activeTab === 'calls' ? 'border-vault-accent text-vault-accent' : 'border-transparent text-vault-text-dim hover:text-vault-text'}"
+    >
+      Calls
+    </button>
   </div>
 
-  <!-- Search Results -->
-  {#if searchQuery && searchResults.length > 0}
-    <div class="px-2 pb-2">
-      <div class="text-[10px] text-vault-text-dim uppercase tracking-wider px-2 py-1">Users</div>
-      {#each searchResults as user}
-        <button
-          on:click={() => selectPeer({ id: user.id, username: user.username })}
-          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-vault-elevated transition-all text-left animate-fade-in"
-        >
-          <div
-            class="w-9 h-9 rounded-xl flex items-center justify-center text-vault-white font-semibold text-sm flex-shrink-0 shadow-inner"
-            style="background: {getAvatarGradient(user.username)}"
-          >
-            {user.username[0].toUpperCase()}
-          </div>
-          <div>
-            <div class="text-sm text-vault-text font-medium">{user.username}</div>
-            <div class="text-[10px] text-vault-text-dim">Start encrypted chat</div>
-          </div>
-        </button>
-      {/each}
-    </div>
-  {/if}
-
-  <!-- Conversations List -->
-  <div class="flex-1 overflow-y-auto px-2 py-1">
-    {#if $conversations.length === 0 && !searchQuery}
-      <div class="text-center py-12 px-4">
-        <div class="w-12 h-12 rounded-2xl bg-vault-elevated flex items-center justify-center mx-auto mb-3">
-          <svg class="w-6 h-6 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-          </svg>
-        </div>
-        <p class="text-xs text-vault-text-dim">No conversations yet</p>
-        <p class="text-[10px] text-vault-text-dim mt-1">Search for a user to start chatting</p>
+  {#if activeTab === 'chats'}
+    <!-- Search -->
+    <div class="px-3 py-2">
+      <div class="relative">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-vault-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8" />
+          <path d="M21 21l-4.35-4.35" stroke-linecap="round" />
+        </svg>
+        <input
+          type="text"
+          bind:value={searchQuery}
+          on:input={handleSearch}
+          placeholder="Search users..."
+          class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle"
+          style="padding-left: 2.25rem;"
+        />
       </div>
-    {:else}
-      {#each $conversations as conv (conv.peerId)}
-        {@const isActive = $activePeer?.id === conv.peerId}
-        {@const isTyping = $typingUsers.has(conv.peerId)}
-        <button
-          on:click={() => selectPeer({ id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup, members: conv.members, joinKey: conv.joinKey })}
-          class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left mb-0.5 group
-            {isActive ? 'bg-vault-accent/10 border border-vault-accent/20' : 'hover:bg-vault-elevated border border-transparent'}"
-        >
-          <div class="relative flex-shrink-0">
-            <div
-              class="w-10 h-10 rounded-xl flex items-center justify-center text-vault-white text-sm font-semibold transition-colors shadow-inner"
-              style="background: {getAvatarGradient(conv.peerUsername)}"
-            >
-              {conv.peerUsername[0].toUpperCase()}
-            </div>
-            {#if conv.hasUndelivered}
-              <div class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-vault-accent border-2 border-vault-surface"></div>
-            {/if}
-          </div>
+    </div>
 
-          <!-- Content -->
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-medium {isActive ? 'text-vault-accent' : 'text-vault-text'} truncate">
-                {conv.peerUsername}
-              </span>
-              <span class="text-[10px] text-vault-text-dim flex-shrink-0 ml-2">
-                {formatTime(conv.lastMessageAt)}
-              </span>
+    <!-- Search Results -->
+    {#if searchQuery && searchResults.length > 0}
+      <div class="px-2 pb-2">
+        <div class="text-[10px] text-vault-text-dim uppercase tracking-wider px-2 py-1">Users</div>
+        {#each searchResults as user}
+          <button
+            on:click={() => selectPeer({ id: user.id, username: user.username })}
+            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-vault-elevated transition-all text-left animate-fade-in"
+          >
+            <div
+              class="w-9 h-9 rounded-xl flex items-center justify-center text-vault-white font-semibold text-sm flex-shrink-0 shadow-inner"
+              style="background: {getAvatarGradient(user.username)}"
+            >
+              {user.username[0].toUpperCase()}
             </div>
-            <div class="text-xs text-vault-text-dim truncate mt-0.5">
-              {#if isTyping}
-                <span class="text-vault-accent flex items-center gap-1">
-                  typing<span class="typing-dots"><span></span><span></span><span></span></span>
-                </span>
-              {:else}
-                <span class="flex items-center gap-1">
-                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="11" width="18" height="11" rx="2" />
-                    <path d="M7 11V7a5 5 0 0110 0v4" />
-                  </svg>
-                  Encrypted message
-                </span>
+            <div>
+              <div class="text-sm text-vault-text font-medium">{user.username}</div>
+              <div class="text-[10px] text-vault-text-dim">Start encrypted chat</div>
+            </div>
+          </button>
+        {/each}
+      </div>
+    {/if}
+
+    <!-- Conversations List -->
+    <div class="flex-1 overflow-y-auto px-2 py-1">
+      {#if $conversations.length === 0 && !searchQuery}
+        <div class="text-center py-12 px-4">
+          <div class="w-12 h-12 rounded-2xl bg-vault-elevated flex items-center justify-center mx-auto mb-3">
+            <svg class="w-6 h-6 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+            </svg>
+          </div>
+          <p class="text-xs text-vault-text-dim">No conversations yet</p>
+          <p class="text-[10px] text-vault-text-dim mt-1">Search for a user to start chatting</p>
+        </div>
+      {:else}
+        {#each $conversations as conv (conv.peerId)}
+          {@const isActive = $activePeer?.id === conv.peerId}
+          {@const isTyping = $typingUsers.has(conv.peerId)}
+          <button
+            on:click={() => selectPeer({ id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup, members: conv.members, joinKey: conv.joinKey })}
+            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left mb-0.5 group
+              {isActive ? 'bg-vault-accent/10 border border-vault-accent/20' : 'hover:bg-vault-elevated border border-transparent'}"
+          >
+            <div class="relative flex-shrink-0">
+              <div
+                class="w-10 h-10 rounded-xl flex items-center justify-center text-vault-white text-sm font-semibold transition-colors shadow-inner"
+                style="background: {getAvatarGradient(conv.peerUsername)}"
+              >
+                {conv.peerUsername[0].toUpperCase()}
+              </div>
+              {#if conv.hasUndelivered}
+                <div class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-vault-accent border-2 border-vault-surface"></div>
               {/if}
             </div>
+
+            <!-- Content -->
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium {isActive ? 'text-vault-accent' : 'text-vault-text'} truncate">
+                  {conv.peerUsername}
+                </span>
+                <span class="text-[10px] text-vault-text-dim flex-shrink-0 ml-2">
+                  {formatTime(conv.lastMessageAt)}
+                </span>
+              </div>
+              <div class="text-xs text-vault-text-dim truncate mt-0.5">
+                {#if isTyping}
+                  <span class="text-vault-accent flex items-center gap-1">
+                    typing<span class="typing-dots"><span></span><span></span><span></span></span>
+                  </span>
+                {:else}
+                  <span class="flex items-center gap-1">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" />
+                      <path d="M7 11V7a5 5 0 0110 0v4" />
+                    </svg>
+                    Encrypted message
+                  </span>
+                {/if}
+              </div>
+            </div>
+          </button>
+        {/each}
+      {/if}
+    </div>
+  {:else if activeTab === 'calls'}
+    <!-- Recent Calls List -->
+    <div class="flex-1 overflow-y-auto px-2 py-3 space-y-2">
+      {#if $recentCalls.length === 0}
+        <div class="text-center py-12 px-4">
+          <div class="w-12 h-12 rounded-2xl bg-vault-elevated flex items-center justify-center mx-auto mb-3">
+            <svg class="w-6 h-6 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
           </div>
-        </button>
-      {/each}
-    {/if}
-  </div>
+          <p class="text-xs text-vault-text-dim">No recent calls</p>
+          <p class="text-[10px] text-vault-text-dim mt-1">Start a call from an active chat thread</p>
+        </div>
+      {:else}
+        {#each $recentCalls as call (call.id)}
+          <div class="w-full flex items-center justify-between gap-3 px-3 py-2.5 bg-vault-elevated border border-vault-border rounded-xl animate-fade-in">
+            <div class="flex items-center gap-3">
+              <div
+                class="w-9 h-9 rounded-xl flex items-center justify-center text-vault-white text-xs font-semibold shadow-inner"
+                style="background: {getAvatarGradient(call.peerUsername)}"
+              >
+                {call.peerUsername[0].toUpperCase()}
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-vault-text">{call.peerUsername}</div>
+                <div class="flex items-center gap-1.5 text-[9px] mt-0.5 text-vault-text-dim">
+                  {#if call.direction === 'incoming'}
+                    <span class="text-vault-accent">↙ Incoming</span>
+                  {:else}
+                    <span class="text-vault-warning">↗ Outgoing</span>
+                  {/if}
+                  <span>·</span>
+                  <span class="font-mono text-vault-text-dim">{formatTime(call.timestamp)}</span>
+                  <span>·</span>
+                  <span class="capitalize
+                    {call.status === 'completed' ? 'text-vault-accent' : ''}
+                    {call.status === 'missed' ? 'text-vault-danger font-medium' : ''}
+                    {call.status === 'rejected' ? 'text-vault-danger/60' : ''}
+                    {call.status === 'ongoing' ? 'text-vault-accent animate-pulse' : ''}"
+                  >
+                    {call.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Quick Chat Action Button -->
+            <button
+              on:click={() => {
+                selectPeer({ id: call.peerId, username: call.peerUsername, isGroup: false });
+                activeTab = 'chats';
+              }}
+              class="p-2 bg-vault-surface hover:bg-vault-border text-vault-accent hover:text-vault-accent-hover rounded-lg transition-all focus:outline-none cursor-pointer border-none"
+              title="Open Chat"
+            >
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {/if}
 
   <!-- Footer -->
   <div class="px-4 py-3 border-t border-vault-border">

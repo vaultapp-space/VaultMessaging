@@ -213,3 +213,83 @@ export async function decryptMessage(msg) {
     };
   }
 }
+
+import { importStaticKey } from './keys.js';
+import { fromBase64 } from './utils.js';
+
+export async function decryptSignalingPayload(senderId, data) {
+  if (!data || !data.ciphertext) {
+    return data;
+  }
+
+  try {
+    const ephData = JSON.parse(data.ephemeralKey);
+    let sessions = get(ratchetSessions);
+    let ratchet = sessions.get(senderId);
+
+    if (ephData.type === 'x3dh') {
+      if (ratchet) {
+        ratchet = null;
+        ratchetSessions.update(map => {
+          map.delete(senderId);
+          return new Map(map);
+        });
+      }
+    }
+
+    if (!ratchet) {
+      const ikp = get(identityKeyPair);
+      const spk = get(signedPrekeyPair);
+      const otps = get(oneTimePrekeyPairs);
+
+      if (!ikp || !spk) {
+        throw new Error('Identity or signed prekey not loaded');
+      }
+
+      let otpPair = null;
+      if (ephData.opk) {
+        const found = otps.find(kp => kp.pubKeyBase64 === ephData.opk);
+        if (found) {
+          otpPair = found.keyPair;
+        }
+      }
+
+      const { sharedSecret } = await x3dhRespond(
+        ikp,
+        spk,
+        otpPair,
+        ephData.ik,
+        ephData.ek
+      );
+
+      const { rootKey, chainKey } = await deriveInitialKeys(sharedSecret);
+
+      const newRatchet = new RatchetSession();
+      await newRatchet.initAsReceiver(rootKey, chainKey, spk, ephData.ik);
+
+      ratchetSessions.update(map => {
+        map.set(senderId, newRatchet);
+        return new Map(map);
+      });
+
+      ratchet = newRatchet;
+    }
+
+    const jsonStr = atob(data.ciphertext);
+    const parsed = JSON.parse(jsonStr);
+
+    const header = {
+      publicKey: ephData.rk,
+      messageNumber: data.messageNumber,
+      previousChainLength: data.previousChain,
+    };
+
+    const plaintext = await ratchet.ratchetDecrypt(header, parsed.bob.iv, parsed.bob.ct);
+    await syncCloudVault();
+    
+    return JSON.parse(plaintext);
+  } catch (err) {
+    console.error('Failed to decrypt E2EE signaling payload:', err);
+    return null;
+  }
+}

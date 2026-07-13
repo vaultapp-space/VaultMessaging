@@ -1,11 +1,13 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, clearSession, activePeer, sidebarOpen, oneTimePrekeyPairs } from '../lib/stores/session.js';
+  import { currentUser, clearSession, activePeer, sidebarOpen, oneTimePrekeyPairs, activeCall, recentCalls } from '../lib/stores/session.js';
   import { conversations, messagesByPeer, addMessage, addMessages, setTyping, typingUsers, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
   import { fetchConversations, fetchPendingMessages, logout, searchUsers, getPrekeyCount, replenishPrekeys, fetchGroups } from '../lib/api/http.js';
-  import { connectWebSocket, disconnectWebSocket, onWsEvent, wsConnected, wsError } from '../lib/api/ws.js';
-  import { generateOneTimePrekeys } from '../lib/crypto/keys.js';
+  import { connectWebSocket, disconnectWebSocket, onWsEvent, wsConnected, wsError, wsSend } from '../lib/api/ws.js';
+  import { generateOneTimePrekeys, importStaticKey } from '../lib/crypto/keys.js';
+  import { decryptSignalingPayload } from '../lib/crypto/decryption.js';
+  import { fromBase64 } from '../lib/crypto/utils.js';
   import ChatSidebar from './ChatSidebar.svelte';
   import ChatView from './ChatView.svelte';
 
@@ -43,6 +45,9 @@
       onWsEvent('typing', handleTyping),
       onWsEvent('connected', handleConnected),
       onWsEvent('sent', handleSent),
+      onWsEvent('call_invite', handleGlobalCallInvite),
+      onWsEvent('call_reject', handleGlobalCallReject),
+      onWsEvent('call_hangup', handleGlobalCallHangup),
     );
   });
 
@@ -166,6 +171,118 @@
     setTyping(data.senderId);
   }
 
+  async function handleGlobalCallInvite(data) {
+    const currentCall = get(activeCall);
+    if (currentCall) {
+      wsSend({ type: 'call_reject', recipientId: data.senderId, reason: 'busy' });
+      return;
+    }
+
+    const callId = crypto.randomUUID();
+    recentCalls.update(calls => [
+      {
+        id: callId,
+        peerId: data.senderId,
+        peerUsername: data.senderUsername,
+        type: data.callType,
+        direction: 'incoming',
+        status: 'missed',
+        timestamp: new Date().toISOString()
+      },
+      ...calls
+    ]);
+
+    activeCall.set({
+      id: callId,
+      status: 'incoming',
+      peerId: data.senderId,
+      peerUsername: data.senderUsername,
+      type: data.callType,
+      direction: 'incoming',
+      encryptedKey: data.encryptedKey
+    });
+  }
+
+  function handleGlobalCallReject(data) {
+    const currentCall = get(activeCall);
+    if (currentCall && currentCall.peerId === data.senderId) {
+      recentCalls.update(calls => {
+        const found = calls.find(c => c.id === currentCall.id);
+        if (found) found.status = 'rejected';
+        return [...calls];
+      });
+      activeCall.set(null);
+      alert(`${data.senderUsername || 'Peer'} rejected the call: ${data.reason || 'declined'}`);
+    }
+  }
+
+  function handleGlobalCallHangup(data) {
+    const currentCall = get(activeCall);
+    if (currentCall && currentCall.peerId === data.senderId) {
+      recentCalls.update(calls => {
+        const found = calls.find(c => c.id === currentCall.id);
+        if (found && found.status === 'ongoing') found.status = 'completed';
+        return [...calls];
+      });
+      activeCall.set(null);
+    }
+  }
+
+  async function acceptIncomingCall() {
+    const call = get(activeCall);
+    if (!call || call.status !== 'incoming') return;
+
+    try {
+      const decrypted = await decryptSignalingPayload(call.peerId, call.encryptedKey);
+      if (!decrypted || !decrypted.key) {
+        throw new Error('Could not decrypt E2EE call key');
+      }
+
+      const rawBytes = fromBase64(decrypted.key);
+      const importedKey = await importStaticKey(rawBytes);
+
+      activeCall.set({
+        ...call,
+        status: 'ongoing',
+        currentCallKey: importedKey
+      });
+
+      recentCalls.update(calls => {
+        const found = calls.find(c => c.id === call.id);
+        if (found) found.status = 'ongoing';
+        return [...calls];
+      });
+
+      activePeer.set({
+        id: call.peerId,
+        username: call.peerUsername,
+        isGroup: false
+      });
+
+      wsSend({ type: 'call_accept', recipientId: call.peerId });
+
+    } catch (err) {
+      console.error('Failed to accept incoming call:', err);
+      alert('Encryption negotiation failed. Cannot accept call.');
+      declineIncomingCall();
+    }
+  }
+
+  function declineIncomingCall() {
+    const call = get(activeCall);
+    if (!call) return;
+
+    wsSend({ type: 'call_reject', recipientId: call.peerId, reason: 'declined' });
+
+    recentCalls.update(calls => {
+      const found = calls.find(c => c.id === call.id);
+      if (found) found.status = 'rejected';
+      return [...calls];
+    });
+
+    activeCall.set(null);
+  }
+
   async function setupPushNotifications() {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       console.warn('Web Push is not supported in this browser.');
@@ -261,3 +378,32 @@
     </div>
   {/if}
 </div>
+
+<!-- Global Incoming Call Popup Overlay -->
+{#if $activeCall && $activeCall.status === 'incoming'}
+  <div class="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-80 p-4 bg-vault-surface/90 border border-vault-border rounded-2xl shadow-2xl flex flex-col gap-3 backdrop-blur-md animate-slide-down text-center text-vault-text">
+    <div class="w-12 h-12 rounded-full bg-vault-accent/10 flex items-center justify-center mx-auto text-vault-accent">
+      <svg class="w-6 h-6 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+      </svg>
+    </div>
+    <div>
+      <h4 class="text-sm font-semibold text-vault-text animate-pulse">Incoming Call</h4>
+      <p class="text-[10px] text-vault-text-dim mt-0.5">{$activeCall.peerUsername} is calling you via E2EE {$activeCall.type}...</p>
+    </div>
+    <div class="flex gap-2">
+      <button
+        on:click={declineIncomingCall}
+        class="btn-ghost flex-1 py-2 text-xs border-vault-danger/30 text-vault-danger hover:bg-vault-danger/5 rounded-xl cursor-pointer focus:outline-none"
+      >
+        Decline
+      </button>
+      <button
+        on:click={acceptIncomingCall}
+        class="btn-primary flex-1 py-2 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none"
+      >
+        Accept
+      </button>
+    </div>
+  </div>
+{/if}

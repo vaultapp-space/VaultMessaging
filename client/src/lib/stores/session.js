@@ -37,6 +37,9 @@ export const activeView = writable('landing');        // 'landing' | 'auth' | 'c
 export const activePeer = writable(null);          // { id, username } — currently open chat
 export const sidebarOpen = writable(true);
 
+export const activeCall = writable(null); // null or { status: 'incoming'|'ongoing', peerId, peerUsername, type, direction, currentCallKey }
+export const recentCalls = writable([]);   // call logs
+
 // ─── Helpers ────────────────────────────────────────────────
 
 export function setUser(user) {
@@ -66,6 +69,8 @@ export function clearSession() {
   localBackupPassphrase.set('');
 
   activePeer.set(null);
+  activeCall.set(null);
+  recentCalls.set([]);
   activeView.set('landing');
 }
 
