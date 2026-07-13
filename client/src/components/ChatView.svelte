@@ -96,6 +96,62 @@
   let remoteCameraOff = false;
   let sentInitialMediaState = false;
 
+  let callWindowSize = 'normal'; // 'normal' | 'large' | 'fullscreen'
+  let position = { x: 0, y: 0 };
+  let isDragging = false;
+  let dragStart = { x: 0, y: 0 };
+  let initialPosition = { x: 0, y: 0 };
+
+  function handleMouseDown(e) {
+    if (e.button !== 0) return;
+    if (e.target.closest('button') || e.target.closest('video')) return;
+    isDragging = true;
+    dragStart = { x: e.clientX, y: e.clientY };
+    initialPosition = { ...position };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }
+
+  function handleMouseMove(e) {
+    if (!isDragging) return;
+    position = {
+      x: initialPosition.x + (e.clientX - dragStart.x),
+      y: initialPosition.y + (e.clientY - dragStart.y)
+    };
+  }
+
+  function handleMouseUp() {
+    isDragging = false;
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
+  }
+
+  function handleTouchStart(e) {
+    if (e.target.closest('button') || e.target.closest('video')) return;
+    isDragging = true;
+    const touch = e.touches[0];
+    dragStart = { x: touch.clientX, y: touch.clientY };
+    initialPosition = { ...position };
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
+  }
+
+  function handleTouchMove(e) {
+    if (!isDragging) return;
+    e.preventDefault(); // Prevent body scroll while dragging
+    const touch = e.touches[0];
+    position = {
+      x: initialPosition.x + (touch.clientX - dragStart.x),
+      y: initialPosition.y + (touch.clientY - dragStart.y)
+    };
+  }
+
+  function handleTouchEnd() {
+    isDragging = false;
+    window.removeEventListener('touchmove', handleTouchMove);
+    window.removeEventListener('touchend', handleTouchEnd);
+  }
+
   function sendMediaState() {
     if ($activeCall && $activePeer) {
       wsSend({
@@ -1390,6 +1446,8 @@
     remoteMicMuted = false;
     remoteCameraOff = false;
     sentInitialMediaState = false;
+    position = { x: 0, y: 0 };
+    callWindowSize = 'normal';
 
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
@@ -1755,12 +1813,89 @@
 
     <!-- Video Call Grid -->
     {#if isCallActive && callType === 'video'}
-      <div class="absolute top-4 right-4 z-30 flex flex-col gap-2 p-2.5 bg-vault-surface border border-vault-border rounded-2xl shadow-xl animate-scale-up">
-        <div class="relative w-44 h-32 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner animate-fade-in">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <div
+        role="region"
+        aria-label="Video Call Panel"
+        on:mousedown={handleMouseDown}
+        on:touchstart={handleTouchStart}
+        style={callWindowSize !== 'fullscreen' ? `transform: translate(${position.x}px, ${position.y}px); cursor: ${isDragging ? 'grabbing' : 'grab'};` : ''}
+        class={callWindowSize === 'fullscreen'
+          ? "fixed inset-0 z-40 bg-vault-black flex flex-col justify-between overflow-hidden"
+          : "absolute top-4 right-4 z-30 flex flex-col gap-2 p-2.5 bg-vault-surface/95 backdrop-blur-md border border-vault-border rounded-2xl shadow-xl transition-all duration-200 select-none " + (callWindowSize === 'large' ? 'w-[308px]' : 'w-48')}
+      >
+        <!-- Conditionally render top-bar for non-fullscreen -->
+        {#if callWindowSize !== 'fullscreen'}
+          <div class="flex items-center justify-between w-full pb-1 border-b border-vault-border-subtle cursor-grab active:cursor-grabbing select-none z-10">
+            <div class="flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-vault-accent animate-pulse"></span>
+              <span class="text-[9px] text-vault-text-dim font-semibold uppercase tracking-wider">Call</span>
+            </div>
+            <div class="flex items-center gap-1">
+              <button
+                on:click={() => callWindowSize = 'normal'}
+                class="p-0.5 rounded hover:bg-vault-elevated text-vault-text-dim hover:text-vault-text transition-all focus:outline-none cursor-pointer"
+                title="Normal view"
+              >
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="6" y="6" width="12" height="12" rx="1" />
+                </svg>
+              </button>
+              <button
+                on:click={() => callWindowSize = 'large'}
+                class="p-0.5 rounded hover:bg-vault-elevated text-vault-text-dim hover:text-vault-text transition-all focus:outline-none cursor-pointer"
+                title="Large view"
+              >
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                </svg>
+              </button>
+              <button
+                on:click={() => callWindowSize = 'fullscreen'}
+                class="p-0.5 rounded hover:bg-vault-elevated text-vault-text-dim hover:text-vault-text transition-all focus:outline-none cursor-pointer"
+                title="Fullscreen"
+              >
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        {:else}
+          <!-- Top bar overlay when fullscreen -->
+          <div class="absolute top-6 left-6 z-20 flex items-center gap-2 bg-vault-surface/80 backdrop-blur-md border border-vault-border px-3.5 py-1.5 rounded-xl shadow-xl select-none">
+            <span class="w-2 h-2 rounded-full bg-vault-accent animate-pulse"></span>
+            <span class="text-xs text-vault-text font-semibold">E2EE Call: {callingPeer}</span>
+            <div class="w-px h-4 bg-vault-border mx-1"></div>
+            <button
+              on:click={() => callWindowSize = 'normal'}
+              class="p-1 rounded-lg hover:bg-vault-elevated text-vault-text-dim hover:text-vault-text transition-all focus:outline-none cursor-pointer flex items-center gap-1 text-[10px]"
+              title="Exit Fullscreen"
+            >
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
+              </svg>
+              Exit Fullscreen
+            </button>
+          </div>
+        {/if}
+
+        <!-- Local Video Container -->
+        <div 
+          class={callWindowSize === 'fullscreen' 
+            ? "absolute top-6 right-6 w-48 h-36 z-10 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-xl animate-fade-in" 
+            : `relative ${callWindowSize === 'large' ? 'w-[288px] h-[216px]' : 'w-44 h-32'} bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner animate-fade-in`}
+        >
           <video bind:this={localVideo} autoplay playsinline muted class="w-full h-full object-cover {isScreenSharing ? '' : 'scale-x-[-1]'}"></video>
           <span class="absolute bottom-1.5 left-2 text-[8px] bg-vault-black/60 px-1.5 py-0.5 rounded text-vault-text font-medium uppercase tracking-wider">Self</span>
         </div>
-        <div class="relative w-44 h-32 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner flex items-center justify-center animate-fade-in">
+
+        <!-- Remote Video Container -->
+        <div 
+          class={callWindowSize === 'fullscreen' 
+            ? "absolute inset-0 w-full h-full z-0 bg-vault-black flex items-center justify-center" 
+            : `relative ${callWindowSize === 'large' ? 'w-[288px] h-[216px]' : 'w-44 h-32'} bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner flex items-center justify-center animate-fade-in`}
+        >
           <video bind:this={remoteVideo} autoplay playsinline class="w-full h-full object-cover {remoteCameraOff ? 'hidden' : ''}"></video>
           {#if remoteCameraOff}
             <div class="absolute inset-0 flex flex-col items-center justify-center bg-vault-surface-subtle text-vault-text-dim text-xs gap-1.5">
@@ -1774,7 +1909,7 @@
           {/if}
           <span class="absolute bottom-1.5 left-2 text-[8px] bg-vault-black/60 px-1.5 py-0.5 rounded text-vault-text font-medium uppercase tracking-wider">{callingPeer}</span>
           {#if remoteMicMuted}
-            <span class="absolute top-1.5 right-2 bg-vault-danger/25 text-vault-danger border border-vault-danger/30 p-1 rounded-full animate-pulse" title="Muted">
+            <span class="absolute top-1.5 right-2 bg-vault-danger/25 text-vault-danger border border-vault-danger/30 p-1 rounded-full animate-pulse z-10" title="Muted">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="1" y1="1" x2="23" y2="23" />
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -1783,61 +1918,69 @@
             </span>
           {/if}
         </div>
-        <div class="flex gap-2 w-full">
+
+        <!-- Controls Wrapper -->
+        <div 
+          class={callWindowSize === 'fullscreen' 
+            ? "absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col gap-2.5 p-3 bg-vault-surface/85 backdrop-blur-md border border-vault-border rounded-2xl shadow-2xl w-60" 
+            : "flex flex-col gap-2 w-full z-10"}
+        >
+          <div class="flex gap-2 w-full">
+            <button
+              on:click={toggleMic}
+              class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
+                {micMuted ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
+              title={micMuted ? "Unmute Mic" : "Mute Mic"}
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                {#if micMuted}
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                {/if}
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
+              </svg>
+            </button>
+            <button
+              on:click={toggleCamera}
+              class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
+                {cameraOff ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
+              title={cameraOff ? "Turn Video On" : "Turn Video Off"}
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                {#if cameraOff}
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                {/if}
+                <path d="M23 7l-7 5 7 5V7z" />
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+              </svg>
+            </button>
+            <button
+              on:click={toggleScreenShare}
+              disabled={$activeCall?.status === 'ringing'}
+              class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
+                {$activeCall?.status === 'ringing' ? 'opacity-40 cursor-not-allowed bg-vault-elevated text-vault-text-dim border-vault-border-subtle' : ''}
+                {!isScreenSharing && $activeCall?.status !== 'ringing' ? 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text' : ''}
+                {isScreenSharing ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : ''}"
+              title={$activeCall?.status === 'ringing' ? "Waiting for call to connect..." : (isScreenSharing ? "Stop Sharing Screen" : "Share Screen")}
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </button>
+          </div>
           <button
-            on:click={toggleMic}
-            class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
-              {micMuted ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
-            title={micMuted ? "Unmute Mic" : "Mute Mic"}
+            on:click={hangupCall}
+            class="w-full py-1.5 bg-vault-danger hover:bg-vault-danger-hover text-vault-black font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none"
           >
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              {#if micMuted}
-                <line x1="1" y1="1" x2="23" y2="23" />
-              {/if}
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-              <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
+              <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
+              <line x1="23" y1="1" x2="1" y2="23" />
             </svg>
-          </button>
-          <button
-            on:click={toggleCamera}
-            class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
-              {cameraOff ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
-            title={cameraOff ? "Turn Video On" : "Turn Video Off"}
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              {#if cameraOff}
-                <line x1="1" y1="1" x2="23" y2="23" />
-              {/if}
-              <path d="M23 7l-7 5 7 5V7z" />
-              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-            </svg>
-          </button>
-          <button
-            on:click={toggleScreenShare}
-            disabled={$activeCall?.status === 'ringing'}
-            class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
-              {$activeCall?.status === 'ringing' ? 'opacity-40 cursor-not-allowed bg-vault-elevated text-vault-text-dim border-vault-border-subtle' : ''}
-              {!isScreenSharing && $activeCall?.status !== 'ringing' ? 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text' : ''}
-              {isScreenSharing ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : ''}"
-            title={$activeCall?.status === 'ringing' ? "Waiting for call to connect..." : (isScreenSharing ? "Stop Sharing Screen" : "Share Screen")}
-          >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
+            Hang Up
           </button>
         </div>
-        <button
-          on:click={hangupCall}
-          class="w-full py-1.5 bg-vault-danger hover:bg-vault-danger-hover text-vault-black font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none"
-        >
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91" />
-            <line x1="23" y1="1" x2="1" y2="23" />
-          </svg>
-          Hang Up
-        </button>
       </div>
     {:else if isCallActive && callType === 'audio'}
       <!-- Audio Call Panel -->
