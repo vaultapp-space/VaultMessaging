@@ -1544,6 +1544,13 @@
     if (prekeyRotationTimer) clearInterval(prekeyRotationTimer);
     wsUnsubscribes.forEach(unsub => unsub());
     resetCallState();
+
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+    }
   });
 
   function goBack() {
