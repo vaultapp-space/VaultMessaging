@@ -2386,18 +2386,7 @@
         {/if}
       </button>
 
-      <button
-        on:click={() => burnOnReadActive = !burnOnReadActive}
-        class="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all cursor-pointer focus:outline-none border
-          {burnOnReadActive 
-            ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30 hover:bg-vault-danger/30' 
-            : 'bg-vault-elevated text-vault-text-dim border-transparent hover:text-vault-text hover:bg-vault-border'}"
-        title={burnOnReadActive ? "Burn on Read: ENABLED (Ephemerally deletes media after opening)" : "Enable Burn on Read (Ephemerally delete media after opening)"}
-      >
-        <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-        </svg>
-      </button>
+
 
 
       {#if isRecording}
