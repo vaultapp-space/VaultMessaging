@@ -1831,7 +1831,7 @@
         on:mousedown={handleMouseDown}
         on:touchstart={handleTouchStart}
         style={callWindowSize === 'fullscreen' 
-          ? 'width: 100vw; height: 100dvh; left: 0; top: 0;' 
+          ? 'width: 100vw; height: 100vh; height: 100dvh; left: 0; top: 0;' 
           : `transform: translate(${position.x}px, ${position.y}px); cursor: ${isDragging ? 'grabbing' : 'grab'};`}
         class={callWindowSize === 'fullscreen'
           ? "fixed z-40 bg-vault-black flex flex-col justify-between overflow-hidden"
