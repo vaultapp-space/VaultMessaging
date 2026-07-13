@@ -56,6 +56,7 @@
   let peerConnectionPromise = null;
   let localStreamPromise = null;
   let iceCandidatesQueue = [];
+  let remoteAudioElement = null;
 
   $: isCallActive = $activeCall && ($activeCall.status === 'ongoing' || $activeCall.status === 'ringing') && $activeCall.peerId === $activePeer?.id;
   $: callType = $activeCall ? $activeCall.type : null;
@@ -1130,8 +1131,6 @@
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
       }
 
-      let remoteAudioElement = null;
-
       peerConnection.ontrack = (event) => {
         remoteStream = event.streams[0];
         if (callType === 'video') {
@@ -1265,6 +1264,13 @@
     if (peerConnection) {
       peerConnection.close();
       peerConnection = null;
+    }
+    if (remoteAudioElement) {
+      try {
+        remoteAudioElement.pause();
+        remoteAudioElement.srcObject = null;
+      } catch (e) {}
+      remoteAudioElement = null;
     }
     remoteStream = null;
     micMuted = false;
