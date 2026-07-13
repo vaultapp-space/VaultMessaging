@@ -48,7 +48,7 @@
   ];
 </script>
 
-<div class="min-h-screen flex flex-col justify-between relative overflow-hidden bg-vault-black text-vault-text font-sans">
+<div class="h-screen overflow-y-auto flex flex-col justify-between relative bg-vault-black text-vault-text font-sans">
   <!-- Nav Bar -->
   <header class="w-full max-w-6xl mx-auto px-6 py-6 flex justify-between items-center z-10">
     <div class="flex items-center gap-2">
