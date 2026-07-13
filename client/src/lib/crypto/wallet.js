@@ -4,10 +4,13 @@ import { HDKey } from '@scure/bip32';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { keccak_256 } from '@noble/hashes/sha3.js';
+import { ripemd160 } from '@noble/hashes/legacy.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { toBase64, fromBase64 } from './utils.js';
 
 // Blockchain clients
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits } from 'viem';
+import { mainnet, base, arbitrum, optimism, polygon } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConfirmTransaction } from '@solana/web3.js';
 import { 
@@ -139,6 +142,88 @@ export function isValidMnemonic(mnemonic) {
   return validateMnemonic(cleanMnemonic, wordlist);
 }
 
+// Bech32 encoding helper for Bitcoin addresses (BIP-173)
+const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+function bech32Encode(hrp, data) {
+  const combined = data.concat(bech32CreateChecksum(hrp, data));
+  let ret = hrp + '1';
+  for (let i = 0; i < combined.length; i++) {
+    ret += CHARSET.charAt(combined[i]);
+  }
+  return ret;
+}
+
+function bech32Polymod(values) {
+  const generator = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  let chk = 1;
+  for (let p = 0; p < values.length; ++p) {
+    const top = chk >> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ values[p];
+    for (let i = 0; i < 5; ++i) {
+      if ((top >> i) & 1) {
+        chk ^= generator[i];
+      }
+    }
+  }
+  return chk;
+}
+
+function bech32HrpExpand(hrp) {
+  const ret = [];
+  for (let p = 0; p < hrp.length; ++p) {
+    ret.push(hrp.charCodeAt(p) >> 5);
+  }
+  ret.push(0);
+  for (let p = 0; p < hrp.length; ++p) {
+    ret.push(hrp.charCodeAt(p) & 31);
+  }
+  return ret;
+}
+
+function bech32CreateChecksum(hrp, data) {
+  const values = bech32HrpExpand(hrp).concat(data).concat([0, 0, 0, 0, 0, 0]);
+  const polymod = bech32Polymod(values) ^ 1;
+  const ret = [];
+  for (let p = 0; p < 6; ++p) {
+    ret.push((polymod >> (5 * (5 - p))) & 31);
+  }
+  return ret;
+}
+
+function convertBits(data, frombits, tobits, pad) {
+  let acc = 0;
+  let bits = 0;
+  const ret = [];
+  const maxv = (1 << tobits) - 1;
+  for (let p = 0; p < data.length; ++p) {
+    const value = data[p];
+    if (value < 0 || (value >> frombits) !== 0) {
+      return null;
+    }
+    acc = (acc << frombits) | value;
+    bits += frombits;
+    while (bits >= tobits) {
+      bits -= tobits;
+      ret.push((acc >> bits) & maxv);
+    }
+  }
+  if (pad) {
+    if (bits > 0) {
+      ret.push((acc << (tobits - bits)) & maxv);
+    }
+  } else if (bits >= frombits || ((acc << (tobits - bits)) & maxv)) {
+    return null;
+  }
+  return ret;
+}
+
+export function getSegwitAddress(pubKeyHash) {
+  const converted = convertBits(pubKeyHash, 8, 5, true);
+  if (!converted) return '';
+  return bech32Encode('bc', [0].concat(converted));
+}
+
 /**
  * Derives both EVM and Solana addresses from a mnemonic phrase.
  */
@@ -163,9 +248,17 @@ export async function deriveAddressesFromMnemonic(mnemonic) {
   const solPubKey = ed25519.getPublicKey(solPrivateKey);
   const solAddress = encodeBase58(solPubKey);
   
+  // 3. Derive Bitcoin address using BIP-84 path: m/84'/0'/0'/0/0
+  const btcChild = hdkey.derive("m/84'/0'/0'/0/0");
+  const btcPubKey = secp256k1.getPublicKey(btcChild.privateKey, true);
+  const btcSha = sha256(btcPubKey);
+  const btcHash160 = ripemd160(btcSha);
+  const btcAddress = getSegwitAddress(btcHash160);
+  
   return {
     evmAddress,
-    solAddress
+    solAddress,
+    btcAddress
   };
 }
 
@@ -332,6 +425,7 @@ export function generatePDFBackup(username, mnemonic, evmAddr, solAddr) {
 
 export const BASE_SEPOLIA_RPC = 'https://sepolia.base.org';
 export const SOLANA_DEVNET_RPC = 'https://api.devnet.solana.com';
+export const SOLANA_MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
 
 export const ERC20_TOKENS = {
   USDC: '0x03498113b8e93d508e028f522e8ec502ef49048a' // Base Sepolia USDC contract
@@ -382,12 +476,22 @@ const transferAbi = [
   }
 ];
 
+const CHAIN_MAP = {
+  'ethereum': mainnet,
+  'base': base,
+  'arbitrum': arbitrum,
+  'optimism': optimism,
+  'polygon': polygon,
+  'base-sepolia': baseSepolia
+};
+
 /**
- * Fetch native ETH balance on Base L2 Sepolia
+ * Fetch native ETH/MATIC balance on any EVM chain
  */
-export async function getEVMBalance(address) {
+export async function getEVMBalance(address, chainKey = 'base-sepolia') {
+  const chain = CHAIN_MAP[chainKey] || baseSepolia;
   const client = createPublicClient({
-    chain: baseSepolia,
+    chain,
     transport: http()
   });
   const balance = await client.getBalance({ address });
@@ -395,11 +499,12 @@ export async function getEVMBalance(address) {
 }
 
 /**
- * Fetch ERC-20 token balance on Base L2 Sepolia
+ * Fetch ERC-20 token balance on any EVM chain
  */
-export async function getERC20Balance(address, tokenAddress) {
+export async function getERC20Balance(address, tokenAddress, chainKey = 'base-sepolia') {
+  const chain = CHAIN_MAP[chainKey] || baseSepolia;
   const client = createPublicClient({
-    chain: baseSepolia,
+    chain,
     transport: http()
   });
   try {
@@ -419,7 +524,7 @@ export async function getERC20Balance(address, tokenAddress) {
     } catch {}
     return formatUnits(balance, decimals);
   } catch (err) {
-    console.error('Failed to fetch ERC-20 balance:', err);
+    console.error(`Failed to fetch ERC-20 balance on ${chainKey}:`, err);
     return '0.00';
   }
 }
@@ -427,18 +532,20 @@ export async function getERC20Balance(address, tokenAddress) {
 /**
  * Fetch native SOL balance on Solana Devnet
  */
-export async function getSolanaBalance(address) {
-  const connection = new Connection(SOLANA_DEVNET_RPC, 'confirmed');
+export async function getSolanaBalance(address, isMainnet = false) {
+  const rpc = isMainnet ? SOLANA_MAINNET_RPC : SOLANA_DEVNET_RPC;
+  const connection = new Connection(rpc, 'confirmed');
   const pubKey = new PublicKey(address);
   const balance = await connection.getBalance(pubKey);
   return (balance / 1e9).toString();
 }
 
 /**
- * Fetch SPL token balance on Solana Devnet
+ * Fetch SPL token balance on Solana
  */
-export async function getSolanaTokenBalance(address, tokenMintAddress) {
-  const connection = new Connection(SOLANA_DEVNET_RPC, 'confirmed');
+export async function getSolanaTokenBalance(address, tokenMintAddress, isMainnet = false) {
+  const rpc = isMainnet ? SOLANA_MAINNET_RPC : SOLANA_DEVNET_RPC;
+  const connection = new Connection(rpc, 'confirmed');
   const owner = new PublicKey(address);
   const mint = new PublicKey(tokenMintAddress);
   try {
@@ -449,6 +556,25 @@ export async function getSolanaTokenBalance(address, tokenMintAddress) {
   } catch (err) {
     console.error('Failed to fetch Solana token balance:', err);
     return '0.00';
+  }
+}
+
+/**
+ * Fetch Bitcoin balance live on mainnet using blockstream API
+ */
+export async function getBitcoinBalance(address) {
+  if (!address) return '0.00000000';
+  try {
+    const res = await fetch(`https://blockstream.info/api/address/${address}`);
+    if (!res.ok) return '0.00000000';
+    const data = await res.json();
+    const funded = data?.chain_stats?.funded_txo_sum || 0;
+    const spent = data?.chain_stats?.spent_txo_sum || 0;
+    const balance = (funded - spent) / 1e8;
+    return balance.toFixed(8);
+  } catch (err) {
+    console.error('Bitcoin balance fetch failed:', err);
+    return '0.00000000';
   }
 }
 
@@ -466,14 +592,15 @@ async function deriveEVMPrivateKey(mnemonic) {
 /**
  * Send EVM native or ERC-20 tokens
  */
-export async function sendEVMTransaction(mnemonic, toAddress, amount, tokenAddress = null) {
+export async function sendEVMTransaction(mnemonic, toAddress, amount, tokenAddress = null, chainKey = 'base-sepolia') {
   const privateKeyHex = await deriveEVMPrivateKey(mnemonic);
   const account = privateKeyToAccount(privateKeyHex);
+  const chain = CHAIN_MAP[chainKey] || baseSepolia;
   
   if (tokenAddress) {
     // Send ERC-20
     const publicClient = createPublicClient({
-      chain: baseSepolia,
+      chain,
       transport: http()
     });
     
@@ -490,7 +617,7 @@ export async function sendEVMTransaction(mnemonic, toAddress, amount, tokenAddre
     
     const walletClient = createWalletClient({
       account,
-      chain: baseSepolia,
+      chain,
       transport: http()
     });
     
@@ -507,7 +634,7 @@ export async function sendEVMTransaction(mnemonic, toAddress, amount, tokenAddre
     // Send Native ETH
     const walletClient = createWalletClient({
       account,
-      chain: baseSepolia,
+      chain,
       transport: http()
     });
     
@@ -521,13 +648,14 @@ export async function sendEVMTransaction(mnemonic, toAddress, amount, tokenAddre
 /**
  * Send Solana native SOL or SPL token
  */
-export async function sendSolanaTransaction(mnemonic, toAddress, amount, tokenMintAddress = null) {
+export async function sendSolanaTransaction(mnemonic, toAddress, amount, tokenMintAddress = null, isMainnet = false) {
   const cleanMnemonic = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
   const seed = await mnemonicToSeed(cleanMnemonic);
   const solPrivateKey = await deriveSolanaKeyFromSeed(seed);
   const keypair = Keypair.fromSeed(solPrivateKey);
   
-  const connection = new Connection(SOLANA_DEVNET_RPC, 'confirmed');
+  const rpc = isMainnet ? SOLANA_MAINNET_RPC : SOLANA_DEVNET_RPC;
+  const connection = new Connection(rpc, 'confirmed');
   const recipientPubKey = new PublicKey(toAddress);
   
   if (tokenMintAddress) {
@@ -538,7 +666,6 @@ export async function sendSolanaTransaction(mnemonic, toAddress, amount, tokenMi
     
     const transaction = new Transaction();
     
-    // Check if recipient token account exists
     let createAccount = false;
     try {
       await getAccount(connection, recipientATA);

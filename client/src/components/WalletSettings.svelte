@@ -13,6 +13,7 @@
     getERC20Balance,
     getSolanaBalance,
     getSolanaTokenBalance,
+    getBitcoinBalance,
     sendEVMTransaction,
     sendSolanaTransaction,
     ERC20_TOKENS,
@@ -45,11 +46,16 @@
   let showConfirmWipe = false;
 
   // Live balances
-  let evmBalance = '0.00';
-  let evmUsdcBalance = '0.00';
-  let solBalance = '0.00';
-  let solUsdcBalance = '0.00';
-  let btcBalance = '0.0385';
+  let evmBalance = '0.00';       // Base Sepolia ETH
+  let evmUsdcBalance = '0.00';   // Base Sepolia USDC
+  let ethMainnetBalance = '0.00'; // Ethereum Mainnet ETH
+  let baseMainnetBalance = '0.00'; // Base Mainnet ETH
+  let arbMainnetBalance = '0.00';  // Arbitrum ETH
+  let opMainnetBalance = '0.00';   // Optimism ETH
+  let maticBalance = '0.00';       // Polygon MATIC
+  let solBalance = '0.00';       // Solana SOL
+  let solUsdcBalance = '0.00';   // Solana USDC
+  let btcBalance = '0.00000000'; // Bitcoin BTC
   let isFetchingBalances = false;
 
   // Send state
@@ -70,26 +76,36 @@
 
   // Reactive assets array
   $: assets = [
-    { name: 'USD Coin', symbol: 'USDC', balance: evmUsdcBalance, network: 'Base L2 (Sepolia)', icon: '💲', color: 'text-blue-400' },
-    { name: 'Ethereum', symbol: 'ETH', balance: evmBalance, network: 'Base L2 (Sepolia)', icon: 'Ξ', color: 'text-purple-400' },
-    { name: 'USD Coin (Solana)', symbol: 'USDC', balance: solUsdcBalance, network: 'Solana (Devnet)', icon: '💲', color: 'text-blue-400' },
-    { name: 'Solana', symbol: 'SOL', balance: solBalance, network: 'Solana (Devnet)', icon: '◎', color: 'text-teal-400' },
-    { name: 'Bitcoin', symbol: 'BTC', balance: btcBalance, network: 'Bitcoin Mainnet', icon: '₿', color: 'text-amber-500' }
+    { name: 'Ethereum', symbol: 'ETH', balance: ethMainnetBalance, network: 'Ethereum Mainnet', icon: 'Ξ', color: 'text-indigo-400' },
+    { name: 'Bitcoin', symbol: 'BTC', balance: btcBalance, network: 'Bitcoin Mainnet', icon: '₿', color: 'text-amber-500' },
+    { name: 'Solana', symbol: 'SOL', balance: solBalance, network: 'Solana Mainnet', icon: '◎', color: 'text-teal-400' },
+    { name: 'USD Coin', symbol: 'USDC', balance: solUsdcBalance, network: 'Solana Mainnet', icon: '💲', color: 'text-blue-400' },
+    { name: 'Ethereum (Base L2)', symbol: 'ETH', balance: baseMainnetBalance, network: 'Base Mainnet', icon: 'Ξ', color: 'text-sky-400' },
+    { name: 'Ethereum (Arbitrum)', symbol: 'ETH', balance: arbMainnetBalance, network: 'Arbitrum One', icon: 'Ξ', color: 'text-blue-500' },
+    { name: 'Ethereum (Optimism)', symbol: 'ETH', balance: opMainnetBalance, network: 'Optimism Mainnet', icon: 'Ξ', color: 'text-red-500' },
+    { name: 'Polygon', symbol: 'POL', balance: maticBalance, network: 'Polygon Mainnet', icon: '⬡', color: 'text-purple-500' },
+    { name: 'Base Sepolia ETH (Testnet)', symbol: 'ETH', balance: evmBalance, network: 'Base Sepolia', icon: 'Ξ', color: 'text-purple-400' },
+    { name: 'Base Sepolia USDC (Testnet)', symbol: 'USDC', balance: evmUsdcBalance, network: 'Base Sepolia', icon: '💲', color: 'text-blue-400' }
   ];
 
   $: totalUSD = (
-    (parseFloat(evmBalance) || 0) * 2620.50 +
-    (parseFloat(evmUsdcBalance) || 0) * 1.0 +
+    (parseFloat(ethMainnetBalance) || 0) * 3120.00 +
+    (parseFloat(baseMainnetBalance) || 0) * 3120.00 +
+    (parseFloat(arbMainnetBalance) || 0) * 3120.00 +
+    (parseFloat(opMainnetBalance) || 0) * 3120.00 +
+    (parseFloat(maticBalance) || 0) * 0.42 +
     (parseFloat(solBalance) || 0) * 145.20 +
     (parseFloat(solUsdcBalance) || 0) * 1.0 +
-    (parseFloat(btcBalance) || 0) * 64250.00
+    (parseFloat(btcBalance) || 0) * 64250.00 +
+    (parseFloat(evmBalance) || 0) * 3120.00 +
+    (parseFloat(evmUsdcBalance) || 0) * 1.0
   ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   let copiedAddressType = ''; // 'evm' | 'sol' | ''
 
   $: derivedReceiveAddress = (() => {
     if (receiveAsset === 'BTC') {
-      return 'bc1q9u2kg3kytsp47ch6uf2y74t46x8n79a78536sp';
+      return $walletState?.btcAddress || '';
     }
     if (receiveAsset === 'custom') {
       if (receiveCustomContract.startsWith('0x')) {
@@ -547,16 +563,39 @@
     if (!$walletState) return;
     isFetchingBalances = true;
     try {
-      const [eth, evmUsdc, sol, solUsdc] = await Promise.all([
-        getEVMBalance($walletState.evmAddress).catch(() => '0.00'),
-        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.USDC).catch(() => '0.00'),
-        getSolanaBalance($walletState.solAddress).catch(() => '0.00'),
-        getSolanaTokenBalance($walletState.solAddress, SPL_TOKENS.USDC).catch(() => '0.00')
+      const [
+        ethSepolia,
+        usdcSepolia,
+        ethMainnet,
+        ethBase,
+        ethArb,
+        ethOp,
+        matic,
+        sol,
+        solUsdc,
+        btc
+      ] = await Promise.all([
+        getEVMBalance($walletState.evmAddress, 'base-sepolia').catch(() => '0.00'),
+        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.USDC, 'base-sepolia').catch(() => '0.00'),
+        getEVMBalance($walletState.evmAddress, 'ethereum').catch(() => '0.00'),
+        getEVMBalance($walletState.evmAddress, 'base').catch(() => '0.00'),
+        getEVMBalance($walletState.evmAddress, 'arbitrum').catch(() => '0.00'),
+        getEVMBalance($walletState.evmAddress, 'optimism').catch(() => '0.00'),
+        getEVMBalance($walletState.evmAddress, 'polygon').catch(() => '0.00'),
+        getSolanaBalance($walletState.solAddress, true).catch(() => '0.00'),
+        getSolanaTokenBalance($walletState.solAddress, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', true).catch(() => '0.00'), // Live Mainnet USDC
+        getBitcoinBalance($walletState.btcAddress).catch(() => '0.00000000')
       ]);
-      evmBalance = eth;
-      evmUsdcBalance = evmUsdc;
+      evmBalance = ethSepolia;
+      evmUsdcBalance = usdcSepolia;
+      ethMainnetBalance = ethMainnet;
+      baseMainnetBalance = ethBase;
+      arbMainnetBalance = ethArb;
+      opMainnetBalance = ethOp;
+      maticBalance = matic;
       solBalance = sol;
       solUsdcBalance = solUsdc;
+      btcBalance = btc;
     } catch (err) {
       console.error('Failed to fetch balances:', err);
     } finally {
@@ -683,7 +722,7 @@
         sendStatus = 'error';
         return;
       }
-    } else if (sendAsset.includes('Base') || sendAsset === 'ETH') {
+    } else if (sendAsset.includes('ETH') || sendAsset.includes('Sepolia') || sendAsset.includes('POL')) {
       if (!/^0x[a-fA-F0-9]{40}$/.test(sendRecipient)) {
         sendError = 'Invalid EVM Address';
         sendStatus = 'error';
@@ -713,16 +752,26 @@
       sendStatus = 'broadcasting';
       
       let hash = '';
-      if (sendAsset === 'ETH') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount);
-      } else if (sendAsset === 'USDC-Base') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, ERC20_TOKENS.USDC);
+      if (sendAsset === 'ETH-Mainnet') {
+        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'ethereum');
+      } else if (sendAsset === 'ETH-Base') {
+        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'base');
+      } else if (sendAsset === 'ETH-Arbitrum') {
+        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'arbitrum');
+      } else if (sendAsset === 'ETH-Optimism') {
+        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'optimism');
+      } else if (sendAsset === 'POL-Polygon') {
+        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'polygon');
+      } else if (sendAsset === 'ETH-Sepolia') {
+        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'base-sepolia');
+      } else if (sendAsset === 'USDC-Sepolia') {
+        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, ERC20_TOKENS.USDC, 'base-sepolia');
       } else if (sendAsset === 'SOL') {
-        hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount);
+        hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, null, true);
       } else if (sendAsset === 'USDC-Solana') {
-        hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, SPL_TOKENS.USDC);
+        hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', true);
       } else if (sendAsset === 'BTC') {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1200));
         hash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
       }
       
@@ -1141,6 +1190,21 @@
                   {$walletState.solAddress}
                 </div>
               </div>
+
+              <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="text-[9px] text-vault-text-dim uppercase font-semibold">Bitcoin Address (Mainnet)</span>
+                  <button
+                    on:click={() => copyAddress($walletState.btcAddress, 'btc')}
+                    class="text-[9px] text-vault-accent hover:underline focus:outline-none cursor-pointer bg-transparent border-none"
+                  >
+                    {copiedAddressType === 'btc' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <div class="font-mono text-[9px] bg-vault-elevated/50 p-2 rounded border border-vault-border-subtle truncate select-all">
+                  {$walletState.btcAddress}
+                </div>
+              </div>
             </div>
 
             <!-- Asset Holdings -->
@@ -1302,11 +1366,16 @@
               bind:value={receiveAsset}
               class="select py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none"
             >
-              <option value="ETH">ETH (Base Sepolia)</option>
-              <option value="USDC-Base">USDC (Base Sepolia)</option>
-              <option value="SOL">SOL (Solana Devnet)</option>
-              <option value="USDC-Solana">USDC (Solana Devnet)</option>
+              <option value="ETH-Mainnet">ETH (Ethereum Mainnet)</option>
               <option value="BTC">BTC (Bitcoin Mainnet)</option>
+              <option value="SOL">SOL (Solana Mainnet)</option>
+              <option value="USDC-Solana">USDC (Solana Mainnet)</option>
+              <option value="ETH-Base">ETH (Base Mainnet)</option>
+              <option value="ETH-Arbitrum">ETH (Arbitrum One)</option>
+              <option value="ETH-Optimism">ETH (Optimism Mainnet)</option>
+              <option value="POL-Polygon">POL (Polygon Mainnet)</option>
+              <option value="ETH">ETH (Base Sepolia Testnet)</option>
+              <option value="USDC-Base">USDC (Base Sepolia Testnet)</option>
               <option value="custom">Custom Token Contract...</option>
             </select>
           </div>
@@ -1420,11 +1489,16 @@
               bind:value={sendAsset}
               class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-2.5 focus:outline-none font-sans"
             >
-              <option value="USDC-Base">USDC (Base L2) — Bal: {evmUsdcBalance}</option>
-              <option value="ETH">ETH (Base L2) — Bal: {evmBalance}</option>
-              <option value="USDC-Solana">USDC (Solana) — Bal: {solUsdcBalance}</option>
-              <option value="SOL">SOL (Solana) — Bal: {solBalance}</option>
-              <option value="BTC">BTC (Bitcoin) — Bal: {btcBalance}</option>
+              <option value="ETH-Mainnet">ETH (Ethereum Mainnet) — Bal: {ethMainnetBalance}</option>
+              <option value="BTC">BTC (Bitcoin Mainnet) — Bal: {btcBalance}</option>
+              <option value="SOL">SOL (Solana Mainnet) — Bal: {solBalance}</option>
+              <option value="USDC-Solana">USDC (Solana Mainnet) — Bal: {solUsdcBalance}</option>
+              <option value="ETH-Base">ETH (Base Mainnet) — Bal: {baseMainnetBalance}</option>
+              <option value="ETH-Arbitrum">ETH (Arbitrum One) — Bal: {arbMainnetBalance}</option>
+              <option value="ETH-Optimism">ETH (Optimism Mainnet) — Bal: {opMainnetBalance}</option>
+              <option value="POL-Polygon">POL (Polygon Mainnet) — Bal: {maticBalance}</option>
+              <option value="ETH-Sepolia">ETH (Base Sepolia Testnet) — Bal: {evmBalance}</option>
+              <option value="USDC-Sepolia">USDC (Base Sepolia Testnet) — Bal: {evmUsdcBalance}</option>
             </select>
           </div>
 
