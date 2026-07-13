@@ -28,6 +28,11 @@ const config = {
     timeWindow: '1 minute',
   },
 
+  // TURN server (ephemeral credentials)
+  turnServer: process.env.TURN_SERVER || '13.204.30.174:3478',
+  turnSecret: process.env.TURN_SECRET || 'vaultturnsecret',
+  turnCredentialTTL: parseInt(process.env.TURN_CREDENTIAL_TTL || '300', 10), // 5 minutes
+
   // CORS — client origin
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
 };

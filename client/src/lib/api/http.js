@@ -132,3 +132,7 @@ export async function saveEncryptedVault(encryptedVault) {
 export async function joinGroup(joinKey) {
   return request('POST', '/groups/join', { joinKey });
 }
+
+export async function fetchTurnCredentials() {
+  return request('GET', '/turn/credentials');
+}

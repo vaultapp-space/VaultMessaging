@@ -46,6 +46,7 @@
       onWsEvent('connected', handleConnected),
       onWsEvent('sent', handleSent),
       onWsEvent('call_invite', handleGlobalCallInvite),
+      onWsEvent('call_accept', handleGlobalCallAccept),
       onWsEvent('call_reject', handleGlobalCallReject),
       onWsEvent('call_hangup', handleGlobalCallHangup),
     );
@@ -213,6 +214,18 @@
       });
       activeCall.set(null);
       alert(`${data.senderUsername || 'Peer'} rejected the call: ${data.reason || 'declined'}`);
+    }
+  }
+
+  function handleGlobalCallAccept(data) {
+    const currentCall = get(activeCall);
+    if (currentCall && currentCall.peerId === data.senderId && currentCall.direction === 'outgoing') {
+      // Callee accepted — transition to ongoing and signal ChatView to start SDP negotiation
+      activeCall.set({
+        ...currentCall,
+        status: 'ongoing',
+        peerAccepted: true
+      });
     }
   }
 

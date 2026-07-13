@@ -193,6 +193,22 @@ async function wsRoutes(fastify) {
       // ─── WebRTC Signaling Relay ────────────────────────────────
       const callEventTypes = ['call_invite', 'call_accept', 'call_reject', 'call_hangup', 'webrtc_sdp', 'webrtc_ice'];
       if (callEventTypes.includes(data.type) && data.recipientId) {
+        // Validate recipientId is a real user
+        const recipient = await fastify.store.getUserById(data.recipientId);
+        if (!recipient) {
+          socket.send(JSON.stringify({ type: 'error', message: 'Invalid call recipient' }));
+          return;
+        }
+
+        // For SDP/ICE relay, verify an active call session exists between the two parties
+        if (data.type === 'webrtc_sdp' || data.type === 'webrtc_ice') {
+          const activePeer = fastify.store.getActiveCall(userId);
+          if (!activePeer || activePeer !== data.recipientId) {
+            socket.send(JSON.stringify({ type: 'error', message: 'No active call session' }));
+            return;
+          }
+        }
+
         if (data.type === 'call_invite' || data.type === 'call_accept') {
           fastify.store.registerCall(userId, data.recipientId);
         } else if (data.type === 'call_reject' || data.type === 'call_hangup') {

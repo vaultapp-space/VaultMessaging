@@ -21,6 +21,7 @@ import attachmentRoutes from './routes/attachments.routes.js';
 import groupRoutes from './routes/groups.routes.js';
 import chunkRoutes from './routes/chunks.routes.js';
 import pushRoutes from './routes/push.routes.js';
+import turnRoutes from './routes/turn.routes.js';
 
 const fastify = Fastify({
   logger: {
@@ -82,6 +83,7 @@ await fastify.register(attachmentRoutes);
 await fastify.register(groupRoutes);
 await fastify.register(chunkRoutes);
 await fastify.register(pushRoutes);
+await fastify.register(turnRoutes);
 
 // ─── Reaper Worker (24h hard deletion) ──────────────────────
 

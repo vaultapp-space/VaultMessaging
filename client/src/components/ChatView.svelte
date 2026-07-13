@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls } from '../lib/stores/session.js';
   import { messagesByPeer, addMessage, addMessages, addOptimisticMessage, confirmMessage, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
-  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey } from '../lib/api/http.js';
+  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, fetchTurnCredentials } from '../lib/api/http.js';
   import { sendTyping, wsConnected, onWsEvent, wsSend } from '../lib/api/ws.js';
   import { RatchetSession } from '../lib/crypto/ratchet.js';
   import { x3dhInitiate, x3dhRespond, deriveInitialKeys } from '../lib/crypto/x3dh.js';
@@ -52,25 +52,28 @@
   let localStream = null;
   let remoteStream = null;
   let hasCollision = false;
+  let initializingPeerConnection = false;
 
-  $: isCallActive = $activeCall && $activeCall.status === 'ongoing' && $activeCall.peerId === $activePeer?.id;
+  $: isCallActive = $activeCall && ($activeCall.status === 'ongoing' || $activeCall.status === 'ringing') && $activeCall.peerId === $activePeer?.id;
   $: callType = $activeCall ? $activeCall.type : null;
   $: callingPeer = $activeCall ? $activeCall.peerUsername : null;
 
-  $: if (isCallActive && $activeCall.currentCallKey && !currentCallKey) {
+  // For incoming calls: when accepted by Chat.svelte, import the key and init peer connection
+  $: if ($activeCall && $activeCall.status === 'ongoing' && $activeCall.currentCallKey && !currentCallKey && $activeCall.direction === 'incoming') {
     currentCallKey = $activeCall.currentCallKey;
-    if ($activeCall.direction === 'outgoing') {
-      startOfferNegotiation($activeCall.peerId);
-    } else {
-      initializePeerConnection($activeCall.peerId);
-    }
+    initializePeerConnection($activeCall.peerId);
   }
 
-  $: if (isCallActive && !localStream && $activeCall && $activeCall.direction === 'incoming') {
+  // For outgoing calls: when callee accepts (peerAccepted flag), start SDP negotiation
+  $: if ($activeCall && $activeCall.peerAccepted && $activeCall.direction === 'outgoing' && !peerConnection) {
+    startOfferNegotiation($activeCall.peerId);
+  }
+
+  $: if ($activeCall && $activeCall.status === 'ongoing' && !localStream && $activeCall.direction === 'incoming') {
     acquireMediaForIncomingCall();
   }
 
-  $: if (!isCallActive && localStream) {
+  $: if (!$activeCall && localStream) {
     resetCallState();
   }
 
@@ -1070,7 +1073,7 @@
     const callId = crypto.randomUUID();
     activeCall.set({
       id: callId,
-      status: 'ongoing',
+      status: 'ringing',
       peerId: $activePeer.id,
       peerUsername: $activePeer.username,
       type: type,
@@ -1085,7 +1088,7 @@
         peerUsername: $activePeer.username,
         type: type,
         direction: 'outgoing',
-        status: 'ongoing',
+        status: 'ringing',
         timestamp: new Date().toISOString()
       },
       ...calls
@@ -1100,32 +1103,63 @@
     });
   }
 
-  function initializePeerConnection(peerId) {
-    if (peerConnection) return;
-    peerConnection = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:13.204.30.174:3478' },
-        {
-          urls: 'turn:13.204.30.174:3478',
-          username: 'vaultuser',
-          credential: 'vaultsecretpassword'
-        }
-      ]
-    });
+  async function initializePeerConnection(peerId) {
+    if (peerConnection || initializingPeerConnection) return;
+    initializingPeerConnection = true;
+
+    let iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ];
+
+    try {
+      const data = await fetchTurnCredentials();
+      if (data && data.iceServers) {
+        iceServers = data.iceServers;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch ephemeral TURN credentials, falling back to public STUN:', e);
+    }
+
+    if (peerConnection) {
+      initializingPeerConnection = false;
+      return;
+    }
+
+    peerConnection = new RTCPeerConnection({ iceServers });
 
     if (localStream) {
       localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
     }
+
+    let remoteAudioElement = null;
 
     peerConnection.ontrack = (event) => {
       remoteStream = event.streams[0];
       if (callType === 'video') {
         if (remoteVideo) remoteVideo.srcObject = remoteStream;
       } else {
-        const audio = new Audio();
-        audio.srcObject = remoteStream;
-        audio.play().catch(e => console.error("Failed to autoplay remote audio:", e));
+        // Reuse or create a single audio element
+        if (!remoteAudioElement) {
+          remoteAudioElement = new Audio();
+        }
+        remoteAudioElement.srcObject = remoteStream;
+        remoteAudioElement.play().catch(e => console.error("Failed to autoplay remote audio:", e));
+      }
+    };
+
+    // ICE connection state monitoring for auto-reconnection
+    peerConnection.oniceconnectionstatechange = () => {
+      const state = peerConnection?.iceConnectionState;
+      if (state === 'failed') {
+        // Attempt ICE restart
+        peerConnection.restartIce();
+      } else if (state === 'disconnected') {
+        // Give 5 seconds before considering it dead
+        setTimeout(() => {
+          if (peerConnection?.iceConnectionState === 'disconnected') {
+            peerConnection.restartIce();
+          }
+        }, 5000);
       }
     };
 
@@ -1143,11 +1177,13 @@
         }
       }
     };
+
+    initializingPeerConnection = false;
   }
 
   async function startOfferNegotiation(peerId) {
-    initializePeerConnection(peerId);
-    if (localStream) {
+    await initializePeerConnection(peerId);
+    if (localStream && peerConnection) {
       try {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
@@ -1209,14 +1245,11 @@
       peerConnection.close();
       peerConnection = null;
     }
-    isCallActive = false;
-    isIncomingCall = false;
-    callingPeer = null;
-    callType = null;
     remoteStream = null;
     micMuted = false;
     cameraOff = false;
     currentCallKey = null;
+    initializingPeerConnection = false;
   }
 
   onMount(() => {

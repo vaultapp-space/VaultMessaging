@@ -214,8 +214,7 @@ export async function decryptMessage(msg) {
   }
 }
 
-import { importStaticKey } from './keys.js';
-import { fromBase64 } from './utils.js';
+
 
 export async function decryptSignalingPayload(senderId, data) {
   if (!data || !data.ciphertext) {
@@ -285,7 +284,6 @@ export async function decryptSignalingPayload(senderId, data) {
     };
 
     const plaintext = await ratchet.ratchetDecrypt(header, parsed.bob.iv, parsed.bob.ct);
-    await syncCloudVault();
     
     return JSON.parse(plaintext);
   } catch (err) {
