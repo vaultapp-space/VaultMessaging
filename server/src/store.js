@@ -85,6 +85,9 @@ CREATE INDEX IF NOT EXISTS idx_msg_recipient_undelivered
 
 CREATE INDEX IF NOT EXISTS idx_msg_expires ON encrypted_messages (expires_at);
 
+CREATE INDEX IF NOT EXISTS idx_msg_conversation ON encrypted_messages (sender_id, recipient_id, sent_at);
+CREATE INDEX IF NOT EXISTS idx_msg_conversation_rev ON encrypted_messages (recipient_id, sender_id, sent_at);
+
 CREATE TABLE IF NOT EXISTS groups (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
