@@ -145,6 +145,37 @@
     bitcoin: 'BTC'
   };
 
+  const TOKEN_CONTRACTS = {
+    ethereum: {
+      USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+      LINK: '0x514910771AF9Ca656af840dff83E8264EcF986CA',
+      UNI: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984'
+    },
+    base: {
+      USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913',
+      DEGEN: '0x4ed4E862860beD51a9570b96d89Af5E1B0Efefed',
+      AERO: '0x940181a94A35A4569E4529A3CDfB74e38FD98631'
+    },
+    arbitrum: {
+      USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+      ARB: '0x912CE59144191C1204E64559FE8253a0e49E6548'
+    },
+    optimism: {
+      USDC: '0x0b2C639c533813F4Aa9d7837CAf62653d097Ff85',
+      OP: '0x4200000000000000000000000000000000000042'
+    },
+    polygon: {
+      USDC: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+      QUICK: '0xB5C4D6197054707a431548598B6ecCc2A60d625D'
+    },
+    'solana-mainnet': {
+      USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      BONK: 'DezXAZ8z7PnrnRJjz3wX4dxBS42eArRn6YW6RJxxRBMP',
+      WIF: 'EKpQGSJtjMFqKZ9KQGWzeZqDDB7LYv3ct9KuJ24C1gPP'
+    }
+  };
+
   // Send filters
   $: filteredSendAssets = assets
     .filter(a => a.chainId === sendChain)
@@ -1078,10 +1109,10 @@
         await new Promise(resolve => setTimeout(resolve, 1200));
         hash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
       } else if (sendAssetObject.chainId === 'solana-mainnet') {
-        const tokenMint = sendAssetObject.symbol === 'USDC' ? 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' : null;
+        const tokenMint = TOKEN_CONTRACTS['solana-mainnet'][sendAssetObject.symbol] || null;
         hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, tokenMint, true);
       } else { // EVM
-        const tokenMint = sendAssetObject.symbol === 'USDC' ? (ERC20_TOKENS[sendAssetObject.chainId] || null) : null;
+        const tokenMint = TOKEN_CONTRACTS[sendAssetObject.chainId]?.[sendAssetObject.symbol] || null;
         hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, tokenMint, sendAssetObject.chainId);
       }
       
