@@ -11,6 +11,25 @@
   let showBackupModal = false;
   let theme = localStorage.getItem('vault_theme') || 'dark';
 
+  import { syncCloudVault } from '../lib/crypto/sync.js';
+  let isSyncing = false;
+  let syncError = '';
+  let lastSyncedTime = new Date().toLocaleTimeString();
+
+  async function triggerManualSync() {
+    isSyncing = true;
+    syncError = '';
+    try {
+      await syncCloudVault();
+      lastSyncedTime = new Date().toLocaleTimeString();
+    } catch (e) {
+      console.error(e);
+      syncError = 'Sync failed';
+    } finally {
+      isSyncing = false;
+    }
+  }
+
   function applyTheme(newTheme) {
     theme = newTheme;
     localStorage.setItem('vault_theme', newTheme);
@@ -748,6 +767,33 @@
               Import Keys
               <input type="file" accept=".vaultkey" on:change={importIdentity} class="hidden" />
             </label>
+          </div>
+        </div>
+
+        <div class="border-t border-vault-border pt-4 space-y-3">
+          <span class="text-xs font-semibold text-vault-text block">Zero-Knowledge Cloud Backup</span>
+          <span class="text-[10px] text-vault-text-dim block">Vault automatically backs up your encrypted keys & sessions to the cloud. You can also trigger a manual sync.</span>
+          <div class="flex items-center justify-between p-2.5 bg-vault-black/30 border border-vault-border rounded-xl w-full select-none">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-bold flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full {isSyncing ? 'bg-vault-warning animate-pulse' : (syncError ? 'bg-vault-danger' : 'bg-vault-accent')}"></span>
+                Status: {isSyncing ? 'Syncing...' : (syncError ? syncError : 'Synchronized')}
+              </span>
+              <span class="text-[9px] text-vault-text-dim">Last Synced: {lastSyncedTime}</span>
+            </div>
+            <button
+              on:click={triggerManualSync}
+              disabled={isSyncing}
+              class="py-1.5 px-3 text-[10px] bg-vault-accent hover:bg-vault-accent-hover text-vault-black font-semibold rounded-xl cursor-pointer flex items-center gap-1 border-none disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {#if isSyncing}
+                <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
+                </svg>
+              {/if}
+              Sync Now
+            </button>
           </div>
         </div>
       </div>

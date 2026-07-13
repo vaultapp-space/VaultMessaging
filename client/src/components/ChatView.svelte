@@ -20,6 +20,7 @@
   let loading = false;
   let ttlMinutes = 1440; // Default 24h
   let currentCallKey = null;
+  let verificationWords = '';
   let showTtlSelector = false;
 
   // Optimistic & Scroll helpers
@@ -99,6 +100,195 @@
   let isScreenShareSupported = typeof navigator !== 'undefined' && 
                                navigator.mediaDevices && 
                                typeof navigator.mediaDevices.getDisplayMedia === 'function';
+
+  async function calculateVerificationWords() {
+    if (!currentCallKey) {
+      verificationWords = '';
+      return;
+    }
+    try {
+      const rawKey = await crypto.subtle.exportKey('raw', currentCallKey);
+      const hash = await crypto.subtle.digest('SHA-256', rawKey);
+      const hashArray = new Uint8Array(hash);
+      const wordList = [
+        'Amber', 'Bronze', 'Cobalt', 'Diamond', 'Emerald', 'Forest', 'Garnet', 'Hazel',
+        'Indigo', 'Jade', 'Krypton', 'Lemon', 'Magenta', 'Neon', 'Onyx', 'Pearl'
+      ];
+      const word1 = wordList[hashArray[0] % 16];
+      const word2 = wordList[hashArray[1] % 16];
+      const word3 = wordList[hashArray[2] % 16];
+      verificationWords = `${word1} ${word2} ${word3}`;
+    } catch (e) {
+      console.error('Failed to calculate call verification words:', e);
+      verificationWords = '';
+    }
+  }
+
+  $: if (currentCallKey) {
+    calculateVerificationWords();
+  } else {
+    verificationWords = '';
+  }
+
+  let fileDataChannel = null;
+  let p2pFileTransferState = {
+    role: null, // 'sender' | 'receiver'
+    filename: '',
+    mimeType: '',
+    size: 0,
+    progress: 0,
+    status: 'idle', // 'idle' | 'sending' | 'receiving' | 'completed' | 'failed'
+    error: ''
+  };
+  let p2pReceivedChunks = [];
+  let p2pReceivedSize = 0;
+  let p2pFileInput;
+
+  function setupDataChannel(channel) {
+    if (!channel) return;
+    channel.binaryType = 'arraybuffer';
+    
+    channel.onopen = () => {
+      console.log('[P2P] DataChannel opened');
+    };
+    
+    channel.onclose = () => {
+      console.log('[P2P] DataChannel closed');
+    };
+    
+    channel.onerror = (err) => {
+      console.error('[P2P] DataChannel error:', err);
+      p2pFileTransferState.status = 'failed';
+      p2pFileTransferState.error = 'Channel error';
+      p2pFileTransferState = { ...p2pFileTransferState };
+    };
+    
+    channel.onmessage = (event) => {
+      if (typeof event.data === 'string') {
+        try {
+          const meta = JSON.parse(event.data);
+          if (meta.type === 'start') {
+            p2pFileTransferState = {
+              role: 'receiver',
+              filename: meta.filename,
+              mimeType: meta.mimeType,
+              size: meta.size,
+              progress: 0,
+              status: 'receiving',
+              error: ''
+            };
+            p2pReceivedChunks = [];
+            p2pReceivedSize = 0;
+          } else if (meta.type === 'end') {
+            const blob = new Blob(p2pReceivedChunks, { type: p2pFileTransferState.mimeType });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = p2pFileTransferState.filename;
+            a.click();
+            
+            p2pFileTransferState.status = 'completed';
+            p2pFileTransferState.progress = 100;
+            p2pFileTransferState = { ...p2pFileTransferState };
+            
+            setTimeout(() => {
+              URL.revokeObjectURL(url);
+              p2pFileTransferState.status = 'idle';
+              p2pFileTransferState = { ...p2pFileTransferState };
+            }, 3000);
+          }
+        } catch (e) {
+          console.error('[P2P] Failed to parse metadata:', e);
+        }
+      } else {
+        p2pReceivedChunks.push(event.data);
+        p2pReceivedSize += event.data.byteLength;
+        p2pFileTransferState.progress = Math.min(
+          99,
+          Math.round((p2pReceivedSize / p2pFileTransferState.size) * 100)
+        );
+        p2pFileTransferState = { ...p2pFileTransferState };
+      }
+    };
+  }
+
+  async function startP2PFileSend(e) {
+    const file = e.target.files[0];
+    if (!file || !fileDataChannel || fileDataChannel.readyState !== 'open') {
+      alert('P2P connection is not ready for file transfer.');
+      return;
+    }
+    
+    p2pFileTransferState = {
+      role: 'sender',
+      filename: file.name,
+      mimeType: file.type,
+      size: file.size,
+      progress: 0,
+      status: 'sending',
+      error: ''
+    };
+    
+    // 1. Send start metadata
+    fileDataChannel.send(JSON.stringify({
+      type: 'start',
+      filename: file.name,
+      mimeType: file.type,
+      size: file.size
+    }));
+    
+    // 2. Read and send in chunks
+    const chunkSize = 16384; // 16KB
+    let offset = 0;
+    const fileReader = new FileReader();
+    
+    const readSlice = (o) => {
+      const slice = file.slice(o, o + chunkSize);
+      fileReader.readAsArrayBuffer(slice);
+    };
+    
+    fileReader.onload = (event) => {
+      const buffer = event.target.result;
+      
+      // Buffer backpressure check
+      if (fileDataChannel.bufferedAmount > 8 * 1024 * 1024) { // 8MB high watermark
+        setTimeout(() => {
+          if (fileDataChannel && fileDataChannel.readyState === 'open') {
+            fileDataChannel.send(buffer);
+            offset += buffer.byteLength;
+            updateSenderProgress();
+          }
+        }, 100);
+      } else {
+        fileDataChannel.send(buffer);
+        offset += buffer.byteLength;
+        updateSenderProgress();
+      }
+    };
+    
+    const updateSenderProgress = () => {
+      p2pFileTransferState.progress = Math.round((offset / file.size) * 100);
+      p2pFileTransferState = { ...p2pFileTransferState };
+      
+      if (offset < file.size) {
+        readSlice(offset);
+      } else {
+        // Send end metadata
+        fileDataChannel.send(JSON.stringify({ type: 'end' }));
+        p2pFileTransferState.status = 'completed';
+        p2pFileTransferState = { ...p2pFileTransferState };
+        if (p2pFileInput) p2pFileInput.value = '';
+        
+        setTimeout(() => {
+          p2pFileTransferState.status = 'idle';
+          p2pFileTransferState = { ...p2pFileTransferState };
+        }, 3000);
+      }
+    };
+    
+    readSlice(0);
+  }
 
   let callWindowSize = 'normal'; // 'normal' | 'large' | 'fullscreen'
   let position = { x: 0, y: 0 };
@@ -1024,7 +1214,8 @@
         filename: file.name,
         mimeType: file.type,
         chunked: true,
-        totalChunks: totalChunks
+        totalChunks: totalChunks,
+        burnOnRead: burnOnReadActive
       });
 
       await encryptAndSend(attachmentPayload, true);
@@ -1111,7 +1302,8 @@
         key: keyBase64,
         iv: ivBase64,
         filename: 'voicenote.webm',
-        mimeType: 'audio/webm'
+        mimeType: 'audio/webm',
+        burnOnRead: burnOnReadActive
       });
 
       await encryptAndSend(attachmentPayload, true);
@@ -1242,6 +1434,13 @@
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
       }
 
+      peerConnection.ondatachannel = (event) => {
+        if (event.channel.label === 'file-transfer') {
+          fileDataChannel = event.channel;
+          setupDataChannel(fileDataChannel);
+        }
+      };
+
       peerConnection.ontrack = (event) => {
         remoteStream = event.streams[0];
         if (callType === 'video') {
@@ -1301,6 +1500,9 @@
       if (!peerConnection) {
         throw new Error('peerConnection is null inside startOfferNegotiation');
       }
+
+      fileDataChannel = peerConnection.createDataChannel('file-transfer', { ordered: true });
+      setupDataChannel(fileDataChannel);
 
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
@@ -1442,6 +1644,22 @@
   }
 
   function resetCallState() {
+    if (fileDataChannel) {
+      try { fileDataChannel.close(); } catch (e) {}
+      fileDataChannel = null;
+    }
+    p2pFileTransferState = {
+      role: null,
+      filename: '',
+      mimeType: '',
+      size: 0,
+      progress: 0,
+      status: 'idle',
+      error: ''
+    };
+    p2pReceivedChunks = [];
+    p2pReceivedSize = 0;
+
     if (screenStream) {
       screenStream.getTracks().forEach(track => track.stop());
       screenStream = null;
@@ -1943,6 +2161,11 @@
             ? "absolute left-1/2 -translate-x-1/2 z-10 flex flex-col gap-2.5 p-3 bg-vault-surface/85 backdrop-blur-md border border-vault-border rounded-2xl shadow-2xl w-60" 
             : "flex flex-col gap-2 w-full z-10"}
         >
+          {#if verificationWords}
+            <div class="text-[9px] bg-vault-black/30 border border-vault-border/50 text-vault-accent font-semibold px-2 py-0.5 rounded-lg text-center font-mono select-all w-full">
+              Verify Code: {verificationWords}
+            </div>
+          {/if}
           <div class="flex gap-2 w-full">
             <button
               on:click={toggleMic}
@@ -1998,6 +2221,49 @@
             </svg>
             Hang Up
           </button>
+
+          <!-- P2P Direct File Transfer -->
+          {#if fileDataChannel && $activeCall?.status === 'ongoing'}
+            <div class="px-2.5 py-1.5 bg-vault-black/30 border border-vault-border/50 rounded-xl flex flex-col gap-1 w-full text-left mt-1.5">
+              <span class="text-[8px] text-vault-text-dim uppercase tracking-wider font-bold">P2P File Transfer (Direct)</span>
+              
+              {#if p2pFileTransferState.status === 'idle'}
+                <input type="file" bind:this={p2pFileInput} on:change={startP2PFileSend} class="hidden" />
+                <button
+                  on:click={() => p2pFileInput.click()}
+                  class="w-full py-1 bg-vault-accent hover:bg-vault-accent-hover text-vault-black font-semibold text-[9px] rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none border-none"
+                >
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Send Direct File
+                </button>
+              {:else if p2pFileTransferState.status === 'sending' || p2pFileTransferState.status === 'receiving'}
+                <div class="flex flex-col gap-0.5 text-[8px] text-vault-text font-medium truncate w-full">
+                  <span class="truncate block">
+                    {p2pFileTransferState.role === 'sender' ? 'Sending' : 'Receiving'}: {p2pFileTransferState.filename}
+                  </span>
+                  <div class="w-full bg-vault-border rounded-full h-1 overflow-hidden">
+                    <div class="bg-vault-accent h-full transition-all duration-150" style="width: {p2pFileTransferState.progress}%"></div>
+                  </div>
+                  <span class="text-[7px] text-vault-text-dim text-right block">{p2pFileTransferState.progress}%</span>
+                </div>
+              {:else if p2pFileTransferState.status === 'completed'}
+                <div class="text-[8px] text-vault-accent font-semibold flex items-center gap-1 justify-center py-0.5 animate-pulse">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Transfer Completed!
+                </div>
+              {:else if p2pFileTransferState.status === 'failed'}
+                <div class="text-[8px] text-vault-danger font-semibold flex items-center gap-1 justify-center py-0.5">
+                  ⚠️ Transfer Failed
+                </div>
+              {/if}
+            </div>
+          {/if}
         </div>
       </div>
     {:else if isCallActive && callType === 'audio'}
@@ -2019,6 +2285,11 @@
             {/if}
           </span>
         </div>
+        {#if verificationWords}
+          <div class="text-[9px] bg-vault-black/30 border border-vault-border/50 text-vault-accent font-semibold px-2 py-1 rounded-lg text-center font-mono select-all">
+            Verify: {verificationWords}
+          </div>
+        {/if}
         <button
           on:click={toggleMic}
           class="p-2 rounded-xl border transition-all focus:outline-none cursor-pointer
@@ -2033,6 +2304,36 @@
             <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
           </svg>
         </button>
+        
+        <!-- P2P Direct File Transfer -->
+        {#if fileDataChannel && $activeCall?.status === 'ongoing'}
+          <input type="file" bind:this={p2pFileInput} on:change={startP2PFileSend} class="hidden" />
+          {#if p2pFileTransferState.status === 'idle'}
+            <button
+              on:click={() => p2pFileInput.click()}
+              class="p-2 rounded-xl border bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text transition-all focus:outline-none cursor-pointer"
+              title="Send Direct P2P File"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </button>
+          {:else if p2pFileTransferState.status === 'sending' || p2pFileTransferState.status === 'receiving'}
+            <div class="flex flex-col gap-0.5 text-[8px] text-vault-text font-medium min-w-[60px] truncate">
+              <span class="truncate block">{p2pFileTransferState.role === 'sender' ? 'Sending' : 'Receiving'} {p2pFileTransferState.progress}%</span>
+              <div class="w-full bg-vault-border rounded-full h-1 overflow-hidden">
+                <div class="bg-vault-accent h-full transition-all duration-150" style="width: {p2pFileTransferState.progress}%"></div>
+              </div>
+            </div>
+          {:else if p2pFileTransferState.status === 'completed'}
+            <span class="text-[8px] text-vault-accent font-semibold animate-pulse">Done</span>
+          {:else if p2pFileTransferState.status === 'failed'}
+            <span class="text-[8px] text-vault-danger font-semibold">Failed</span>
+          {/if}
+        {/if}
+
         <button
           on:click={hangupCall}
           class="px-3 py-1.5 bg-vault-danger hover:bg-vault-danger-hover text-vault-black font-semibold text-xs rounded-xl transition-all cursor-pointer focus:outline-none"
@@ -2083,6 +2384,19 @@
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
           </svg>
         {/if}
+      </button>
+
+      <button
+        on:click={() => burnOnReadActive = !burnOnReadActive}
+        class="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all cursor-pointer focus:outline-none border
+          {burnOnReadActive 
+            ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30 hover:bg-vault-danger/30' 
+            : 'bg-vault-elevated text-vault-text-dim border-transparent hover:text-vault-text hover:bg-vault-border'}"
+        title={burnOnReadActive ? "Burn on Read: ENABLED (Ephemerally deletes media after opening)" : "Enable Burn on Read (Ephemerally delete media after opening)"}
+      >
+        <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+        </svg>
       </button>
 
 
@@ -2218,6 +2532,17 @@
           {/if}
         </button>
       </div>
+
+      <!-- QR Code Session Verification -->
+      {#if safetyNumber && safetyNumber !== 'Unavailable' && safetyNumber !== 'Error calculating fingerprint'}
+        <div class="flex flex-col items-center justify-center p-3 bg-white rounded-xl mb-4 shadow-inner border border-vault-border/50 w-36 h-36 mx-auto select-none">
+          <img
+            src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={encodeURIComponent(safetyNumber)}&color=0b0c10"
+            alt="Safety Number QR Code"
+            class="w-28 h-28"
+          />
+        </div>
+      {/if}
 
       <p class="text-xs text-vault-text-dim leading-relaxed mb-6">
         To prevent eavesdropping, verify that these numbers match the safety numbers shown on {$activePeer?.username}'s device. If they match, your connection is cryptographically secure.

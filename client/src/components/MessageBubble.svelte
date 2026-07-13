@@ -26,18 +26,62 @@
   let timer;
   let expiryText = getExpiryInfo(message.expiresAt);
 
+  let burnOnReadRevealed = false;
+  let burnOnReadTimerVal = 15;
+  let burnOnReadCountdownTimer = null;
+  let isBurned = false;
+
+  async function revealBurnOnRead() {
+    if (burnOnReadRevealed || isBurned) return;
+    burnOnReadRevealed = true;
+    await loadAndDecryptFile();
+    if (objectUrl) {
+      startBurnCountdown();
+    } else {
+      burnOnReadRevealed = false;
+    }
+  }
+
+  function startBurnCountdown() {
+    const isAudio = attachmentData && attachmentData.mimeType && attachmentData.mimeType.startsWith('audio/');
+    burnOnReadTimerVal = isAudio ? 60 : 15;
+    
+    burnOnReadCountdownTimer = setInterval(() => {
+      burnOnReadTimerVal--;
+      if (burnOnReadTimerVal <= 0) {
+        clearInterval(burnOnReadCountdownTimer);
+        burnOnReadCountdownTimer = null;
+        burnAndDestroy();
+      }
+    }, 1000);
+  }
+
+  function burnAndDestroy() {
+    isBurned = true;
+    if (burnOnReadCountdownTimer) {
+      clearInterval(burnOnReadCountdownTimer);
+      burnOnReadCountdownTimer = null;
+    }
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
+    }
+    attachmentData = null;
+  }
+
   onMount(() => {
     timer = setInterval(() => {
       expiryText = getExpiryInfo(message.expiresAt);
     }, 1000);
     
-    if (isAttachment) {
+    if (isAttachment && attachmentData && !attachmentData.burnOnRead) {
       loadAndDecryptFile();
     }
   });
 
   onDestroy(() => {
     clearInterval(timer);
+    if (burnOnReadCountdownTimer) clearInterval(burnOnReadCountdownTimer);
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl);
     }
@@ -68,7 +112,7 @@
     }
   }
 
-  $: if (isAttachment && attachmentData && !objectUrl && !loadingFile && !loadFileError) {
+  $: if (isAttachment && attachmentData && !attachmentData.burnOnRead && !objectUrl && !loadingFile && !loadFileError) {
     loadAndDecryptFile();
   }
 
@@ -243,56 +287,103 @@
         {:else if isAttachment}
           <!-- Attachment rendering block -->
           <div class="flex flex-col gap-1.5 min-w-[200px]">
-            <div class="text-[10px] text-vault-text-dim uppercase tracking-wider font-semibold">🔒 Encrypted Attachment</div>
-            {#if loadingFile}
-              <div class="flex items-center gap-2 text-xs text-vault-text-dim py-2">
-                <svg class="w-4 h-4 animate-spin text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
-                  <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
+            {#if isBurned}
+              <div class="flex items-center gap-2 text-xs text-vault-danger/70 bg-vault-danger/5 border border-vault-danger/10 px-3.5 py-2.5 rounded-xl select-none">
+                <svg class="w-4 h-4 text-vault-danger/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
                 </svg>
-                Decrypting...
+                <span>This media has been burned & deleted.</span>
               </div>
-            {:else if loadFileError}
-              <div class="text-xs text-vault-danger py-1">
-                ⚠️ {loadFileError}
-              </div>
-            {:else if objectUrl}
-              {#if attachmentData.mimeType.startsWith('image/')}
-                <button
-                  on:click={() => window.open(objectUrl, '_blank')}
-                  class="bg-transparent border-none p-0 cursor-pointer text-left block max-w-full focus:outline-none"
-                  aria-label="View full size image"
-                >
-                  <img
-                    src={objectUrl}
-                    alt={attachmentData.filename}
-                    class="max-w-full max-h-[200px] rounded-lg border border-vault-border object-contain"
-                  />
-                </button>
-              {:else if attachmentData.mimeType.startsWith('audio/')}
-                <div class="flex flex-col gap-1.5 p-2.5 bg-vault-black/30 border border-vault-border rounded-xl min-w-[240px]">
-                  <div class="flex items-center gap-2 text-xs font-semibold text-vault-accent">
-                    <svg class="w-4 h-4 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                      <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
-                    </svg>
-                    Voice Note
-                  </div>
-                  <audio src={objectUrl} controls class="w-full mt-1.5 accent-vault-accent focus:outline-none"></audio>
-                </div>
-              {:else}
-                <a
-                  href={objectUrl}
-                  download={attachmentData.filename}
-                  class="flex items-center gap-2 px-3 py-2 bg-vault-black/40 hover:bg-vault-elevated border border-vault-border rounded-xl text-xs font-semibold text-vault-accent transition-all cursor-pointer"
-                >
-                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
+            {:else if attachmentData && attachmentData.burnOnRead && !burnOnReadRevealed}
+              <div class="flex flex-col gap-2 p-3 bg-vault-surface-subtle border border-vault-border rounded-xl select-none text-center">
+                <div class="text-[10px] text-vault-danger font-semibold uppercase tracking-wider flex items-center justify-center gap-1.5 animate-pulse">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
                   </svg>
-                  Download {attachmentData.filename}
-                </a>
+                  Burn-on-Read Media
+                </div>
+                <p class="text-[9px] text-vault-text-dim leading-normal">
+                  This file can only be opened once. It will be permanently deleted after viewing.
+                </p>
+                <button
+                  on:click={revealBurnOnRead}
+                  class="w-full mt-1 py-1.5 bg-vault-danger hover:bg-vault-danger-hover text-vault-black font-semibold text-[10px] rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none border-none"
+                >
+                  Reveal Attachment
+                </button>
+              </div>
+            {:else}
+              <div class="text-[10px] text-vault-text-dim uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                <span>🔒 Encrypted Attachment</span>
+                {#if attachmentData && attachmentData.burnOnRead}
+                  <span class="text-vault-danger font-bold flex items-center gap-0.5 animate-pulse">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+                    </svg>
+                    Burning ({burnOnReadTimerVal}s)
+                  </span>
+                {/if}
+              </div>
+              {#if loadingFile}
+                <div class="flex items-center gap-2 text-xs text-vault-text-dim py-2">
+                  <svg class="w-4 h-4 animate-spin text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
+                  </svg>
+                  Decrypting...
+                </div>
+              {:else if loadFileError}
+                <div class="text-xs text-vault-danger py-1">
+                  ⚠️ {loadFileError}
+                </div>
+              {:else if objectUrl && attachmentData}
+                {#if attachmentData.mimeType.startsWith('image/')}
+                  <button
+                    on:click={() => window.open(objectUrl, '_blank')}
+                    class="bg-transparent border-none p-0 cursor-pointer text-left block max-w-full focus:outline-none"
+                    aria-label="View full size image"
+                  >
+                    <img
+                      src={objectUrl}
+                      alt={attachmentData.filename}
+                      class="max-w-full max-h-[200px] rounded-lg border border-vault-border object-contain"
+                    />
+                  </button>
+                {:else if attachmentData.mimeType.startsWith('audio/')}
+                  <div class="flex flex-col gap-1.5 p-2.5 bg-vault-black/30 border border-vault-border rounded-xl min-w-[240px]">
+                    <div class="flex items-center gap-2 text-xs font-semibold text-vault-accent">
+                      <svg class="w-4 h-4 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
+                      </svg>
+                      Voice Note
+                    </div>
+                    <audio 
+                      src={objectUrl} 
+                      controls 
+                      on:ended={burnAndDestroy}
+                      class="w-full mt-1.5 accent-vault-accent focus:outline-none"
+                    ></audio>
+                  </div>
+                {:else}
+                  <a
+                    href={objectUrl}
+                    download={attachmentData.filename}
+                    on:click={() => {
+                      if (attachmentData && attachmentData.burnOnRead) {
+                        setTimeout(burnAndDestroy, 3000);
+                      }
+                    }}
+                    class="flex items-center gap-2 px-3 py-2 bg-vault-black/40 hover:bg-vault-elevated border border-vault-border rounded-xl text-xs font-semibold text-vault-accent transition-all cursor-pointer"
+                  >
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Download {attachmentData.filename}
+                  </a>
+                {/if}
               {/if}
             {/if}
           </div>
