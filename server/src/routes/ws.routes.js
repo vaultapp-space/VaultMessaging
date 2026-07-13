@@ -75,6 +75,7 @@ async function wsRoutes(fastify) {
     const origin = request.headers.origin;
     const isDev = process.env.NODE_ENV !== 'production';
     const isAllowedOrigin = !origin || origin === config.clientOrigin || 
+      origin === 'https://vaultapp.space' || origin === 'https://www.vaultapp.space' ||
       (isDev && (origin.startsWith('http://localhost:') || origin.match(/^http:\/\/\d+\.\d+\.\d+\.\d+:5173$/) || origin.endsWith(':5173')));
 
     if (origin && !isAllowedOrigin) {
