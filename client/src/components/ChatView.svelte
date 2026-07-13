@@ -1,7 +1,7 @@
 <script>
   import { onMount, afterUpdate, onDestroy, tick } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls } from '../lib/stores/session.js';
+  import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls, walletState, loginPassword, activePaymentDetails, walletBioEnabled } from '../lib/stores/session.js';
   import { messagesByPeer, addMessage, addMessages, addOptimisticMessage, confirmMessage, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
   import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, fetchTurnCredentials, sendClientDebugLog } from '../lib/api/http.js';
   import { sendTyping, wsConnected, onWsEvent, wsSend } from '../lib/api/ws.js';
@@ -13,6 +13,26 @@
   import { getAvatarGradient } from '../lib/avatar.js';
   import { syncCloudVault } from '../lib/crypto/sync.js';
   import MessageBubble from './MessageBubble.svelte';
+  import { 
+    getEVMBalance,
+    getERC20Balance,
+    getSolanaBalance,
+    getSolanaTokenBalance,
+    sendEVMTransaction,
+    sendSolanaTransaction,
+    sendGaslessEVMTransaction,
+    decryptWallet,
+    deriveAddressesFromMnemonic,
+    ERC20_TOKENS,
+    SPL_TOKENS,
+    resolveDomainHandle,
+    lockEscrowAssets,
+    lockRedPacketAssets,
+    decryptWalletWithBioKey,
+    generateShieldedProof,
+    getCrossChainRoute,
+    executeCrossChainBridge
+  } from '../lib/crypto/wallet.js';
 
   let messageText = '';
   let messagesContainer;
@@ -1771,6 +1791,344 @@
     }
   });
 
+  // Phase 3 DeFi: In-Chat Payment Drawer State
+  let showPaymentDrawer = false;
+  let payNetwork = 'base-sepolia'; // 'base-sepolia' | 'solana-devnet'
+  let payAsset = 'USDC'; // 'USDC' | 'ETH' | 'SOL'
+  let payRecipient = '';
+  let payAmount = '';
+  
+  // Phase 5 DeFi Drawer Upgrades
+  let payMode = 'transfer'; // 'transfer' | 'redpacket' | 'escrow'
+  let resolvedAddress = '';
+  let isResolved = false;
+  let packetClaims = '3';
+  let escrowTerms = '';
+
+  // Phase 6 DeFi upgrades
+  let payShielded = false;
+  let shieldingStatus = 'idle';
+  let isCrossChain = false;
+  let crossChainRoute = null;
+
+  $: {
+    if (payRecipient && (payRecipient.endsWith('.eth') || payRecipient.endsWith('.sol'))) {
+      const resolved = resolveDomainHandle(payRecipient);
+      if (resolved) {
+        resolvedAddress = resolved;
+        isResolved = true;
+      } else {
+        resolvedAddress = '';
+        isResolved = false;
+      }
+    } else {
+      resolvedAddress = '';
+      isResolved = false;
+    }
+  }
+
+  $: {
+    const recipientAddr = isResolved ? resolvedAddress : payRecipient;
+    if (recipientAddr && payAmount && parseFloat(payAmount) > 0) {
+      const isRecipientEVM = /^0x[a-fA-F0-9]{40}$/.test(recipientAddr);
+      const isRecipientSol = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(recipientAddr);
+      
+      const isSourceEVM = payNetwork === 'base-sepolia';
+      const isSourceSol = payNetwork === 'solana-devnet';
+
+      if ((isSourceEVM && isRecipientSol) || (isSourceSol && isRecipientEVM)) {
+        isCrossChain = true;
+        const fromToken = payAsset;
+        const fromChain = payNetwork;
+        const toToken = isRecipientEVM ? 'USDC' : 'USDC';
+        const toChain = isRecipientEVM ? 'base-sepolia' : 'solana-devnet';
+        
+        crossChainRoute = getCrossChainRoute(payAmount, fromToken, fromChain, toToken, toChain);
+      } else {
+        isCrossChain = false;
+        crossChainRoute = null;
+      }
+    } else {
+      isCrossChain = false;
+      crossChainRoute = null;
+    }
+  }
+  let payGasless = false;
+  let payStatus = 'idle'; // 'idle' | 'loading_balance' | 'signing' | 'broadcasting' | 'success' | 'error'
+  let payError = '';
+  let payTxHash = '';
+  let payBalance = '0.00';
+  let isLoadingBalance = false;
+
+  async function fetchPayBalance() {
+    if (!$walletState) {
+      payBalance = '0.00';
+      return;
+    }
+    isLoadingBalance = true;
+    try {
+      if (payNetwork === 'base-sepolia') {
+        if (payAsset === 'ETH') {
+          payBalance = await getEVMBalance($walletState.evmAddress);
+        } else {
+          payBalance = await getERC20Balance($walletState.evmAddress, ERC20_TOKENS.USDC);
+        }
+      } else {
+        if (payAsset === 'SOL') {
+          payBalance = await getSolanaBalance($walletState.solAddress);
+        } else {
+          payBalance = await getSolanaTokenBalance($walletState.solAddress, SPL_TOKENS.USDC);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching pay balance:', err);
+      payBalance = '0.00';
+    } finally {
+      isLoadingBalance = false;
+    }
+  }
+
+  // Auto-fetch balance when parameters change
+  $: if (showPaymentDrawer && $walletState && (payNetwork || payAsset)) {
+    fetchPayBalance();
+  }
+
+  // Pre-fill recipient address when activePaymentDetails changes
+  $: {
+    if ($activePaymentDetails) {
+      showPaymentDrawer = true;
+      if (payNetwork === 'base-sepolia') {
+        payRecipient = $activePaymentDetails.evmAddress || '';
+      } else {
+        payRecipient = $activePaymentDetails.solAddress || '';
+      }
+    }
+  }
+
+  // Keep asset select aligned with network select
+  $: {
+    if (payNetwork === 'base-sepolia' && payAsset === 'SOL') {
+      payAsset = 'USDC';
+    } else if (payNetwork === 'solana-devnet' && payAsset === 'ETH') {
+      payAsset = 'USDC';
+    }
+  }
+
+  function closePaymentDrawer() {
+    showPaymentDrawer = false;
+    activePaymentDetails.set(null);
+    payRecipient = '';
+    payAmount = '';
+    payGasless = false;
+    payStatus = 'idle';
+    payError = '';
+    payTxHash = '';
+  }
+
+  function togglePaymentDrawer() {
+    if (showPaymentDrawer) {
+      closePaymentDrawer();
+    } else {
+      showPaymentDrawer = true;
+      payStatus = 'idle';
+      payError = '';
+      if ($activePaymentDetails) {
+        if (payNetwork === 'base-sepolia') {
+          payRecipient = $activePaymentDetails.evmAddress || '';
+        } else {
+          payRecipient = $activePaymentDetails.solAddress || '';
+        }
+      }
+    }
+  }
+
+  async function handleSendPayment() {
+    if (!payAmount) return;
+    if (payMode !== 'redpacket' && !payRecipient) return;
+
+    const recipientAddr = isResolved ? resolvedAddress : payRecipient;
+    
+    if (payMode !== 'redpacket') {
+      if (payNetwork === 'base-sepolia') {
+        if (!/^0x[a-fA-F0-9]{40}$/.test(recipientAddr)) {
+          payError = 'Invalid EVM Address';
+          payStatus = 'error';
+          return;
+        }
+      } else {
+        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(recipientAddr)) {
+          payError = 'Invalid Solana Address';
+          payStatus = 'error';
+          return;
+        }
+      }
+    }
+    
+    let password = $loginPassword;
+    let bioKey = null;
+
+    if ($walletBioEnabled) {
+      payStatus = 'signing';
+      try {
+        const credId = localStorage.getItem(`vault_wallet_bio_cred_id_${$currentUser.id}`);
+        const salt = $currentUser.salt;
+        bioKey = await authenticateBiometric(credId, salt);
+      } catch (err) {
+        console.error('Biometric authentication failed:', err);
+        payStatus = 'error';
+        payError = 'Biometric signature verification failed.';
+        return;
+      }
+    } else if (!password) {
+      password = prompt('Enter your Vault account password to sign this transaction:');
+      if (!password) return;
+    }
+    
+    payStatus = 'signing';
+    payError = '';
+    payTxHash = '';
+    
+    try {
+      let mnemonic = '';
+      if ($walletBioEnabled && bioKey) {
+        const { loadEncryptedBioWallet } = await import('../lib/db.js');
+        const bioWalletData = await loadEncryptedBioWallet($currentUser.id);
+        mnemonic = await decryptWalletWithBioKey(bioWalletData, bioKey);
+      } else {
+        const { loadEncryptedWallet } = await import('../lib/db.js');
+        const encryptedWallet = await loadEncryptedWallet($currentUser.id);
+        if (!encryptedWallet) {
+          throw new Error('No wallet backup found on this device.');
+        }
+        mnemonic = await decryptWallet(encryptedWallet, password);
+      }
+      payStatus = 'broadcasting';
+      
+      let hash = '';
+      let zkProofData = null;
+
+      if (payMode === 'transfer') {
+        if (payShielded) {
+          payStatus = 'signing';
+          zkProofData = await generateShieldedProof(payAmount, payAsset);
+          payStatus = 'broadcasting';
+          hash = await lockRedPacketAssets(mnemonic, payAmount, payAsset, payNetwork);
+        } else if (isCrossChain) {
+          hash = await executeCrossChainBridge(
+            mnemonic,
+            payAmount,
+            payAsset,
+            payNetwork,
+            payAsset,
+            payNetwork === 'base-sepolia' ? 'solana-devnet' : 'base-sepolia',
+            recipientAddr
+          );
+        } else {
+          if (payNetwork === 'base-sepolia') {
+            if (payAsset === 'ETH') {
+              hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount);
+            } else {
+              if (payGasless) {
+                hash = await sendGaslessEVMTransaction(mnemonic, recipientAddr, payAmount, ERC20_TOKENS.USDC);
+              } else {
+                hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount, ERC20_TOKENS.USDC);
+              }
+            }
+          } else {
+            if (payAsset === 'SOL') {
+              hash = await sendSolanaTransaction(mnemonic, recipientAddr, payAmount);
+            } else {
+              hash = await sendSolanaTransaction(mnemonic, recipientAddr, payAmount, SPL_TOKENS.USDC);
+            }
+          }
+        }
+      } else if (payMode === 'redpacket') {
+        hash = await lockRedPacketAssets(mnemonic, payAmount, payAsset, payNetwork);
+      } else if (payMode === 'escrow') {
+        hash = await lockEscrowAssets(mnemonic, payAmount, payAsset, payNetwork);
+      }
+      
+      payTxHash = hash;
+      payStatus = 'success';
+      
+      let paymentMsgPayload = '';
+      if (payMode === 'transfer') {
+        if (payShielded && zkProofData) {
+          paymentMsgPayload = JSON.stringify({
+            type: 'shielded-payment',
+            amount: payAmount,
+            tokenSymbol: payAsset,
+            zkProof: zkProofData.proof,
+            zkNullifier: zkProofData.nullifierHash
+          });
+        } else {
+          paymentMsgPayload = JSON.stringify({
+            type: 'crypto-payment',
+            network: payNetwork,
+            txHash: hash,
+            amount: payAmount,
+            tokenSymbol: payAsset,
+            status: 'pending',
+            isBridge: isCrossChain,
+            bridgeRoute: isCrossChain ? crossChainRoute.route : ''
+          });
+        }
+      } else if (payMode === 'redpacket') {
+        paymentMsgPayload = JSON.stringify({
+          type: 'red-packet',
+          packetId: 'pkt-' + Math.random().toString(36).substring(2, 11),
+          network: payNetwork,
+          totalAmount: payAmount,
+          tokenSymbol: payAsset,
+          totalClaims: parseInt(packetClaims) || 3,
+          claimedBy: []
+        });
+      } else if (payMode === 'escrow') {
+        paymentMsgPayload = JSON.stringify({
+          type: 'escrow-otc',
+          escrowId: 'esc-' + Math.random().toString(36).substring(2, 11),
+          sellerAddress: recipientAddr,
+          sellerUsername: isResolved ? payRecipient : ($activePeer?.username || 'Buyer'),
+          buyerAddress: payNetwork === 'base-sepolia' ? $walletState.evmAddress : $walletState.solAddress,
+          buyerUsername: $currentUser.username,
+          amount: payAmount,
+          tokenSymbol: payAsset,
+          description: escrowTerms,
+          network: payNetwork,
+          status: 'active'
+        });
+      }
+      
+      await encryptAndSend(paymentMsgPayload);
+      
+      setTimeout(() => {
+        closePaymentDrawer();
+      }, 2000);
+      
+    } catch (err) {
+      console.error('In-chat transfer failed:', err);
+      payError = err.message || 'Transaction failed';
+      payStatus = 'error';
+    }
+  }
+
+  async function shareMyAddressCard() {
+    if (!$walletState) return;
+    try {
+      const addressSharePayload = JSON.stringify({
+        type: 'wallet-address-share',
+        senderUsername: $currentUser?.username || 'User',
+        evmAddress: $walletState.evmAddress,
+        solAddress: $walletState.solAddress
+      });
+      await encryptAndSend(addressSharePayload);
+      closePaymentDrawer();
+    } catch (err) {
+      console.error('Failed to share wallet addresses:', err);
+      alert('Failed to share wallet addresses: ' + err.message);
+    }
+  }
+
   function goBack() {
     activePeer.set(null);
     sidebarOpen.set(true);
@@ -2359,7 +2717,339 @@
   </div>
 
   <!-- Message Input -->
-  <div class="px-2 md:px-4 py-2 md:py-3 border-t border-vault-border glass-strong">
+  <div class="px-2 md:px-4 py-2 md:py-3 border-t border-vault-border glass-strong animate-fade-in">
+    {#if showPaymentDrawer}
+      <div class="mb-3 p-4 bg-vault-surface/95 border border-vault-border rounded-2xl shadow-xl flex flex-col gap-3 transition-all duration-300 animate-scale-up text-left">
+        <!-- Drawer Header -->
+        <div class="flex items-center justify-between border-b border-vault-border pb-2">
+          <div class="flex items-center gap-1.5">
+            <span class="text-lg">💳</span>
+            <div>
+              <span class="text-xs font-bold block text-vault-text">DeFi P2P Transfer</span>
+              <span class="text-[9px] text-vault-text-dim">Non-custodial, direct E2EE chat payment</span>
+            </div>
+          </div>
+          <button 
+            on:click={closePaymentDrawer} 
+            class="text-vault-text-dim hover:text-vault-text border-none bg-transparent cursor-pointer"
+            aria-label="Close transfer drawer"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <!-- Tabs for Mode selection -->
+        {#if $walletState}
+          <div class="flex border-b border-vault-border-subtle gap-2 -mt-1 select-none">
+            <button
+              on:click={() => { payMode = 'transfer'; fetchPayBalance(); }}
+              class="pb-1.5 px-1 text-[10px] uppercase font-bold tracking-wider transition-all border-none bg-transparent cursor-pointer {payMode === 'transfer' ? 'text-vault-accent border-b-2 border-vault-accent' : 'text-vault-text-dim hover:text-vault-text'}"
+              disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+            >
+              Direct Transfer
+            </button>
+            <button
+              on:click={() => { payMode = 'redpacket'; fetchPayBalance(); }}
+              class="pb-1.5 px-1 text-[10px] uppercase font-bold tracking-wider transition-all border-none bg-transparent cursor-pointer {payMode === 'redpacket' ? 'text-vault-accent border-b-2 border-vault-accent' : 'text-vault-text-dim hover:text-vault-text'}"
+              disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+            >
+              Red Packet
+            </button>
+            <button
+              on:click={() => { payMode = 'escrow'; fetchPayBalance(); }}
+              class="pb-1.5 px-1 text-[10px] uppercase font-bold tracking-wider transition-all border-none bg-transparent cursor-pointer {payMode === 'escrow' ? 'text-vault-accent border-b-2 border-vault-accent' : 'text-vault-text-dim hover:text-vault-text'}"
+              disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+            >
+              OTC Escrow
+            </button>
+          </div>
+        {/if}
+
+        {#if !$walletState}
+          <!-- Wallet Warning state if not created -->
+          <div class="py-4 text-center space-y-2">
+            <p class="text-xs text-vault-text-dim leading-relaxed">
+              No active wallet found. Please initialize your DeFi Wallet in Settings first.
+            </p>
+          </div>
+        {:else}
+          <!-- Main Form -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            <!-- Left inputs: Recipient & Network -->
+            <div class="space-y-2.5">
+              {#if payMode !== 'redpacket'}
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label for="drawer-recipient" class="text-[10px] font-bold text-vault-text-dim block uppercase">
+                      Recipient Address / Handle
+                    </label>
+                    {#if isResolved}
+                      <span class="text-[9px] text-vault-accent font-semibold flex items-center gap-0.5">
+                        ✓ Resolved
+                      </span>
+                    {/if}
+                  </div>
+                  <input
+                    id="drawer-recipient"
+                    type="text"
+                    bind:value={payRecipient}
+                    placeholder="0x... / Handle (alice.eth)"
+                    class="input py-2 text-xs bg-vault-black/40 border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3 focus:outline-none"
+                    disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                  />
+                  {#if isResolved}
+                    <span class="text-[8px] font-mono text-vault-text-dim mt-0.5 block truncate">
+                      Addr: {resolvedAddress}
+                    </span>
+                  {/if}
+                </div>
+              {/if}
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label for="drawer-network" class="text-[10px] font-bold text-vault-text-dim block uppercase mb-1">Network</label>
+                  <select
+                    id="drawer-network"
+                    bind:value={payNetwork}
+                    on:change={() => {
+                      if (payNetwork === 'base-sepolia') {
+                        payAsset = 'USDC';
+                      } else {
+                        payAsset = 'USDC';
+                      }
+                      fetchPayBalance();
+                    }}
+                    class="input py-2 text-[11px] bg-vault-black/40 border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none"
+                    disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                  >
+                    <option value="base-sepolia">Base Sepolia</option>
+                    <option value="solana-devnet">Solana Devnet</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label for="drawer-asset" class="text-[10px] font-bold text-vault-text-dim block uppercase mb-1">Asset</label>
+                  <select
+                    id="drawer-asset"
+                    bind:value={payAsset}
+                    on:change={fetchPayBalance}
+                    class="input py-2 text-[11px] bg-vault-black/40 border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none"
+                    disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                  >
+                    {#if payNetwork === 'base-sepolia'}
+                      <option value="USDC">USDC (Base USDC)</option>
+                      <option value="ETH">ETH (Base Sepolia ETH)</option>
+                    {:else}
+                      <option value="USDC">USDC (Solana USDC)</option>
+                      <option value="SOL">SOL (Solana Devnet SOL)</option>
+                    {/if}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right inputs: Amount & Gasless / Actions / Custom mode options -->
+            <div class="space-y-2.5 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label for="drawer-amount" class="text-[10px] font-bold text-vault-text-dim block uppercase">Amount</label>
+                  <span class="text-[9px] text-vault-text-dim font-mono">
+                    Bal: {isLoadingBalance ? '...' : payBalance} {payAsset}
+                  </span>
+                </div>
+                <input
+                  id="drawer-amount"
+                  type="number"
+                  step="any"
+                  bind:value={payAmount}
+                  placeholder="0.00"
+                  class="input py-2 text-xs bg-vault-black/40 border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3 focus:outline-none"
+                  disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                />
+              </div>
+
+              {#if payMode === 'redpacket'}
+                <div>
+                  <label for="drawer-claims" class="text-[10px] font-bold text-vault-text-dim block uppercase mb-1">Max Claim Limit</label>
+                  <select
+                    id="drawer-claims"
+                    bind:value={packetClaims}
+                    class="input py-2 text-[11px] bg-vault-black/40 border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none"
+                    disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                  >
+                    <option value="2">2 Claimants</option>
+                    <option value="3">3 Claimants</option>
+                    <option value="5">5 Claimants</option>
+                    <option value="10">10 Claimants</option>
+                  </select>
+                </div>
+              {:else if payMode === 'escrow'}
+                <div>
+                  <label for="drawer-terms" class="text-[10px] font-bold text-vault-text-dim block uppercase mb-1">Escrow Agreement Terms</label>
+                  <input
+                    id="drawer-terms"
+                    type="text"
+                    bind:value={escrowTerms}
+                    placeholder="e.g., source code archive, assets..."
+                    class="input py-2 text-xs bg-vault-black/40 border-vault-border-subtle text-vault-text w-full rounded-xl px-3 focus:outline-none"
+                    disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                  />
+                </div>
+              {:else if payNetwork === 'base-sepolia' && payAsset === 'USDC'}
+                <div class="flex items-center justify-between bg-vault-black/30 border border-vault-border-subtle rounded-xl p-2 select-none">
+                  <div class="flex flex-col gap-0.5">
+                    <span class="text-[10px] font-semibold text-vault-text block">Gasless Transaction</span>
+                    <span class="text-[8px] text-vault-text-dim block">USDC covers gas fee (Simulated Paymaster)</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      bind:checked={payGasless}
+                      class="sr-only peer"
+                      disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                    />
+                    <div class="w-7 h-4 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-vault-accent"></div>
+                  </label>
+                </div>
+              {/if}
+
+              {#if payMode === 'transfer'}
+                <div class="flex items-center justify-between bg-vault-black/30 border border-vault-border-subtle rounded-xl p-2 select-none mt-1">
+                  <div class="flex flex-col gap-0.5 text-left">
+                    <span class="text-[10px] font-semibold text-vault-accent block flex items-center gap-1">
+                      <span>🛡️</span> zk-SNARK Privacy Rails
+                    </span>
+                    <span class="text-[8px] text-vault-text-dim block">Hide sender/recipient link on public ledger</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      bind:checked={payShielded}
+                      class="sr-only peer"
+                      disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                    />
+                    <div class="w-7 h-4 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-vault-accent"></div>
+                  </label>
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Cross-Chain Bridge details -->
+          {#if payMode === 'transfer' && isCrossChain && crossChainRoute}
+            <div class="bg-vault-accent/5 border border-vault-accent/20 rounded-xl p-3 space-y-1.5 text-[9px] text-vault-text-dim select-none">
+              <div class="font-bold text-vault-accent flex items-center gap-1 uppercase tracking-wider text-[8px]">
+                <span>🔗</span> Li.Fi Cross-Chain Route Optimized
+              </div>
+              <div class="flex justify-between">
+                <span>Route Path:</span>
+                <span class="text-vault-text font-semibold font-mono truncate max-w-[200px]" title={crossChainRoute.route}>
+                  {crossChainRoute.route}
+                </span>
+              </div>
+              <div class="flex justify-between">
+                <span>Est. Bridge Provider:</span>
+                <span class="text-vault-text">{crossChainRoute.bridgeProvider}</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Network Swap Fee:</span>
+                <span class="font-mono text-vault-text">{crossChainRoute.fee} {payAsset}</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Est. Duration:</span>
+                <span class="font-mono text-vault-text">{crossChainRoute.timeEstimate}</span>
+              </div>
+              <div class="flex justify-between border-t border-vault-border-subtle pt-1.5 mt-1">
+                <span>Recipient Receives:</span>
+                <span class="font-mono text-vault-accent font-bold">{crossChainRoute.estOutput} USDC</span>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Bottom Status message if any -->
+          {#if payStatus !== 'idle'}
+            <div class="border-t border-vault-border-subtle pt-2.5 mt-1">
+              {#if payStatus === 'signing'}
+                <div class="text-[10px] text-vault-accent font-semibold flex items-center gap-1.5 animate-pulse">
+                  <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
+                  </svg>
+                  {#if payShielded}
+                    [zk-SNARK] Computing zero-knowledge inputs & proof key...
+                  {:else}
+                    Decrypting wallet credentials and signing transaction locally...
+                  {/if}
+                </div>
+              {:else if payStatus === 'broadcasting'}
+                <div class="text-[10px] text-vault-accent font-semibold flex items-center gap-1.5 animate-pulse">
+                  <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
+                  </svg>
+                  Broadcasting signed payload to network...
+                </div>
+              {:else if payStatus === 'success'}
+                <div class="text-[10px] text-vault-accent font-bold flex items-center gap-1">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Broadcast success! Tx Hash: {payTxHash.substring(0, 16)}... E2E message sending.
+                </div>
+              {:else if payStatus === 'error'}
+                <div class="text-[10px] text-vault-danger font-semibold flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  {payError}
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          <!-- Actions -->
+          <div class="flex gap-2 pt-2 border-t border-vault-border-subtle justify-between">
+            <button
+              on:click={shareMyAddressCard}
+              disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+              class="py-1.5 px-3 bg-vault-elevated text-vault-text hover:bg-vault-border border border-vault-border font-semibold text-[10px] rounded-xl cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Share My Addresses to Chat
+            </button>
+            
+            <div class="flex gap-2">
+              <button
+                on:click={closePaymentDrawer}
+                disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                class="py-1.5 px-3 text-vault-text hover:text-vault-text-dim text-[11px] font-medium rounded-xl border-none bg-transparent cursor-pointer disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              
+              {#if payStatus !== 'success'}
+                <button
+                  on:click={handleSendPayment}
+                  disabled={!payAmount || (payMode !== 'redpacket' && !payRecipient) || payStatus === 'signing' || payStatus === 'broadcasting'}
+                  class="py-1.5 px-4 bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold text-[11px] rounded-xl disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer border-none"
+                >
+                  {#if payMode === 'transfer'}
+                    Send Payment
+                  {:else if payMode === 'redpacket'}
+                    Create Envelope
+                  {:else if payMode === 'escrow'}
+                    Initialize Escrow
+                  {/if}
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
     <div class="flex items-end gap-1.5 md:gap-2">
       <input
         type="file"
@@ -2386,8 +3076,19 @@
         {/if}
       </button>
 
-
-
+      <!-- Payment Button -->
+      <button
+        on:click={togglePaymentDrawer}
+        disabled={sendingMessage || sendingFile}
+        class="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border transition-all cursor-pointer focus:outline-none"
+        title="Send or Share Wallet"
+      >
+        <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="4" width="20" height="16" rx="2" />
+          <line x1="12" y1="4" x2="12" y2="20" />
+          <line x1="2" y1="12" x2="22" y2="12" />
+        </svg>
+      </button>
 
       {#if isRecording}
         <div class="flex-1 flex items-center justify-between px-3 py-2 bg-vault-danger/10 border border-vault-danger/20 rounded-xl animate-pulse text-vault-danger">

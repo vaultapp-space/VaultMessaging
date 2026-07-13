@@ -40,6 +40,10 @@ export const sidebarOpen = writable(true);
 export const activeCall = writable(null); // null or { status: 'incoming'|'ongoing', peerId, peerUsername, type, direction, currentCallKey }
 export const recentCalls = writable([]);   // call logs
 
+export const walletState = writable(null); // null or { mnemonic, evmAddress, solAddress }
+export const activePaymentDetails = writable(null); // null or { evmAddress, solAddress, username }
+export const walletBioEnabled = writable(false);
+
 // ─── Helpers ────────────────────────────────────────────────
 
 export function setUser(user) {
@@ -61,6 +65,9 @@ export function clearSession() {
   historyKey.set(null);
   localBackupKey.set(null);
   loginPassword.set('');
+  walletState.set(null);
+  activePaymentDetails.set(null);
+  walletBioEnabled.set(false);
 
   // Destroy all ratchet sessions
   const sessions = get(ratchetSessions);
