@@ -729,6 +729,30 @@
       await clearEncryptedBioWallet($currentUser.id);
       localStorage.removeItem(`vault_wallet_bio_enabled_${$currentUser.id}`);
       localStorage.removeItem(`vault_wallet_bio_cred_id_${$currentUser.id}`);
+      
+      // Clear transaction history and inputs for privacy
+      clearTxHistory();
+      sendRecipient = '';
+      sendAmount = '';
+      receiveCustomContract = '';
+
+      // Reset balance displays and portfolio states
+      ethMainnetBalance = '0.00';
+      ethUsdcBalance = '0.00';
+      baseMainnetBalance = '0.00';
+      baseUsdcBalance = '0.00';
+      arbMainnetBalance = '0.00';
+      arbUsdcBalance = '0.00';
+      opMainnetBalance = '0.00';
+      opUsdcBalance = '0.00';
+      maticBalance = '0.00';
+      polygonUsdcBalance = '0.00';
+      solBalance = '0.00';
+      solUsdcBalance = '0.00';
+      btcBalance = '0.00000000';
+      portfolioValue = 0;
+      portfolioSnapshots = [];
+      
       biometricActive = false;
       walletBioEnabled.set(false);
       walletState.set(null);
