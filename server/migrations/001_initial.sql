@@ -61,6 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_msg_expires
 CREATE TABLE IF NOT EXISTS groups (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
+    join_key        TEXT UNIQUE,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 

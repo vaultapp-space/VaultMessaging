@@ -1883,6 +1883,29 @@
           </div>
         {/each}
       </div>
+
+      <!-- Group Invite Key Section -->
+      <div class="border-t border-vault-border mt-4 pt-4 space-y-2">
+        <span class="text-[10px] text-vault-text-dim block uppercase font-bold tracking-wider">Group Join Key</span>
+        <div class="flex items-center gap-2 p-2 bg-vault-elevated border border-vault-border rounded-xl">
+          <input
+            type="text"
+            readonly
+            value={$activePeer.joinKey || ''}
+            class="bg-transparent border-none text-[10px] font-mono text-vault-text focus:outline-none w-full select-all"
+          />
+          <button
+            on:click={() => {
+              navigator.clipboard.writeText($activePeer.joinKey || '');
+              alert('Group Join Key copied to clipboard!');
+            }}
+            class="text-[10px] text-vault-accent hover:underline focus:outline-none font-semibold whitespace-nowrap cursor-pointer"
+          >
+            Copy
+          </button>
+        </div>
+        <p class="text-[9px] text-vault-text-dim leading-relaxed">Share this unique key. Anyone with this key can paste it to join this secure group chat instantly.</p>
+      </div>
     </div>
   </div>
 {/if}

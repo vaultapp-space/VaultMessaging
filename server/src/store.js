@@ -86,6 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_msg_expires ON encrypted_messages (expires_at);
 CREATE TABLE IF NOT EXISTS groups (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
+    join_key        TEXT UNIQUE,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
 
@@ -577,9 +578,10 @@ class DataStore {
 
   async createGroup(name, memberIds) {
     const id = uuidv4();
+    const joinKey = uuidv4();
     await this.pool.query(
-      `INSERT INTO groups (id, name) VALUES ($1, $2)`,
-      [id, name]
+      `INSERT INTO groups (id, name, join_key) VALUES ($1, $2, $3)`,
+      [id, name, joinKey]
     );
 
     const client = await this.pool.connect();
@@ -620,8 +622,25 @@ class DataStore {
     return {
       id: group.id,
       name: group.name,
+      joinKey: group.join_key,
       members: membersRes.rows
     };
+  }
+
+  async getGroupByJoinKey(joinKey) {
+    const res = await this.pool.query(
+      `SELECT id FROM groups WHERE join_key = $1`,
+      [joinKey]
+    );
+    if (res.rows.length === 0) return null;
+    return await this.getGroup(res.rows[0].id);
+  }
+
+  async addGroupMember(groupId, userId) {
+    await this.pool.query(
+      `INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [groupId, userId]
+    );
   }
 
   async getGroupsForUser(userId) {

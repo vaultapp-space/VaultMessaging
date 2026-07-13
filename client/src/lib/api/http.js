@@ -128,3 +128,7 @@ export async function fetchAttachmentChunk(id, index) {
 export async function saveEncryptedVault(encryptedVault) {
   return request('POST', '/auth/vault', { encryptedVault });
 }
+
+export async function joinGroup(joinKey) {
+  return request('POST', '/groups/join', { joinKey });
+}

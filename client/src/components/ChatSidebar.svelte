@@ -2,7 +2,7 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, loginPassword, identityKeyPair, signedPrekeyPair } from '../lib/stores/session.js';
   import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
-  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault } from '../lib/api/http.js';
+  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, joinGroup } from '../lib/api/http.js';
   import { wsConnected } from '../lib/api/ws.js';
   import { getAvatarGradient } from '../lib/avatar.js';
   import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault } from '../lib/crypto/keys.js';
@@ -165,7 +165,44 @@
       groupMembersSearch = [];
     } catch (err) {
       console.error('Failed to create group:', err);
-      alert('Failed to create group chat');
+      alert('Failed to create group');
+    }
+  }
+
+  let joinKey = '';
+
+  async function submitJoinGroup() {
+    try {
+      const res = await joinGroup(joinKey);
+      
+      conversations.update(convs => {
+        const filtered = convs.filter(c => c.peerId !== `group-${res.id}`);
+        filtered.unshift({
+          peerId: `group-${res.id}`,
+          peerUsername: res.name,
+          isGroup: true,
+          members: res.members,
+          joinKey: res.joinKey,
+          lastMessageAt: null,
+          hasUndelivered: false
+        });
+        return filtered;
+      });
+
+      selectPeer({
+        id: `group-${res.id}`,
+        username: res.name,
+        isGroup: true,
+        members: res.members,
+        joinKey: res.joinKey
+      });
+
+      showGroupModal = false;
+      joinKey = '';
+      alert(`Successfully joined group: ${res.name}!`);
+    } catch (err) {
+      console.error('Failed to join group:', err);
+      alert(err.message || 'Failed to join group');
     }
   }
 
@@ -708,6 +745,27 @@
               {/each}
             </div>
           {/if}
+        </div>
+
+        <!-- Join Group with Key -->
+        <div class="border-t border-vault-border pt-4">
+          <label for="group-join-key-input" class="text-xs font-semibold text-vault-text block mb-1">Join Group with Key</label>
+          <div class="flex gap-2">
+            <input
+              id="group-join-key-input"
+              type="text"
+              bind:value={joinKey}
+              placeholder="Paste group join key..."
+              class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle"
+            />
+            <button
+              on:click={submitJoinGroup}
+              disabled={!joinKey.trim()}
+              class="py-2 px-4 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none whitespace-nowrap cursor-pointer"
+            >
+              Join
+            </button>
+          </div>
         </div>
       </div>
 
