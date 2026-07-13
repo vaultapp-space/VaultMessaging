@@ -20,6 +20,12 @@ async function request(method, path, body = null) {
   const res = await fetch(`${API_BASE}${path}`, options);
 
   if (!res.ok) {
+    if (res.status === 401) {
+      import('../stores/session.js').then(({ clearSession }) => {
+        clearSession();
+      });
+      throw new Error('Session expired. Please log in again.');
+    }
     const error = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(error.error || error.message || `HTTP ${res.status}`);
   }

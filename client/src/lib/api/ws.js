@@ -62,6 +62,16 @@ export function connectWebSocket() {
 
       if (data.type === 'error') {
         wsError.set(data.message);
+        if (
+          data.message === 'Auth timeout' ||
+          data.message === 'Not authenticated' ||
+          data.message === 'Session expired' ||
+          data.message === 'Invalid token'
+        ) {
+          import('../stores/session.js').then(({ clearSession }) => {
+            clearSession();
+          });
+        }
         return;
       }
 
