@@ -211,6 +211,13 @@ async function authRoutes(fastify) {
     const dummySalt = fastify.store.getDummySalt(username);
     return { salt: dummySalt };
   });
+
+  // ─── CLIENT DEBUG LOG ──────────────────────────────────────
+  fastify.post('/api/debug/log', async (request, reply) => {
+    const { message, error, context } = request.body;
+    fastify.log.error({ clientMessage: message, clientError: error, clientContext: context }, 'Client-side error log received');
+    return { ok: true };
+  });
 }
 
 export default authRoutes;

@@ -142,3 +142,15 @@ export async function joinGroup(joinKey) {
 export async function fetchTurnCredentials() {
   return request('GET', '/turn/credentials');
 }
+
+export async function sendClientDebugLog(message, error, context = {}) {
+  try {
+    await fetch(`${API_BASE}/debug/log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, error: error?.stack || error?.message || String(error), context })
+    });
+  } catch (e) {
+    console.error('Failed to send client debug log to server:', e);
+  }
+}

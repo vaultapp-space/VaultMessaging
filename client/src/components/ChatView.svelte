@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls } from '../lib/stores/session.js';
   import { messagesByPeer, addMessage, addMessages, addOptimisticMessage, confirmMessage, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
-  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, fetchTurnCredentials } from '../lib/api/http.js';
+  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, fetchTurnCredentials, sendClientDebugLog } from '../lib/api/http.js';
   import { sendTyping, wsConnected, onWsEvent, wsSend } from '../lib/api/ws.js';
   import { RatchetSession } from '../lib/crypto/ratchet.js';
   import { x3dhInitiate, x3dhRespond, deriveInitialKeys } from '../lib/crypto/x3dh.js';
@@ -70,7 +70,13 @@
 
   // For outgoing calls: when callee accepts (peerAccepted flag), start SDP negotiation
   $: if ($activeCall && $activeCall.peerAccepted && $activeCall.direction === 'outgoing' && !peerConnection) {
-    startOfferNegotiation($activeCall.peerId);
+    (async () => {
+      try {
+        await startOfferNegotiation($activeCall.peerId);
+      } catch (err) {
+        sendClientDebugLog('Reactive block startOfferNegotiation failed', err);
+      }
+    })();
   }
 
   $: if ($activeCall && $activeCall.status === 'ongoing' && !localStream && $activeCall.direction === 'incoming') {
@@ -1120,12 +1126,22 @@
         const data = await fetchTurnCredentials();
         if (data && data.iceServers) {
           iceServers = data.iceServers;
+          sendClientDebugLog('fetchTurnCredentials success', null, { iceServers });
+        } else {
+          sendClientDebugLog('fetchTurnCredentials success but no iceServers data', null, { data });
         }
       } catch (e) {
         console.warn('Failed to fetch ephemeral TURN credentials, falling back to public STUN:', e);
+        sendClientDebugLog('fetchTurnCredentials failed', e);
       }
 
-      peerConnection = new RTCPeerConnection({ iceServers });
+      try {
+        peerConnection = new RTCPeerConnection({ iceServers });
+        sendClientDebugLog('RTCPeerConnection instantiated successfully', null);
+      } catch (e) {
+        sendClientDebugLog('RTCPeerConnection instantiation failed', e);
+        throw e;
+      }
 
       if (localStream) {
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
@@ -1148,6 +1164,7 @@
       // ICE connection state monitoring for auto-reconnection
       peerConnection.oniceconnectionstatechange = () => {
         const state = peerConnection?.iceConnectionState;
+        sendClientDebugLog('ICE connection state changed', null, { state });
         if (state === 'failed') {
           // Attempt ICE restart
           peerConnection.restartIce();
@@ -1172,6 +1189,7 @@
             });
           } catch (e) {
             console.error('Failed to encrypt ICE candidate:', e);
+            sendClientDebugLog('Failed to encrypt ICE candidate', e);
           }
         }
       };
@@ -1181,20 +1199,29 @@
   }
 
   async function startOfferNegotiation(peerId) {
-    await initializePeerConnection(peerId);
-    if (localStream && peerConnection) {
-      try {
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-        const encrypted = await encryptStaticSignalingPayload(offer);
-        wsSend({
-          type: 'webrtc_sdp',
-          recipientId: peerId,
-          ...encrypted
-        });
-      } catch (err) {
-        console.error('Failed to create offer:', err);
+    try {
+      sendClientDebugLog('startOfferNegotiation triggered', null, { peerId });
+      await initializePeerConnection(peerId);
+      if (!localStream) {
+        throw new Error('localStream is null inside startOfferNegotiation');
       }
+      if (!peerConnection) {
+        throw new Error('peerConnection is null inside startOfferNegotiation');
+      }
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      
+      const encrypted = await encryptStaticSignalingPayload(offer);
+      wsSend({
+        type: 'webrtc_sdp',
+        recipientId: peerId,
+        ...encrypted
+      });
+      sendClientDebugLog('startOfferNegotiation: offer sent successfully', null, { peerId });
+    } catch (err) {
+      console.error('Failed to create offer:', err);
+      sendClientDebugLog('startOfferNegotiation failed error caught', err, { peerId });
     }
   }
 
