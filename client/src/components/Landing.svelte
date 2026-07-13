@@ -140,16 +140,42 @@
     </div>
   </section>
 
-  <!-- Technical Spec Footer -->
   <footer class="w-full border-t border-vault-border bg-vault-surface py-8 z-10">
-    <div class="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-[10px] text-vault-text-dim uppercase tracking-wider font-semibold">
-      <div class="flex items-center gap-2">
-        <span>© {new Date().getFullYear()} Vault Cryptosystems</span>
+    <div class="max-w-6xl mx-auto px-6 flex flex-col items-center gap-6">
+      
+      <!-- Support Us Section -->
+      <div class="flex flex-col items-center gap-2 p-4 bg-vault-elevated border border-vault-border rounded-2xl max-w-md w-full text-center animate-fade-in">
+        <div class="flex items-center gap-2 text-xs font-bold text-vault-accent">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Support Us
+        </div>
+        <p class="text-[10px] text-vault-text-dim leading-relaxed font-medium">Help support Vault's infrastructure. Donate BNB to our address below:</p>
+        <div class="flex items-center gap-2 w-full p-2 bg-vault-surface border border-vault-border rounded-xl mt-1">
+          <span class="text-[9px] font-mono text-vault-text truncate flex-1 select-all">0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b</span>
+          <button
+            on:click={() => {
+              navigator.clipboard.writeText('0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b');
+              alert('BNB Address copied to clipboard!');
+            }}
+            class="text-[9px] text-vault-accent hover:underline font-bold whitespace-nowrap focus:outline-none cursor-pointer bg-transparent border-none"
+          >
+            Copy
+          </button>
+        </div>
       </div>
-      <div class="flex gap-6">
-        <span>Protocols: X3DH + Double Ratchet</span>
-        <span>Storage: In-Memory / Local IndexedDB</span>
+
+      <div class="w-full flex flex-col sm:flex-row justify-between items-center gap-4 text-[10px] text-vault-text-dim uppercase tracking-wider font-semibold border-t border-vault-border/50 pt-4">
+        <div class="flex items-center gap-2">
+          <span>© {new Date().getFullYear()} Vault Cryptosystems</span>
+        </div>
+        <div class="flex gap-6">
+          <span>Protocols: X3DH + Double Ratchet</span>
+          <span>Storage: In-Memory / Local IndexedDB</span>
+        </div>
       </div>
+
     </div>
   </footer>
 </div>
