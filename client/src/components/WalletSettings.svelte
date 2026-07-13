@@ -1064,10 +1064,23 @@
       wcSignStatus = 'error';
     }
   }
-
   async function handleSendCrypto() {
     if (!sendRecipient || !sendAmount || !sendAssetObject) return;
-    
+
+    // Validate amount and balance
+    const parsedAmount = parseFloat(sendAmount);
+    const parsedBalance = parseFloat(sendAssetObject.balance) || 0;
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      sendError = 'Please enter a valid transfer amount';
+      sendStatus = 'error';
+      return;
+    }
+    if (parsedAmount > parsedBalance) {
+      sendError = `Insufficient balance. You only have ${sendAssetObject.balance} ${sendAssetObject.symbol}.`;
+      sendStatus = 'error';
+      return;
+    }
+
     // Validate addresses
     if (sendAssetObject.chainId === 'bitcoin') {
       if (!/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}$/.test(sendRecipient)) {
@@ -2494,14 +2507,30 @@
           </div>
 
           <div>
-            <label for="amount-input" class="text-xs font-semibold text-vault-text block mb-1">Amount</label>
+            <div class="flex items-center justify-between mb-1">
+              <label for="amount-input" class="text-xs font-semibold text-vault-text block">Amount</label>
+              {#if sendAssetObject}
+                <div class="flex items-center gap-1.5 text-[9px] text-vault-text-dim">
+                  <button
+                    type="button"
+                    on:click|stopPropagation={() => {
+                      sendAmount = sendAssetObject.balance;
+                    }}
+                    class="font-bold text-vault-accent hover:text-vault-accent-hover bg-vault-accent/10 border border-vault-accent/25 px-1.5 py-0.5 rounded cursor-pointer transition-all border-none font-sans"
+                  >
+                    MAX
+                  </button>
+                  <span class="font-mono">Balance: {sendAssetObject.balance} {sendAssetObject.symbol}</span>
+                </div>
+              {/if}
+            </div>
             <input
               id="amount-input"
               type="number"
               step="any"
               bind:value={sendAmount}
               placeholder="0.00"
-              class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3"
+              class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3 focus:outline-none"
             />
           </div>
 
