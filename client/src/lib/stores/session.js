@@ -71,6 +71,12 @@ export function clearSession() {
   activePeer.set(null);
   activeCall.set(null);
   recentCalls.set([]);
+
+  // Clear message store from volatile memory
+  import('./messages.js').then(({ clearMessages }) => {
+    clearMessages();
+  });
+
   activeView.set('landing');
 }
 
