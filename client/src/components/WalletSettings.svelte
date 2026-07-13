@@ -1707,64 +1707,6 @@
 
         {#if showSettings}
           <div class="p-3 space-y-3 bg-vault-black/20 border-t border-vault-border/40 animate-scale-up text-left">
-            <!-- Seed Phrase Controls -->
-            <div class="space-y-1.5">
-              <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold">Backup</span>
-              <div class="flex gap-2">
-                <button
-                  on:click={() => {
-                    showMnemonicOnDashboard = !showMnemonicOnDashboard;
-                    dashboardBlur = true;
-                  }}
-                  class="flex-1 py-1.5 px-2 text-[9px] bg-vault-elevated/60 text-vault-text hover:bg-vault-border border border-vault-border/50 font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1"
-                >
-                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    {#if showMnemonicOnDashboard}
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                      <line x1="1" y1="1" x2="23" y2="23"/>
-                    {:else}
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                      <circle cx="12" cy="12" r="3"/>
-                    {/if}
-                  </svg>
-                  {showMnemonicOnDashboard ? 'Hide' : 'View'} Seed
-                </button>
-                <button
-                  on:click={() => downloadBackupPDF($walletState.mnemonic, $walletState.evmAddress, $walletState.solAddress)}
-                  class="flex-1 py-1.5 px-2 text-[9px] bg-vault-accent/10 text-vault-accent hover:bg-vault-accent/20 border border-vault-accent/20 font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1"
-                >
-                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  PDF Backup
-                </button>
-              </div>
-            </div>
-
-            {#if showMnemonicOnDashboard}
-              <div class="relative bg-vault-black/40 border border-vault-border/50 rounded-xl p-3 font-mono text-xs select-none">
-                <div class="grid grid-cols-3 gap-1.5 {dashboardBlur ? 'blur-sm select-none pointer-events-none' : ''}">
-                  {#each $walletState.mnemonic.split(' ') as word, idx}
-                    <div class="flex items-center gap-1 py-0.5 px-1.5 bg-vault-elevated/60 border border-vault-border-subtle/50 rounded text-[9px]">
-                      <span class="text-vault-text-dim text-[8px] w-3">{idx + 1}</span>
-                      <span class="text-vault-text font-semibold">{word}</span>
-                    </div>
-                  {/each}
-                </div>
-                {#if dashboardBlur}
-                  <div class="absolute inset-0 flex flex-col items-center justify-center bg-vault-surface/40 backdrop-blur-md rounded-xl p-3 text-center">
-                    <button
-                      on:click={() => dashboardBlur = false}
-                      class="py-1 px-3 bg-vault-accent text-vault-black font-semibold text-[9px] rounded-lg cursor-pointer hover:bg-vault-accent-hover transition-all"
-                    >
-                      Reveal
-                    </button>
-                  </div>
-                {/if}
-              </div>
-            {/if}
 
             <!-- Biometric Toggle -->
             {#if isBiometricSupported}
@@ -2611,7 +2553,7 @@
                 <button
                   type="button"
                   on:click={() => {
-                    const bal = swapFromAsset.includes('Base') ? (swapFromAsset.includes('USDC') ? evmUsdcBalance : evmBalance) : (swapFromAsset.includes('USDC') ? solUsdcBalance : solBalance);
+                    const bal = swapFromAsset.includes('Base') ? (swapFromAsset.includes('USDC') ? baseUsdcBalance : baseMainnetBalance) : (swapFromAsset.includes('USDC') ? solUsdcBalance : solBalance);
                     swapFromAmount = bal;
                   }}
                   class="text-[8px] font-bold text-vault-accent hover:text-vault-accent-hover bg-vault-accent/10 border border-vault-accent/20 px-1.5 py-0.5 rounded cursor-pointer"
@@ -2620,7 +2562,7 @@
                   MAX
                 </button>
                 <span class="text-[10px] text-vault-text-dim font-mono">
-                  {swapFromAsset.includes('Base') ? (swapFromAsset.includes('USDC') ? evmUsdcBalance : evmBalance) : (swapFromAsset.includes('USDC') ? solUsdcBalance : solBalance)}
+                  {swapFromAsset.includes('Base') ? (swapFromAsset.includes('USDC') ? baseUsdcBalance : baseMainnetBalance) : (swapFromAsset.includes('USDC') ? solUsdcBalance : solBalance)}
                 </span>
               </div>
             </div>
@@ -2673,7 +2615,7 @@
             <div class="flex items-center justify-between mb-1">
               <label for="swap-to-asset" class="text-xs font-semibold text-vault-text block">You Receive</label>
               <span class="text-[10px] text-vault-text-dim font-mono">
-                Balance: {swapToAsset.includes('Base') ? (swapToAsset.includes('USDC') ? evmUsdcBalance : evmBalance) : (swapToAsset.includes('USDC') ? solUsdcBalance : solBalance)}
+                Balance: {swapToAsset.includes('Base') ? (swapToAsset.includes('USDC') ? baseUsdcBalance : baseMainnetBalance) : (swapToAsset.includes('USDC') ? solUsdcBalance : solBalance)}
               </span>
             </div>
             <div class="flex gap-2">
