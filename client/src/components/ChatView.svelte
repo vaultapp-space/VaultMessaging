@@ -90,12 +90,34 @@
   let showMembersModal = false;
   let micMuted = false;
   let cameraOff = false;
+  let isScreenSharing = false;
+  let screenStream = null;
+  let remoteMicMuted = false;
+  let remoteCameraOff = false;
+  let sentInitialMediaState = false;
+
+  function sendMediaState() {
+    if ($activeCall && $activePeer) {
+      wsSend({
+        type: 'webrtc_media_state',
+        recipientId: $activePeer.id,
+        micMuted,
+        cameraOff
+      });
+    }
+  }
+
+  $: if (isCallActive && $activeCall && $activeCall.status === 'ongoing' && !sentInitialMediaState) {
+    sentInitialMediaState = true;
+    sendMediaState();
+  }
 
   function toggleMic() {
     micMuted = !micMuted;
     if (localStream) {
       localStream.getAudioTracks().forEach(track => track.enabled = !micMuted);
     }
+    sendMediaState();
   }
 
   function toggleCamera() {
@@ -103,12 +125,14 @@
     if (localStream) {
       localStream.getVideoTracks().forEach(track => track.enabled = !cameraOff);
     }
+    sendMediaState();
   }
 
   let localVideo;
   let remoteVideo;
   $: if (localVideo && localStream) {
-    if (localVideo.srcObject !== localStream) localVideo.srcObject = localStream;
+    const targetSrc = isScreenSharing && screenStream ? screenStream : localStream;
+    if (localVideo.srcObject !== targetSrc) localVideo.srcObject = targetSrc;
   }
   $: if (remoteVideo && remoteStream) {
     if (remoteVideo.srcObject !== remoteStream) remoteVideo.srcObject = remoteStream;
@@ -1291,7 +1315,82 @@
     resetCallState();
   }
 
+  async function toggleScreenShare() {
+    if (isScreenSharing) {
+      await stopScreenShare();
+    } else {
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: "always"
+          },
+          audio: false
+        });
+        isScreenSharing = true;
+
+        const screenTrack = screenStream.getVideoTracks()[0];
+        if (screenTrack) {
+          // Listen to when screensharing is stopped via browser UI (e.g. "Stop sharing" button)
+          screenTrack.onended = () => {
+            stopScreenShare();
+          };
+        }
+
+        if (peerConnection) {
+          const senders = peerConnection.getSenders();
+          const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
+          if (videoSender) {
+            await videoSender.replaceTrack(screenTrack);
+          }
+        }
+
+        if (localVideo) {
+          localVideo.srcObject = screenStream;
+        }
+      } catch (err) {
+        console.error("Failed to start screen share:", err);
+      }
+    }
+  }
+
+  async function stopScreenShare() {
+    if (!isScreenSharing) return;
+    isScreenSharing = false;
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      screenStream = null;
+    }
+    
+    // Restore camera track
+    if (localStream) {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !cameraOff;
+        if (peerConnection) {
+          const senders = peerConnection.getSenders();
+          const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
+          if (videoSender) {
+            await videoSender.replaceTrack(videoTrack);
+          }
+        }
+      }
+    }
+
+    if (localVideo && localStream) {
+      localVideo.srcObject = localStream;
+    }
+  }
+
   function resetCallState() {
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      screenStream = null;
+    }
+    isScreenSharing = false;
+    remoteMicMuted = false;
+    remoteCameraOff = false;
+    sentInitialMediaState = false;
+
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       localStream = null;
@@ -1364,6 +1463,13 @@
         }
       } catch (err) {
         console.error('Failed to process incoming ICE candidate:', err);
+      }
+    }));
+
+    wsUnsubscribes.push(onWsEvent('webrtc_media_state', (data) => {
+      if (data.senderId === $activePeer?.id) {
+        remoteMicMuted = data.micMuted;
+        remoteCameraOff = data.cameraOff;
       }
     }));
 
@@ -1650,13 +1756,32 @@
     <!-- Video Call Grid -->
     {#if isCallActive && callType === 'video'}
       <div class="absolute top-4 right-4 z-30 flex flex-col gap-2 p-2.5 bg-vault-surface border border-vault-border rounded-2xl shadow-xl animate-scale-up">
-        <div class="relative w-44 h-32 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner">
-          <video bind:this={localVideo} autoplay playsinline muted class="w-full h-full object-cover scale-x-[-1]"></video>
+        <div class="relative w-44 h-32 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner animate-fade-in">
+          <video bind:this={localVideo} autoplay playsinline muted class="w-full h-full object-cover {isScreenSharing ? '' : 'scale-x-[-1]'}"></video>
           <span class="absolute bottom-1.5 left-2 text-[8px] bg-vault-black/60 px-1.5 py-0.5 rounded text-vault-text font-medium uppercase tracking-wider">Self</span>
         </div>
-        <div class="relative w-44 h-32 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner">
-          <video bind:this={remoteVideo} autoplay playsinline class="w-full h-full object-cover"></video>
+        <div class="relative w-44 h-32 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner flex items-center justify-center animate-fade-in">
+          <video bind:this={remoteVideo} autoplay playsinline class="w-full h-full object-cover {remoteCameraOff ? 'hidden' : ''}"></video>
+          {#if remoteCameraOff}
+            <div class="absolute inset-0 flex flex-col items-center justify-center bg-vault-surface-subtle text-vault-text-dim text-xs gap-1.5">
+              <svg class="w-8 h-8 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <line x1="1" y1="1" x2="23" y2="23" />
+                <path d="M23 7l-7 5 7 5V7z" />
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+              </svg>
+              <span class="text-[10px]">Camera Off</span>
+            </div>
+          {/if}
           <span class="absolute bottom-1.5 left-2 text-[8px] bg-vault-black/60 px-1.5 py-0.5 rounded text-vault-text font-medium uppercase tracking-wider">{callingPeer}</span>
+          {#if remoteMicMuted}
+            <span class="absolute top-1.5 right-2 bg-vault-danger/25 text-vault-danger border border-vault-danger/30 p-1 rounded-full animate-pulse" title="Muted">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="1" y1="1" x2="23" y2="23" />
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
+              </svg>
+            </span>
+          {/if}
         </div>
         <div class="flex gap-2 w-full">
           <button
@@ -1687,6 +1812,21 @@
               <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
             </svg>
           </button>
+          <button
+            on:click={toggleScreenShare}
+            disabled={$activeCall?.status === 'ringing'}
+            class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
+              {$activeCall?.status === 'ringing' ? 'opacity-40 cursor-not-allowed bg-vault-elevated text-vault-text-dim border-vault-border-subtle' : ''}
+              {!isScreenSharing && $activeCall?.status !== 'ringing' ? 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text' : ''}
+              {isScreenSharing ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : ''}"
+            title={$activeCall?.status === 'ringing' ? "Waiting for call to connect..." : (isScreenSharing ? "Stop Sharing Screen" : "Share Screen")}
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </button>
         </div>
         <button
           on:click={hangupCall}
@@ -1704,7 +1844,19 @@
       <div class="absolute top-4 right-4 z-30 flex items-center gap-3 p-3 bg-vault-surface border border-vault-border rounded-2xl shadow-xl animate-scale-up">
         <div class="flex items-center gap-2">
           <div class="w-2.5 h-2.5 rounded-full bg-vault-accent animate-pulse"></div>
-          <span class="text-xs text-vault-text font-medium">E2EE Audio: {callingPeer}</span>
+          <span class="text-xs text-vault-text font-medium flex items-center gap-1.5">
+            E2EE Audio: {callingPeer}
+            {#if remoteMicMuted}
+              <span class="text-vault-danger text-[10px] font-medium flex items-center gap-0.5 ml-1 animate-pulse">
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
+                </svg>
+                (Muted)
+              </span>
+            {/if}
+          </span>
         </div>
         <button
           on:click={toggleMic}

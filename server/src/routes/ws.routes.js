@@ -191,7 +191,7 @@ async function wsRoutes(fastify) {
       }
 
       // ─── WebRTC Signaling Relay ────────────────────────────────
-      const callEventTypes = ['call_invite', 'call_accept', 'call_reject', 'call_hangup', 'webrtc_sdp', 'webrtc_ice'];
+      const callEventTypes = ['call_invite', 'call_accept', 'call_reject', 'call_hangup', 'webrtc_sdp', 'webrtc_ice', 'webrtc_media_state'];
       if (callEventTypes.includes(data.type) && data.recipientId) {
         fastify.log.info({ type: data.type, userId, recipientId: data.recipientId }, 'WebRTC signaling event received');
 
@@ -203,8 +203,8 @@ async function wsRoutes(fastify) {
           return;
         }
 
-        // For SDP/ICE relay, verify an active call session exists between the two parties
-        if (data.type === 'webrtc_sdp' || data.type === 'webrtc_ice') {
+        // For SDP/ICE/media state relay, verify an active call session exists between the two parties
+        if (data.type === 'webrtc_sdp' || data.type === 'webrtc_ice' || data.type === 'webrtc_media_state') {
           const activePeer = fastify.store.getActiveCall(userId);
           if (!activePeer || activePeer !== data.recipientId) {
             fastify.log.warn({ type: data.type, userId, recipientId: data.recipientId, activePeer }, 'WebRTC signaling check failed: No active call session');

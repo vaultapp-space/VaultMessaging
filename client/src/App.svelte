@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { currentUser, isLoading, setUser, activeView } from './lib/stores/session.js';
   import { getMe } from './lib/api/http.js';
   import Auth from './components/Auth.svelte';
@@ -15,9 +15,61 @@
   }
 
   let mounted = false;
+  let wakeLock = null;
+
+  async function requestWakeLock() {
+    if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return;
+    if (wakeLock) return; // already acquired
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        wakeLock = null;
+        console.log('Screen Wake Lock was released');
+      });
+      console.log('Screen Wake Lock is active');
+    } catch (err) {
+      console.warn(`Failed to request Screen Wake Lock: ${err.name}, ${err.message}`);
+    }
+  }
+
+  async function releaseWakeLock() {
+    if (wakeLock) {
+      try {
+        await wakeLock.release();
+        wakeLock = null;
+        console.log('Screen Wake Lock released manually');
+      } catch (err) {
+        console.error('Failed to release wake lock:', err);
+      }
+    }
+  }
+
+  function isMobileDevice() {
+    if (typeof navigator === 'undefined') return false;
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
+
+  // Reactively request or release wake lock based on login status and mobile device
+  $: if (mounted && isMobileDevice()) {
+    if ($currentUser) {
+      requestWakeLock();
+    } else {
+      releaseWakeLock();
+    }
+  }
+
+  // Re-acquire lock if tab becomes visible again
+  async function handleVisibilityChange() {
+    if (document.visibilityState === 'visible' && $currentUser && isMobileDevice()) {
+      await requestWakeLock();
+    }
+  }
 
   onMount(async () => {
     mounted = true;
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
     // Try to restore session from HTTP-only cookie (server validates)
     try {
       const user = await getMe();
@@ -25,6 +77,13 @@
     } catch {
       setUser(null);
     }
+  });
+
+  onDestroy(() => {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }
+    releaseWakeLock();
   });
 </script>
 
