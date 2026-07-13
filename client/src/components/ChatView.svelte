@@ -1053,7 +1053,15 @@
   function initializePeerConnection(peerId) {
     if (peerConnection) return;
     peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:13.204.30.174:3478' },
+        {
+          urls: 'turn:13.204.30.174:3478',
+          username: 'vaultuser',
+          credential: 'vaultsecretpassword'
+        }
+      ]
     });
 
     if (localStream) {
