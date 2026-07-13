@@ -25,6 +25,8 @@ const pgConfig = {
   user: process.env.PGUSER || 'vault',
   password: process.env.PGPASSWORD || 'vault_dev_pass',
   database: process.env.PGDATABASE || 'vault',
+  max: 50,
+  idleTimeoutMillis: 30000,
 };
 
 const redisConfig = {
