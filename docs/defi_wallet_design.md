@@ -29,10 +29,15 @@ In alignment with Vault's core value of **privacy without compromise**, the cryp
 
 ### Key Generation (BIP-39 & BIP-44)
 1. **Seed Generation**: Generate a secure 12-word mnemonic phrase client-side using cryptographically secure random number generation (`crypto.getRandomValues`).
-2. **Key Derivation**: Derive keys for multiple chains using standard HD (Hierarchical Deterministic) paths:
+2. **First-Time Backup & Verification Flow**:
+   * **Mandatory Disclosure**: When the wallet is initialized for the first time, the 12-word seed phrase is presented on a blurred card with high-importance layout warnings advising users that losing the key means permanent loss of funds.
+   * **Clipboard Copy**: Add an action button allowing the user to copy the seed phrase to their clipboard.
+   * **Mandatory Verification Screen**: To ensure the user has saved the phrase offline, the app requires the user to input or tap the generated words in the correct sequential order. The creation flow will be blocked until verification succeeds.
+   * **Printable Backup Option**: Offer a "Save Backup Card" option that compiles the seed phrase and public address into an offline-printable PDF file.
+3. **Key Derivation**: Derive keys for multiple chains using standard HD (Hierarchical Deterministic) paths:
    * **Ethereum/EVM**: `m/44'/60'/0'/0/0`
    * **Solana**: `m/44'/501'/0'/0'`
-3. **Storage**:
+4. **Storage**:
    * Encrypt the seed phrase using `AES-256-GCM` with a key derived from the user's master passcode/password using `PBKDF2` (100k+ iterations, salted).
    * Persist the encrypted payload in the browser's `IndexedDB`.
    * Optionally integrate `WebAuthn` (biometrics) to store authentication credentials to unlock the key without prompting for the master password every time.
