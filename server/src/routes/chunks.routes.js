@@ -52,6 +52,13 @@ async function chunkRoutes(fastify) {
     const { id, index } = request.params;
     const { ciphertext } = request.body;
 
+    const chunkSize = Math.round(ciphertext.length * 0.75);
+    try {
+      await fastify.store.checkAndIncrementUploadUsage(request.user.id, chunkSize);
+    } catch (err) {
+      return reply.code(400).send({ error: err.message });
+    }
+
     const attachment = await fastify.store.getAttachment(id);
     if (!attachment) {
       return reply.code(404).send({ error: 'Upload session not found' });

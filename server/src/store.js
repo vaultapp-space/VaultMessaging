@@ -687,6 +687,23 @@ class DataStore {
     
     return expiredMsgs.rowCount;
   }
+
+  async checkAndIncrementUploadUsage(userId, size) {
+    const now = new Date();
+    const yearMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+    const redisKey = `user:upload_limit:${userId}:${yearMonth}`;
+
+    const usageStr = await this.redis.get(redisKey);
+    const currentUsage = usageStr ? parseInt(usageStr, 10) : 0;
+    const LIMIT = 50 * 1024 * 1024; // 50MB
+
+    if (currentUsage + size > LIMIT) {
+      throw new Error('Monthly upload limit of 50MB exceeded');
+    }
+
+    await this.redis.incrby(redisKey, size);
+    await this.redis.expire(redisKey, 35 * 24 * 60 * 60); // 35 days
+  }
 }
 
 // Singleton instance

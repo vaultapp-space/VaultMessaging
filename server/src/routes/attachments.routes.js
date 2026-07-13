@@ -22,6 +22,13 @@ async function attachmentRoutes(fastify) {
   }, async (request, reply) => {
     const { filename, mimeType, ciphertext, burnOnRead } = request.body;
     
+    const fileSize = Math.round(ciphertext.length * 0.75);
+    try {
+      await fastify.store.checkAndIncrementUploadUsage(request.user.id, fileSize);
+    } catch (err) {
+      return reply.code(400).send({ error: err.message });
+    }
+
     // Save attachment in disk-backed store
     const id = await fastify.store.saveAttachment(filename, mimeType, ciphertext, burnOnRead, request.user.id);
     

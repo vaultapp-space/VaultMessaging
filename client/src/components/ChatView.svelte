@@ -725,9 +725,9 @@
     const file = e.target.files[0];
     if (!file || !$activePeer) return;
 
-    // Support uploads up to 100MB!
-    if (file.size > 100 * 1024 * 1024) {
-      alert('Attachment size exceeds 100MB limit');
+    // Support uploads up to 10MB!
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Attachment size exceeds 10MB limit');
       return;
     }
 
