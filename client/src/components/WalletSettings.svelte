@@ -1225,6 +1225,14 @@
   }
 </script>
 
+<svelte:window on:click={() => {
+  showReceiveChainDropdown = false;
+  showReceiveDropdown = false;
+  showSendChainDropdown = false;
+  showSendDropdown = false;
+  showSwapFromDropdown = false;
+}} />
+
 <div class="space-y-4 text-vault-text">
   {#if step === 'loading'}
     <div class="flex flex-col items-center justify-center py-12 gap-3 text-vault-text-dim text-xs">
@@ -2129,11 +2137,6 @@
         </div>
 
         <div class="p-5 space-y-4">
-          <!-- Backdrop out-clicks dismisser -->
-          {#if showReceiveDropdown}
-            <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showReceiveDropdown = false} aria-label="Dismiss select dropdown"></button>
-          {/if}
-
           <!-- Chain and Searchable Asset Selectors -->
           <div class="grid grid-cols-2 gap-3 relative z-50">
             <!-- 1. Chain Selector -->
@@ -2143,7 +2146,10 @@
                 <button
                   id="receive-chain-btn"
                   type="button"
-                  on:click={() => showReceiveChainDropdown = !showReceiveChainDropdown}
+                  on:click|stopPropagation={() => {
+                    showReceiveChainDropdown = !showReceiveChainDropdown;
+                    showReceiveDropdown = false;
+                  }}
                   class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left font-semibold"
                 >
                   <div class="flex items-center gap-2">
@@ -2157,9 +2163,7 @@
               </div>
 
               {#if showReceiveChainDropdown}
-                <!-- Backdrop out-clicks dismisser -->
-                <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showReceiveChainDropdown = false} aria-label="Dismiss chain dropdown"></button>
-                <div class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                <div role="presentation" class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up" on:click|stopPropagation>
                   {#each AVAILABLE_CHAINS as chain}
                     <button
                       type="button"
@@ -2183,7 +2187,10 @@
                 <button
                   id="receive-asset-btn"
                   type="button"
-                  on:click={() => showReceiveDropdown = !showReceiveDropdown}
+                  on:click|stopPropagation={() => {
+                    showReceiveDropdown = !showReceiveDropdown;
+                    showReceiveChainDropdown = false;
+                  }}
                   class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left"
                 >
                   <div class="flex items-center gap-2">
@@ -2199,7 +2206,7 @@
 
               <!-- Search dropdown list overlay -->
               {#if showReceiveDropdown}
-                <div class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-2 animate-scale-up">
+                <div role="presentation" class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-2 animate-scale-up" on:click|stopPropagation>
                   <input
                     type="text"
                     bind:value={receiveSearchQuery}
@@ -2342,11 +2349,6 @@
         </div>
 
         <div class="p-5 space-y-4">
-          <!-- Backdrop out-clicks dismisser -->
-          {#if showSendDropdown}
-            <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showSendDropdown = false} aria-label="Dismiss select dropdown"></button>
-          {/if}
-
           <!-- Chain and Searchable Asset Selectors -->
           <div class="grid grid-cols-2 gap-3 relative z-50">
             <!-- 1. Chain Selector -->
@@ -2356,7 +2358,10 @@
                 <button
                   id="send-chain-btn"
                   type="button"
-                  on:click={() => showSendChainDropdown = !showSendChainDropdown}
+                  on:click|stopPropagation={() => {
+                    showSendChainDropdown = !showSendChainDropdown;
+                    showSendDropdown = false;
+                  }}
                   class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left font-semibold"
                 >
                   <div class="flex items-center gap-2">
@@ -2370,9 +2375,7 @@
               </div>
 
               {#if showSendChainDropdown}
-                <!-- Backdrop out-clicks dismisser -->
-                <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showSendChainDropdown = false} aria-label="Dismiss chain dropdown"></button>
-                <div class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                <div role="presentation" class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up" on:click|stopPropagation>
                   {#each AVAILABLE_CHAINS as chain}
                     <button
                       type="button"
@@ -2396,7 +2399,10 @@
                 <button
                   id="send-asset-btn"
                   type="button"
-                  on:click={() => showSendDropdown = !showSendDropdown}
+                  on:click|stopPropagation={() => {
+                    showSendDropdown = !showSendDropdown;
+                    showSendChainDropdown = false;
+                  }}
                   class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left"
                 >
                   <div class="flex items-center gap-2">
@@ -2412,7 +2418,7 @@
 
               <!-- Search dropdown list overlay -->
               {#if showSendDropdown}
-                <div class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-2 animate-scale-up">
+                <div role="presentation" class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-2 animate-scale-up" on:click|stopPropagation>
                   <input
                     type="text"
                     bind:value={sendSearchQuery}
@@ -2637,7 +2643,13 @@
               <div class="relative min-w-[125px]">
                 <button
                   type="button"
-                  on:click={() => showSwapFromDropdown = !showSwapFromDropdown}
+                  on:click|stopPropagation={() => {
+                    showSwapFromDropdown = !showSwapFromDropdown;
+                    showSendDropdown = false;
+                    showSendChainDropdown = false;
+                    showReceiveDropdown = false;
+                    showReceiveChainDropdown = false;
+                  }}
                   class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left font-bold"
                   disabled={swapStatus === 'signing' || swapStatus === 'broadcasting' || swapStatus === 'success'}
                 >
@@ -2651,9 +2663,7 @@
                 </button>
 
                 {#if showSwapFromDropdown}
-                  <!-- Backdrop out-clicks dismisser -->
-                  <button type="button" class="fixed inset-0 z-40 bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showSwapFromDropdown = false} aria-label="Dismiss swap from dropdown"></button>
-                  <div class="absolute z-50 right-0 mt-1 w-40 bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up text-xs">
+                  <div role="presentation" class="absolute z-50 right-0 mt-1 w-40 bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up text-xs" on:click|stopPropagation>
                     {#each [
                       { value: 'USDC-Base', label: 'USDC', chain: 'base', name: 'Base L2' },
                       { value: 'ETH', label: 'ETH', chain: 'base', name: 'Base L2' },
