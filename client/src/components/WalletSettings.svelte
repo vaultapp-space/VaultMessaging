@@ -149,6 +149,151 @@
     (parseFloat(evmUsdcBalance) || 0) * 1.0
   ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  // ── Portfolio Chart State ──
+  let portfolioHistory = [];
+  let chartTimeframe = '24H'; // '24H' | '7D' | '30D'
+  const TIMEFRAME_MS = { '24H': 86400000, '7D': 604800000, '30D': 2592000000 };
+
+  $: chartData = portfolioHistory.filter(p => {
+    const cutoff = Date.now() - TIMEFRAME_MS[chartTimeframe];
+    return p.time >= cutoff;
+  });
+
+  $: chartPath = (() => {
+    if (chartData.length < 2) return '';
+    const W = 280, H = 70;
+    const values = chartData.map(d => d.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const points = chartData.map((d, i) => {
+      const x = (i / (chartData.length - 1)) * W;
+      const y = H - ((d.value - min) / range) * (H - 10) - 5;
+      return `${x},${y}`;
+    });
+    return `M${points.join(' L')}`;
+  })();
+
+  $: chartFillPath = chartPath ? `${chartPath} L280,70 L0,70 Z` : '';
+
+  $: chartMin = chartData.length ? Math.min(...chartData.map(d => d.value)) : 0;
+  $: chartMax = chartData.length ? Math.max(...chartData.map(d => d.value)) : 0;
+  $: chartChange = chartData.length >= 2 ? chartData[chartData.length - 1].value - chartData[0].value : 0;
+  $: chartChangePct = chartData.length >= 2 && chartData[0].value > 0 ? ((chartChange / chartData[0].value) * 100).toFixed(2) : '0.00';
+
+  function pushPortfolioSnapshot(usdValue) {
+    const numVal = typeof usdValue === 'string' ? parseFloat(usdValue.replace(/,/g, '')) : usdValue;
+    if (isNaN(numVal)) return;
+    portfolioHistory = [...portfolioHistory, { time: Date.now(), value: numVal }];
+    // Keep only last 500 data points
+    if (portfolioHistory.length > 500) portfolioHistory = portfolioHistory.slice(-500);
+    if ($currentUser) {
+      localStorage.setItem(`vault_portfolio_history_${$currentUser.id}`, JSON.stringify(portfolioHistory));
+    }
+  }
+
+  // ── Address Book State ──
+  let contacts = [];
+  let showAddressBook = false;
+  let showAddContactForm = false;
+  let newContactLabel = '';
+  let newContactEvm = '';
+  let newContactSol = '';
+  let newContactBtc = '';
+  let showContactPicker = false;
+
+  function loadContacts() {
+    if (!$currentUser) return;
+    const saved = localStorage.getItem(`vault_contacts_${$currentUser.id}`);
+    if (saved) contacts = JSON.parse(saved);
+  }
+
+  function saveContacts() {
+    if (!$currentUser) return;
+    localStorage.setItem(`vault_contacts_${$currentUser.id}`, JSON.stringify(contacts));
+  }
+
+  function addContact() {
+    if (!newContactLabel.trim()) return;
+    contacts = [...contacts, {
+      id: Date.now().toString(36),
+      label: newContactLabel.trim(),
+      evmAddress: newContactEvm.trim(),
+      solAddress: newContactSol.trim(),
+      btcAddress: newContactBtc.trim()
+    }];
+    saveContacts();
+    newContactLabel = '';
+    newContactEvm = '';
+    newContactSol = '';
+    newContactBtc = '';
+    showAddContactForm = false;
+  }
+
+  function removeContact(id) {
+    contacts = contacts.filter(c => c.id !== id);
+    saveContacts();
+  }
+
+  function selectContactForSend(contact) {
+    // Determine which address to use based on current send chain
+    const chain = AVAILABLE_CHAINS.find(c => c.id === sendChain);
+    if (chain?.type === 'bitcoin') {
+      sendRecipient = contact.btcAddress || '';
+    } else if (chain?.type === 'solana') {
+      sendRecipient = contact.solAddress || '';
+    } else {
+      sendRecipient = contact.evmAddress || '';
+    }
+    showContactPicker = false;
+    showAddressBook = false;
+  }
+
+  // ── Transaction History State ──
+  let txHistory = [];
+  let showHistoryModal = false;
+
+  function loadTxHistory() {
+    if (!$currentUser) return;
+    const saved = localStorage.getItem(`vault_tx_history_${$currentUser.id}`);
+    if (saved) txHistory = JSON.parse(saved);
+  }
+
+  function saveTxHistory() {
+    if (!$currentUser) return;
+    localStorage.setItem(`vault_tx_history_${$currentUser.id}`, JSON.stringify(txHistory));
+  }
+
+  function recordTransaction(tx) {
+    txHistory = [{ ...tx, timestamp: Date.now() }, ...txHistory].slice(0, 100);
+    saveTxHistory();
+  }
+
+  function clearTxHistory() {
+    txHistory = [];
+    saveTxHistory();
+  }
+
+  function getExplorerUrl(hash, chain) {
+    if (!hash) return '#';
+    if (chain === 'bitcoin') return `https://mempool.space/tx/${hash}`;
+    if (chain === 'solana-mainnet') return `https://solscan.io/tx/${hash}`;
+    if (chain === 'base-sepolia') return `https://sepolia.basescan.org/tx/${hash}`;
+    if (chain === 'base') return `https://basescan.org/tx/${hash}`;
+    if (chain === 'arbitrum') return `https://arbiscan.io/tx/${hash}`;
+    if (chain === 'optimism') return `https://optimistic.etherscan.io/tx/${hash}`;
+    if (chain === 'polygon') return `https://polygonscan.com/tx/${hash}`;
+    return `https://etherscan.io/tx/${hash}`;
+  }
+
+  function getRelativeTime(ts) {
+    const diff = Date.now() - ts;
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return `${Math.floor(diff / 86400000)}d ago`;
+  }
+
   let copiedAddressType = ''; // 'evm' | 'sol' | ''
 
   $: derivedReceiveAddress = (() => {
@@ -180,6 +325,14 @@
     }
     biometricActive = localStorage.getItem(`vault_wallet_bio_enabled_${$currentUser.id}`) === 'true';
     walletBioEnabled.set(biometricActive);
+
+    // Load portfolio history
+    const savedHistory = localStorage.getItem(`vault_portfolio_history_${$currentUser.id}`);
+    if (savedHistory) portfolioHistory = JSON.parse(savedHistory);
+
+    // Load contacts & tx history
+    loadContacts();
+    loadTxHistory();
 
     // Load WalletConnect Sessions
     const saved = localStorage.getItem(`vault_wallet_wc_sessions_${$currentUser.id}`);
@@ -571,6 +724,16 @@
 
       swapTxHash = hash;
       swapStatus = 'success';
+      recordTransaction({
+        type: 'swap',
+        asset: `${swapFromAsset.split('-')[0]} → ${swapToAsset.split('-')[0]}`,
+        amount: swapFromAmount,
+        to: $walletState.evmAddress,
+        from: $walletState.evmAddress,
+        hash: hash,
+        chain: swapFromAsset.includes('Sol') ? 'solana-mainnet' : 'base-sepolia',
+        status: 'success'
+      });
       
       if (swapFromAsset === 'ETH') {
         evmBalance = (parseFloat(evmBalance) - parseFloat(swapFromAmount)).toFixed(4);
@@ -645,6 +808,21 @@
       solBalance = sol;
       solUsdcBalance = solUsdc;
       btcBalance = btc;
+
+      // Push portfolio snapshot after balances update
+      const currentTotal = (
+        (parseFloat(ethMainnet) || 0) * 3120 +
+        (parseFloat(ethBase) || 0) * 3120 +
+        (parseFloat(ethArb) || 0) * 3120 +
+        (parseFloat(ethOp) || 0) * 3120 +
+        (parseFloat(matic) || 0) * 0.42 +
+        (parseFloat(sol) || 0) * 145.20 +
+        (parseFloat(solUsdc) || 0) * 1.0 +
+        (parseFloat(btc) || 0) * 64250 +
+        (parseFloat(ethSepolia) || 0) * 3120 +
+        (parseFloat(usdcSepolia) || 0) * 1.0
+      );
+      pushPortfolioSnapshot(currentTotal);
     } catch (err) {
       console.error('Failed to fetch balances:', err);
     } finally {
@@ -814,6 +992,16 @@
       
       txHash = hash;
       sendStatus = 'success';
+      recordTransaction({
+        type: 'send',
+        asset: sendAssetObject.symbol,
+        amount: sendAmount,
+        to: sendRecipient,
+        from: sendAssetObject.chainId === 'solana-mainnet' ? $walletState.solAddress : (sendAssetObject.chainId === 'bitcoin' ? $walletState.btcAddress : $walletState.evmAddress),
+        hash: hash,
+        chain: sendAssetObject.chainId,
+        status: 'success'
+      });
       setTimeout(fetchBalances, 2000);
     } catch (err) {
       console.error('Transfer failed:', err);
@@ -1110,6 +1298,52 @@
         </span>
       </div>
 
+      <!-- Portfolio Performance Chart -->
+      <div class="rounded-2xl bg-vault-surface/60 border border-vault-border p-4 mt-1 animate-scale-up">
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold block">Performance</span>
+            <span class="text-xs font-bold font-mono {chartChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}">
+              {chartChange >= 0 ? '+' : ''}{chartChangePct}%
+              <span class="text-[8px] text-vault-text-dim font-normal ml-1">{chartTimeframe}</span>
+            </span>
+          </div>
+          <div class="flex gap-1">
+            {#each ['24H', '7D', '30D'] as tf}
+              <button
+                on:click={() => chartTimeframe = tf}
+                class="py-0.5 px-2 text-[8px] font-bold rounded-lg border cursor-pointer transition-all
+                  {chartTimeframe === tf
+                    ? 'bg-vault-accent/15 border-vault-accent/30 text-vault-accent'
+                    : 'bg-transparent border-vault-border text-vault-text-dim hover:text-vault-text'}"
+              >
+                {tf}
+              </button>
+            {/each}
+          </div>
+        </div>
+        <div class="relative h-[80px] w-full">
+          {#if chartData.length >= 2}
+            <svg viewBox="0 0 280 70" class="w-full h-full" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stop-opacity="0.3" />
+                  <stop offset="100%" stop-color="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stop-opacity="0.02" />
+                </linearGradient>
+              </defs>
+              <path d={chartFillPath} fill="url(#chartGrad)" />
+              <path d={chartPath} fill="none" stroke="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <div class="absolute top-0 left-0 text-[7px] font-mono text-vault-text-dim">${chartMax.toFixed(2)}</div>
+            <div class="absolute bottom-0 left-0 text-[7px] font-mono text-vault-text-dim">${chartMin.toFixed(2)}</div>
+          {:else}
+            <div class="flex items-center justify-center h-full text-[10px] text-vault-text-dim">
+              Chart data populates as balances refresh
+            </div>
+          {/if}
+        </div>
+      </div>
+
       <!-- Action Grid: Large Minimalist Buttons -->
       <div class="grid grid-cols-2 gap-3 mt-1 animate-scale-up">
         <button
@@ -1137,8 +1371,8 @@
         </button>
       </div>
 
-      <!-- Collateral Secondary Actions (Swap / Wipe) -->
-      <div class="flex items-center justify-between text-[10px] px-1 mt-1">
+      <!-- Collateral Secondary Actions -->
+      <div class="flex items-center justify-between text-[10px] px-1 mt-1 flex-wrap gap-y-1">
         <button
           on:click={() => {
             showSwapModal = true;
@@ -1149,13 +1383,25 @@
           }}
           class="text-vault-accent hover:text-vault-accent-hover font-semibold flex items-center gap-1 cursor-pointer border-none bg-transparent"
         >
-          <span>🔄</span> Quick Token Swap
+          <span>🔄</span> Swap
+        </button>
+        <button
+          on:click={() => { showAddressBook = true; showAddContactForm = false; }}
+          class="text-vault-accent hover:text-vault-accent-hover font-semibold flex items-center gap-1 cursor-pointer border-none bg-transparent"
+        >
+          <span>📒</span> Contacts
+        </button>
+        <button
+          on:click={() => showHistoryModal = true}
+          class="text-vault-accent hover:text-vault-accent-hover font-semibold flex items-center gap-1 cursor-pointer border-none bg-transparent"
+        >
+          <span>📜</span> History
         </button>
         <button
           on:click={() => showConfirmWipe = !showConfirmWipe}
           class="text-vault-text-dim hover:text-vault-danger font-semibold cursor-pointer border-none bg-transparent"
         >
-          Wipe Wallet Keys
+          Wipe Keys
         </button>
       </div>
 
@@ -1647,15 +1893,45 @@
             </div>
           </div>
 
-          <div>
+          <div class="relative">
             <label for="recipient-input" class="text-xs font-semibold text-vault-text block mb-1">Recipient Address</label>
-            <input
-              id="recipient-input"
-              type="text"
-              bind:value={sendRecipient}
-              placeholder={sendAssetObject?.chainId === 'bitcoin' ? 'bc1... or legacy' : sendAssetObject?.chainId === 'solana-mainnet' ? 'Solana Address...' : '0x... EVM Address'}
-              class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3"
-            />
+            <div class="relative">
+              <input
+                id="recipient-input"
+                type="text"
+                bind:value={sendRecipient}
+                placeholder={sendAssetObject?.chainId === 'bitcoin' ? 'bc1... or legacy' : sendAssetObject?.chainId === 'solana-mainnet' ? 'Solana Address...' : '0x... EVM Address'}
+                class="input py-2 pr-9 text-xs bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3"
+              />
+              <button
+                type="button"
+                on:click|stopPropagation={() => showContactPicker = !showContactPicker}
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-vault-accent hover:text-vault-accent-hover border-none bg-transparent cursor-pointer text-sm"
+                title="Select from contacts"
+              >
+                📒
+              </button>
+            </div>
+            {#if showContactPicker}
+              <div class="absolute z-50 left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                {#if contacts.length === 0}
+                  <div class="p-2 text-center text-[10px] text-vault-text-dim">No contacts saved yet</div>
+                {:else}
+                  {#each contacts as contact}
+                    <button
+                      type="button"
+                      on:click={() => selectContactForSend(contact)}
+                      class="w-full flex items-center justify-between p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
+                    >
+                      <span class="font-bold">{contact.label}</span>
+                      <span class="text-[8px] font-mono text-vault-text-dim truncate max-w-[120px]">
+                        {contact.evmAddress ? contact.evmAddress.slice(0, 8) + '...' : contact.solAddress ? contact.solAddress.slice(0, 8) + '...' : contact.btcAddress ? contact.btcAddress.slice(0, 8) + '...' : 'No address'}
+                      </span>
+                    </button>
+                  {/each}
+                {/if}
+              </div>
+            {/if}
           </div>
 
           <div>
@@ -1764,9 +2040,22 @@
           <div>
             <div class="flex items-center justify-between mb-1">
               <label for="swap-from-asset" class="text-xs font-semibold text-vault-text block">You Pay</label>
-              <span class="text-[10px] text-vault-text-dim font-mono">
-                Balance: {swapFromAsset.includes('Base') ? (swapFromAsset.includes('USDC') ? evmUsdcBalance : evmBalance) : (swapFromAsset.includes('USDC') ? solUsdcBalance : solBalance)}
-              </span>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  on:click={() => {
+                    const bal = swapFromAsset.includes('Base') ? (swapFromAsset.includes('USDC') ? evmUsdcBalance : evmBalance) : (swapFromAsset.includes('USDC') ? solUsdcBalance : solBalance);
+                    swapFromAmount = bal;
+                  }}
+                  class="text-[8px] font-bold text-vault-accent hover:text-vault-accent-hover bg-vault-accent/10 border border-vault-accent/20 px-1.5 py-0.5 rounded cursor-pointer"
+                  disabled={swapStatus !== 'idle'}
+                >
+                  MAX
+                </button>
+                <span class="text-[10px] text-vault-text-dim font-mono">
+                  {swapFromAsset.includes('Base') ? (swapFromAsset.includes('USDC') ? evmUsdcBalance : evmBalance) : (swapFromAsset.includes('USDC') ? solUsdcBalance : solBalance)}
+                </span>
+              </div>
             </div>
             <div class="flex gap-2">
               <input
@@ -1793,11 +2082,23 @@
             </div>
           </div>
 
-          <!-- Down arrow divider -->
+          <!-- Flip direction button -->
           <div class="flex justify-center -my-2 select-none">
-            <span class="w-7 h-7 rounded-full bg-vault-elevated border border-vault-border flex items-center justify-center text-xs text-vault-text-dim">
-              ↓
-            </span>
+            <button
+              type="button"
+              on:click={() => {
+                const tmpFrom = swapFromAsset;
+                swapFromAsset = swapToAsset;
+                swapToAsset = tmpFrom;
+                swapFromAmount = '';
+                swapToAmount = '0.00';
+              }}
+              class="w-7 h-7 rounded-full bg-vault-elevated border border-vault-border flex items-center justify-center text-xs text-vault-accent hover:bg-vault-accent/10 hover:border-vault-accent/30 cursor-pointer transition-all"
+              disabled={swapStatus !== 'idle'}
+              title="Swap direction"
+            >
+              ⇅
+            </button>
           </div>
 
           <!-- You Receive input -->
