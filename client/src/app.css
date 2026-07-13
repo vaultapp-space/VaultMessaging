@@ -44,6 +44,24 @@
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 }
 
+/* Light Theme overrides */
+:root.light {
+  --color-vault-black: #fafafa;
+  --color-vault-surface: #ffffff;
+  --color-vault-elevated: #f4f4f5;
+  --color-vault-border: #e4e4e7;
+  --color-vault-border-subtle: #f4f4f5;
+  --color-vault-muted: #a1a1aa;
+  --color-vault-text: #09090b;
+  --color-vault-text-secondary: #27272a;
+  --color-vault-text-dim: #71717a;
+  --color-vault-accent: #059669;
+  --color-vault-accent-hover: #10b981;
+  --color-vault-accent-dim: #047857;
+  --color-vault-accent-glow: rgba(5, 150, 105, 0.08);
+  --color-vault-accent-glow-strong: rgba(5, 150, 105, 0.15);
+}
+
 /* ─── Base Reset ────────────────────────────────────────── */
 
 * {

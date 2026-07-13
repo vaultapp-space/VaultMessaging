@@ -5,6 +5,14 @@
   import Auth from './components/Auth.svelte';
   import Chat from './components/Chat.svelte';
 
+  // Initialize theme from localStorage immediately (no flicker)
+  const initialTheme = localStorage.getItem('vault_theme') || 'dark';
+  if (initialTheme === 'light') {
+    document.documentElement.classList.add('light');
+  } else {
+    document.documentElement.classList.remove('light');
+  }
+
   let mounted = false;
 
   onMount(async () => {

@@ -9,6 +9,17 @@
   import { isPrfSupported, registerBiometric, authenticateBiometric } from '../lib/crypto/webauthn.js';
 
   let showBackupModal = false;
+  let theme = localStorage.getItem('vault_theme') || 'dark';
+
+  function applyTheme(newTheme) {
+    theme = newTheme;
+    localStorage.setItem('vault_theme', newTheme);
+    if (newTheme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+  }
 
   const dispatch = createEventDispatcher();
 
@@ -473,6 +484,30 @@
       </div>
 
       <div class="p-5 space-y-4 text-left">
+        <!-- Appearance Settings -->
+        <div class="flex items-center justify-between border-b border-vault-border pb-4">
+          <div>
+            <span class="text-xs font-semibold text-vault-text block">Appearance</span>
+            <span class="text-[10px] text-vault-text-dim">Toggle between dark and light interface</span>
+          </div>
+          <div class="flex items-center gap-1 bg-vault-elevated border border-vault-border rounded-xl p-0.5">
+            <button
+              on:click={() => applyTheme('dark')}
+              class="py-1 px-3 rounded-lg text-[10px] font-semibold transition-all cursor-pointer focus:outline-none
+                {theme === 'dark' ? 'bg-vault-accent text-vault-black' : 'text-vault-text-dim hover:text-vault-text'}"
+            >
+              Dark
+            </button>
+            <button
+              on:click={() => applyTheme('light')}
+              class="py-1 px-3 rounded-lg text-[10px] font-semibold transition-all cursor-pointer focus:outline-none
+                {theme === 'light' ? 'bg-vault-accent text-vault-black' : 'text-vault-text-dim hover:text-vault-text'}"
+            >
+              Light
+            </button>
+          </div>
+        </div>
+
         {#if biometricEnabled && !$localBackupEnabled}
           <button
             on:click={async () => {
