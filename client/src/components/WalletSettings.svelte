@@ -1052,6 +1052,13 @@
 
     wcSignStatus = 'signing';
     try {
+      // Cryptographically verify authorization key
+      if (biometricActive && bioKey) {
+        await decryptWallet(encryptedWalletData, bioKey);
+      } else {
+        await decryptWallet(encryptedWalletData, password);
+      }
+      
       await new Promise(resolve => setTimeout(resolve, 800));
       wcSignStatus = 'success';
       setTimeout(() => {
@@ -1060,7 +1067,7 @@
         wcSignStatus = 'idle';
       }, 1500);
     } catch (err) {
-      console.error(err);
+      console.error('Signature authorization failed:', err);
       wcSignStatus = 'error';
     }
   }
