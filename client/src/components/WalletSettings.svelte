@@ -89,7 +89,7 @@
   let sendSearchQuery = '';
   let showSendDropdown = false;
   let showSendChainDropdown = false;
-  let sendAssetObject = null;
+  let sendAssetObject = { name: 'Ethereum', symbol: 'ETH', balance: '0.00', network: 'Ethereum Mainnet', chainId: 'ethereum', color: 'text-indigo-400' };
   let sendRecipient = '';
   let sendAmount = '';
   let sendStatus = 'idle'; // 'idle' | 'signing' | 'broadcasting' | 'success' | 'error'
@@ -101,7 +101,7 @@
   let receiveSearchQuery = '';
   let showReceiveDropdown = false;
   let showReceiveChainDropdown = false;
-  let receiveAssetObject = null;
+  let receiveAssetObject = { name: 'Ethereum', symbol: 'ETH', balance: '0.00', network: 'Ethereum Mainnet', chainId: 'ethereum', color: 'text-indigo-400' };
   let receiveCustomContract = '';
   let copiedReceiveAddress = false;
   let showHoldings = false;
@@ -171,38 +171,38 @@
     ? [...filteredReceiveAssets, { name: 'Custom Token Contract...', symbol: 'Custom', network: receiveChain, chainId: receiveChain, icon: '🔧', isCustom: true }]
     : filteredReceiveAssets;
 
-  let prevSendChain = '';
-  $: if (sendChain && sendChain !== prevSendChain) {
-    prevSendChain = sendChain;
+  function handleSelectSendChain(chainId) {
+    sendChain = chainId;
     const list = assets
-      .filter(a => a.chainId === sendChain)
+      .filter(a => a.chainId === chainId)
       .sort((a, b) => {
-        const mainSymbol = MAIN_NATIVE_COINS[sendChain];
+        const mainSymbol = MAIN_NATIVE_COINS[chainId];
         if (a.symbol === mainSymbol) return -1;
         if (b.symbol === mainSymbol) return 1;
         return 0;
       });
     if (list && list.length > 0) {
       sendAssetObject = list[0];
-      sendSearchQuery = '';
     }
+    sendSearchQuery = '';
+    showSendChainDropdown = false;
   }
 
-  let prevReceiveChain = '';
-  $: if (receiveChain && receiveChain !== prevReceiveChain) {
-    prevReceiveChain = receiveChain;
+  function handleSelectReceiveChain(chainId) {
+    receiveChain = chainId;
     const list = assets
-      .filter(a => a.chainId === receiveChain)
+      .filter(a => a.chainId === chainId)
       .sort((a, b) => {
-        const mainSymbol = MAIN_NATIVE_COINS[receiveChain];
+        const mainSymbol = MAIN_NATIVE_COINS[chainId];
         if (a.symbol === mainSymbol) return -1;
         if (b.symbol === mainSymbol) return 1;
         return 0;
       });
     if (list && list.length > 0) {
       receiveAssetObject = list[0];
-      receiveSearchQuery = '';
     }
+    receiveSearchQuery = '';
+    showReceiveChainDropdown = false;
   }
 
   $: totalUSD = (
@@ -2132,10 +2132,7 @@
                   {#each AVAILABLE_CHAINS as chain}
                     <button
                       type="button"
-                      on:click={() => {
-                        receiveChain = chain.id;
-                        showReceiveChainDropdown = false;
-                      }}
+                      on:click={() => handleSelectReceiveChain(chain.id)}
                       class="w-full flex items-center gap-2 p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
                     >
                       <span class="w-4 h-4 flex items-center justify-center shrink-0">
@@ -2348,10 +2345,7 @@
                   {#each AVAILABLE_CHAINS as chain}
                     <button
                       type="button"
-                      on:click={() => {
-                        sendChain = chain.id;
-                        showSendChainDropdown = false;
-                      }}
+                      on:click={() => handleSelectSendChain(chain.id)}
                       class="w-full flex items-center gap-2 p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
                     >
                       <span class="w-4 h-4 flex items-center justify-center shrink-0">
