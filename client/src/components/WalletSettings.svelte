@@ -171,7 +171,9 @@
     ? [...filteredReceiveAssets, { name: 'Custom Token Contract...', symbol: 'Custom', network: receiveChain, chainId: receiveChain, icon: '🔧', isCustom: true }]
     : filteredReceiveAssets;
 
-  $: if (sendChain) {
+  let prevSendChain = '';
+  $: if (sendChain && sendChain !== prevSendChain) {
+    prevSendChain = sendChain;
     const list = assets
       .filter(a => a.chainId === sendChain)
       .sort((a, b) => {
@@ -186,7 +188,9 @@
     }
   }
 
-  $: if (receiveChain) {
+  let prevReceiveChain = '';
+  $: if (receiveChain && receiveChain !== prevReceiveChain) {
+    prevReceiveChain = receiveChain;
     const list = assets
       .filter(a => a.chainId === receiveChain)
       .sort((a, b) => {
@@ -1151,18 +1155,8 @@
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
     }
     
-    // ETH on different chains
+    // ETH logo
     if (cleanSym === 'ETH') {
-      if (chainId === 'base') {
-        return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#0052FF"/><circle cx="16" cy="16" r="7" stroke="white" stroke-width="3" fill="none"/></svg>`;
-      }
-      if (chainId === 'arbitrum') {
-        return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#12AAFF"/><path d="M16 6l9.5 16.5H6.5L16 6zm0 4L9.8 20.5h12.4L16 10zm0 3.5l3.5 6h-7l3.5-6z" fill="white"/></svg>`;
-      }
-      if (chainId === 'optimism') {
-        return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#FF0420"/><path d="M12.5 11c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5 4.5-2 4.5-4.5-2-4.5-4.5-4.5zm0 7c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5zm10.5-6.5c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 6c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" fill="white"/></svg>`;
-      }
-      // default ethereum mainnet ETH logo
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="white"><path d="M16 4.5l-5.3 8.8L16 16l5.3-2.7z" fill-opacity="0.8"/><path d="M16 4.5V16l5.3-2.7z"/><path d="M16 17.5l-5.3-2.2 5.3 7.7 5.3-7.7z" fill-opacity="0.8"/><path d="M16 17.5V23l5.3-7.7z"/><path d="M16 16l-5.3-2.7L16 17.5z" fill-opacity="0.5"/><path d="M16 16l5.3-2.7L16 17.5z" fill-opacity="0.3"/></g></svg>`;
     }
     
@@ -2092,7 +2086,7 @@
 
   {#if showReceiveModal}
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
-      <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left">
+      <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl relative animate-scale-up text-left">
         <!-- Modal Header -->
         <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
           <h3 class="text-sm font-semibold text-vault-text">Receive Assets</h3>
@@ -2309,7 +2303,7 @@
 
   {#if showSendModal}
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
-      <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left">
+      <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl relative animate-scale-up text-left">
         <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
           <h3 class="text-sm font-semibold text-vault-text">Send Crypto Assets</h3>
           <button on:click={() => showSendModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close send">
@@ -2564,7 +2558,7 @@
 
   {#if showSwapModal}
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
-      <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left">
+      <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl relative animate-scale-up text-left">
         <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
           <h3 class="text-sm font-semibold text-vault-text flex items-center gap-1.5">
             <span>🔄</span> DeFi Exchange Swap
