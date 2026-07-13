@@ -1975,7 +1975,7 @@
                 <polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <span class="text-[11px] text-vault-text-dim font-medium">No transactions yet</span>
-              <span class="text-[9px] text-vault-text-dim/60 mt-0.5">Send or swap crypto to see history here</span>
+              <span class="text-[9px] text-vault-text-dim/60 mt-0.5">Send or receive crypto to see history here</span>
             </div>
           {:else}
             <div class="space-y-1.5">
