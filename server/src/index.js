@@ -52,7 +52,7 @@ await fastify.register(fastifyHelmet, {
 await fastify.register(fastifyCors, {
   origin: (origin, cb) => {
     const isDev = process.env.NODE_ENV !== 'production';
-    if (!origin || origin === config.clientOrigin || (isDev && (origin.startsWith('http://localhost:') || origin.match(/^http:\/\/\d+\.\d+\.\d+\.\d+:5173$/) || origin.endsWith(':5173')))) {
+    if (!origin || origin === config.clientOrigin || origin === 'https://vaultapp.space' || origin === 'https://www.vaultapp.space' || (isDev && (origin.startsWith('http://localhost:') || origin.match(/^http:\/\/\d+\.\d+\.\d+\.\d+:5173$/) || origin.endsWith(':5173')))) {
       cb(null, true);
       return;
     }
