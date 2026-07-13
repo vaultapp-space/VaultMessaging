@@ -58,9 +58,24 @@
   let btcBalance = '0.00000000'; // Bitcoin BTC
   let isFetchingBalances = false;
 
+  // Chain selector values
+  const AVAILABLE_CHAINS = [
+    { id: 'ethereum', name: 'Ethereum Mainnet', type: 'evm', icon: 'Ξ' },
+    { id: 'base', name: 'Base Mainnet', type: 'evm', icon: 'Ξ' },
+    { id: 'arbitrum', name: 'Arbitrum One', type: 'evm', icon: 'Ξ' },
+    { id: 'optimism', name: 'Optimism Mainnet', type: 'evm', icon: 'Ξ' },
+    { id: 'polygon', name: 'Polygon Mainnet', type: 'evm', icon: '⬡' },
+    { id: 'solana-mainnet', name: 'Solana Mainnet', type: 'solana', icon: '◎' },
+    { id: 'bitcoin', name: 'Bitcoin Mainnet', type: 'bitcoin', icon: '₿' },
+    { id: 'base-sepolia', name: 'Base Sepolia Testnet', type: 'evm', icon: 'Ξ' }
+  ];
+
   // Send state
   let showSendModal = false;
-  let sendAsset = 'USDC-Base'; // 'USDC-Base' | 'USDC-Solana' | 'ETH' | 'SOL' | 'BTC'
+  let sendChain = 'base-sepolia';
+  let sendSearchQuery = '';
+  let showSendDropdown = false;
+  let sendAssetObject = null;
   let sendRecipient = '';
   let sendAmount = '';
   let sendStatus = 'idle'; // 'idle' | 'signing' | 'broadcasting' | 'success' | 'error'
@@ -68,7 +83,10 @@
 
   // Receive state
   let showReceiveModal = false;
-  let receiveAsset = 'ETH'; // 'ETH' | 'USDC-Base' | 'SOL' | 'USDC-Solana' | 'BTC' | 'custom'
+  let receiveChain = 'base-sepolia';
+  let receiveSearchQuery = '';
+  let showReceiveDropdown = false;
+  let receiveAssetObject = null;
   let receiveCustomContract = '';
   let copiedReceiveAddress = false;
   let showHoldings = false;
@@ -76,17 +94,47 @@
 
   // Reactive assets array
   $: assets = [
-    { name: 'Ethereum', symbol: 'ETH', balance: ethMainnetBalance, network: 'Ethereum Mainnet', icon: 'Ξ', color: 'text-indigo-400' },
-    { name: 'Bitcoin', symbol: 'BTC', balance: btcBalance, network: 'Bitcoin Mainnet', icon: '₿', color: 'text-amber-500' },
-    { name: 'Solana', symbol: 'SOL', balance: solBalance, network: 'Solana Mainnet', icon: '◎', color: 'text-teal-400' },
-    { name: 'USD Coin', symbol: 'USDC', balance: solUsdcBalance, network: 'Solana Mainnet', icon: '💲', color: 'text-blue-400' },
-    { name: 'Ethereum (Base L2)', symbol: 'ETH', balance: baseMainnetBalance, network: 'Base Mainnet', icon: 'Ξ', color: 'text-sky-400' },
-    { name: 'Ethereum (Arbitrum)', symbol: 'ETH', balance: arbMainnetBalance, network: 'Arbitrum One', icon: 'Ξ', color: 'text-blue-500' },
-    { name: 'Ethereum (Optimism)', symbol: 'ETH', balance: opMainnetBalance, network: 'Optimism Mainnet', icon: 'Ξ', color: 'text-red-500' },
-    { name: 'Polygon', symbol: 'POL', balance: maticBalance, network: 'Polygon Mainnet', icon: '⬡', color: 'text-purple-500' },
-    { name: 'Base Sepolia ETH (Testnet)', symbol: 'ETH', balance: evmBalance, network: 'Base Sepolia', icon: 'Ξ', color: 'text-purple-400' },
-    { name: 'Base Sepolia USDC (Testnet)', symbol: 'USDC', balance: evmUsdcBalance, network: 'Base Sepolia', icon: '💲', color: 'text-blue-400' }
+    { name: 'Ethereum', symbol: 'ETH', balance: ethMainnetBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', icon: 'Ξ', color: 'text-indigo-400' },
+    { name: 'Bitcoin', symbol: 'BTC', balance: btcBalance, network: 'Bitcoin Mainnet', chainId: 'bitcoin', icon: '₿', color: 'text-amber-500' },
+    { name: 'Solana', symbol: 'SOL', balance: solBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', icon: '◎', color: 'text-teal-400' },
+    { name: 'USD Coin', symbol: 'USDC', balance: solUsdcBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', icon: '💲', color: 'text-blue-400' },
+    { name: 'Ethereum (Base L2)', symbol: 'ETH', balance: baseMainnetBalance, network: 'Base Mainnet', chainId: 'base', icon: 'Ξ', color: 'text-sky-400' },
+    { name: 'Ethereum (Arbitrum)', symbol: 'ETH', balance: arbMainnetBalance, network: 'Arbitrum One', chainId: 'arbitrum', icon: 'Ξ', color: 'text-blue-500' },
+    { name: 'Ethereum (Optimism)', symbol: 'ETH', balance: opMainnetBalance, network: 'Optimism Mainnet', chainId: 'optimism', icon: 'Ξ', color: 'text-red-500' },
+    { name: 'Polygon', symbol: 'POL', balance: maticBalance, network: 'Polygon Mainnet', chainId: 'polygon', icon: '⬡', color: 'text-purple-500' },
+    { name: 'Base Sepolia ETH (Testnet)', symbol: 'ETH', balance: evmBalance, network: 'Base Sepolia', chainId: 'base-sepolia', icon: 'Ξ', color: 'text-purple-400' },
+    { name: 'Base Sepolia USDC (Testnet)', symbol: 'USDC', balance: evmUsdcBalance, network: 'Base Sepolia', chainId: 'base-sepolia', icon: '💲', color: 'text-blue-400' }
   ];
+
+  // Send filters
+  $: filteredSendAssets = assets
+    .filter(a => a.chainId === sendChain)
+    .filter(a => !sendSearchQuery || a.name.toLowerCase().includes(sendSearchQuery.toLowerCase()) || a.symbol.toLowerCase().includes(sendSearchQuery.toLowerCase()));
+
+  // Receive filters
+  $: filteredReceiveAssets = assets
+    .filter(a => a.chainId === receiveChain)
+    .filter(a => !receiveSearchQuery || a.name.toLowerCase().includes(receiveSearchQuery.toLowerCase()) || a.symbol.toLowerCase().includes(receiveSearchQuery.toLowerCase()));
+
+  $: displayReceiveAssets = (receiveChain !== 'bitcoin') 
+    ? [...filteredReceiveAssets, { name: 'Custom Token Contract...', symbol: 'Custom', network: receiveChain, chainId: receiveChain, icon: '🔧', isCustom: true }]
+    : filteredReceiveAssets;
+
+  $: if (sendChain) {
+    const firstAsset = assets.find(a => a.chainId === sendChain);
+    if (firstAsset) {
+      sendAssetObject = firstAsset;
+      sendSearchQuery = firstAsset.symbol;
+    }
+  }
+
+  $: if (receiveChain) {
+    const firstAsset = assets.find(a => a.chainId === receiveChain);
+    if (firstAsset) {
+      receiveAssetObject = firstAsset;
+      receiveSearchQuery = firstAsset.symbol;
+    }
+  }
 
   $: totalUSD = (
     (parseFloat(ethMainnetBalance) || 0) * 3120.00 +
@@ -104,10 +152,8 @@
   let copiedAddressType = ''; // 'evm' | 'sol' | ''
 
   $: derivedReceiveAddress = (() => {
-    if (receiveAsset === 'BTC') {
-      return $walletState?.btcAddress || '';
-    }
-    if (receiveAsset === 'custom') {
+    if (!receiveAssetObject) return '';
+    if (receiveAssetObject.isCustom) {
       if (receiveCustomContract.startsWith('0x')) {
         return $walletState?.evmAddress || '';
       } else if (receiveCustomContract.length >= 32) {
@@ -115,7 +161,10 @@
       }
       return $walletState?.evmAddress || '';
     }
-    if (receiveAsset.includes('Solana') || receiveAsset === 'SOL') {
+    if (receiveAssetObject.chainId === 'bitcoin') {
+      return $walletState?.btcAddress || '';
+    }
+    if (receiveAssetObject.chainId === 'solana-mainnet') {
       return $walletState?.solAddress || '';
     }
     return $walletState?.evmAddress || '';
@@ -153,8 +202,8 @@
         // Try to decrypt automatically if login password is in memory
         if ($loginPassword) {
           const mnemonic = await decryptWallet(encryptedWalletData, $loginPassword);
-          const { evmAddress, solAddress } = await deriveAddressesFromMnemonic(mnemonic);
-          walletState.set({ mnemonic, evmAddress, solAddress });
+          const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(mnemonic);
+          walletState.set({ mnemonic, evmAddress, solAddress, btcAddress });
           step = 'dashboard';
         } else if (biometricActive) {
           // Attempt biometric unlock silently
@@ -191,8 +240,8 @@
       const key = await authenticateBiometric(credId, salt);
       const mnemonic = await decryptWalletWithBioKey(bioWalletData, key);
 
-      const { evmAddress, solAddress } = await deriveAddressesFromMnemonic(mnemonic);
-      walletState.set({ mnemonic, evmAddress, solAddress });
+      const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(mnemonic);
+      walletState.set({ mnemonic, evmAddress, solAddress, btcAddress });
       step = 'dashboard';
     } catch (err) {
       console.error('Biometric unlock failed:', err);
@@ -206,8 +255,8 @@
     try {
       if (encryptedWalletData) {
         const mnemonic = await decryptWallet(encryptedWalletData, password);
-        const { evmAddress, solAddress } = await deriveAddressesFromMnemonic(mnemonic);
-        walletState.set({ mnemonic, evmAddress, solAddress });
+        const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(mnemonic);
+        walletState.set({ mnemonic, evmAddress, solAddress, btcAddress });
         step = 'dashboard';
       } else {
         alert('No wallet data found to decrypt.');
@@ -285,8 +334,8 @@
     try {
       const encrypted = await encryptWallet(generatedMnemonic, password);
       await saveEncryptedWallet($currentUser.id, encrypted);
-      const { evmAddress, solAddress } = await deriveAddressesFromMnemonic(generatedMnemonic);
-      walletState.set({ mnemonic: generatedMnemonic, evmAddress, solAddress });
+      const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(generatedMnemonic);
+      walletState.set({ mnemonic: generatedMnemonic, evmAddress, solAddress, btcAddress });
       encryptedWalletData = encrypted;
       step = 'dashboard';
     } catch (err) {
@@ -317,8 +366,8 @@
     try {
       const encrypted = await encryptWallet(cleaned, password);
       await saveEncryptedWallet($currentUser.id, encrypted);
-      const { evmAddress, solAddress } = await deriveAddressesFromMnemonic(cleaned);
-      walletState.set({ mnemonic: cleaned, evmAddress, solAddress });
+      const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(cleaned);
+      walletState.set({ mnemonic: cleaned, evmAddress, solAddress, btcAddress });
       encryptedWalletData = encrypted;
       step = 'dashboard';
     } catch (err) {
@@ -713,24 +762,24 @@
   }
 
   async function handleSendCrypto() {
-    if (!sendRecipient || !sendAmount) return;
+    if (!sendRecipient || !sendAmount || !sendAssetObject) return;
     
     // Validate addresses
-    if (sendAsset === 'BTC') {
+    if (sendAssetObject.chainId === 'bitcoin') {
       if (!/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}$/.test(sendRecipient)) {
         sendError = 'Invalid Bitcoin Address';
         sendStatus = 'error';
         return;
       }
-    } else if (sendAsset.includes('ETH') || sendAsset.includes('Sepolia') || sendAsset.includes('POL')) {
-      if (!/^0x[a-fA-F0-9]{40}$/.test(sendRecipient)) {
-        sendError = 'Invalid EVM Address';
+    } else if (sendAssetObject.chainId === 'solana-mainnet') {
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(sendRecipient)) {
+        sendError = 'Invalid Solana Address';
         sendStatus = 'error';
         return;
       }
     } else {
-      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(sendRecipient)) {
-        sendError = 'Invalid Solana Address';
+      if (!/^0x[a-fA-F0-9]{40}$/.test(sendRecipient)) {
+        sendError = 'Invalid EVM Address';
         sendStatus = 'error';
         return;
       }
@@ -752,27 +801,15 @@
       sendStatus = 'broadcasting';
       
       let hash = '';
-      if (sendAsset === 'ETH-Mainnet') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'ethereum');
-      } else if (sendAsset === 'ETH-Base') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'base');
-      } else if (sendAsset === 'ETH-Arbitrum') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'arbitrum');
-      } else if (sendAsset === 'ETH-Optimism') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'optimism');
-      } else if (sendAsset === 'POL-Polygon') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'polygon');
-      } else if (sendAsset === 'ETH-Sepolia') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, null, 'base-sepolia');
-      } else if (sendAsset === 'USDC-Sepolia') {
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, ERC20_TOKENS.USDC, 'base-sepolia');
-      } else if (sendAsset === 'SOL') {
-        hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, null, true);
-      } else if (sendAsset === 'USDC-Solana') {
-        hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', true);
-      } else if (sendAsset === 'BTC') {
+      if (sendAssetObject.chainId === 'bitcoin') {
         await new Promise(resolve => setTimeout(resolve, 1200));
         hash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
+      } else if (sendAssetObject.chainId === 'solana-mainnet') {
+        const tokenMint = sendAssetObject.symbol === 'USDC' ? 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' : null;
+        hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, tokenMint, true);
+      } else { // EVM
+        const tokenMint = (sendAssetObject.symbol === 'USDC' && sendAssetObject.chainId === 'base-sepolia') ? ERC20_TOKENS.USDC : null;
+        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, tokenMint, sendAssetObject.chainId);
       }
       
       txHash = hash;
@@ -1358,30 +1395,84 @@
         </div>
 
         <div class="p-5 space-y-4">
-          <!-- Asset Selector Dropdown -->
-          <div>
-            <label for="receive-asset-select" class="text-xs font-semibold text-vault-text block mb-1">Select Asset to Receive</label>
-            <select
-              id="receive-asset-select"
-              bind:value={receiveAsset}
-              class="select py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none"
-            >
-              <option value="ETH-Mainnet">ETH (Ethereum Mainnet)</option>
-              <option value="BTC">BTC (Bitcoin Mainnet)</option>
-              <option value="SOL">SOL (Solana Mainnet)</option>
-              <option value="USDC-Solana">USDC (Solana Mainnet)</option>
-              <option value="ETH-Base">ETH (Base Mainnet)</option>
-              <option value="ETH-Arbitrum">ETH (Arbitrum One)</option>
-              <option value="ETH-Optimism">ETH (Optimism Mainnet)</option>
-              <option value="POL-Polygon">POL (Polygon Mainnet)</option>
-              <option value="ETH">ETH (Base Sepolia Testnet)</option>
-              <option value="USDC-Base">USDC (Base Sepolia Testnet)</option>
-              <option value="custom">Custom Token Contract...</option>
-            </select>
+          <!-- Backdrop out-clicks dismisser -->
+          {#if showReceiveDropdown}
+            <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showReceiveDropdown = false} aria-label="Dismiss select dropdown"></button>
+          {/if}
+
+          <!-- Chain and Searchable Asset Selectors -->
+          <div class="grid grid-cols-2 gap-3 relative z-50">
+            <!-- 1. Chain Selector -->
+            <div>
+              <label for="receive-chain-select" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Network / Chain</label>
+              <select
+                id="receive-chain-select"
+                bind:value={receiveChain}
+                class="select py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none cursor-pointer"
+              >
+                {#each AVAILABLE_CHAINS as chain}
+                  <option value={chain.id}>{chain.icon} {chain.name}</option>
+                {/each}
+              </select>
+            </div>
+
+            <!-- 2. Searchable Asset Input -->
+            <div class="relative">
+              <label for="receive-asset-input" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Crypto Asset</label>
+              <div class="relative">
+                <input
+                  id="receive-asset-input"
+                  type="text"
+                  bind:value={receiveSearchQuery}
+                  on:focus={() => showReceiveDropdown = true}
+                  placeholder="BTC, ETH, USDC..."
+                  class="input py-2 pr-8 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-3 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  on:click|stopPropagation={() => showReceiveDropdown = !showReceiveDropdown}
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-vault-text-dim hover:text-vault-text border-none bg-transparent cursor-pointer text-[8px]"
+                >
+                  ▼
+                </button>
+              </div>
+
+              <!-- Search dropdown list overlay -->
+              {#if showReceiveDropdown}
+                <div class="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                  {#if displayReceiveAssets.length === 0}
+                    <div class="p-2 text-center text-xs text-vault-text-dim">No matching assets</div>
+                  {:else}
+                    {#each displayReceiveAssets as asset}
+                      <button
+                        type="button"
+                        on:click={() => {
+                          receiveAssetObject = asset;
+                          receiveSearchQuery = asset.symbol;
+                          showReceiveDropdown = false;
+                        }}
+                        class="w-full flex items-center justify-between p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
+                      >
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm">{asset.icon}</span>
+                          <div>
+                            <span class="font-bold">{asset.symbol}</span>
+                            <span class="text-[9px] text-vault-text-dim block">{asset.name}</span>
+                          </div>
+                        </div>
+                        {#if !asset.isCustom}
+                          <span class="font-mono text-vault-accent font-semibold">{asset.balance}</span>
+                        {/if}
+                      </button>
+                    {/each}
+                  {/if}
+                </div>
+              {/if}
+            </div>
           </div>
 
           <!-- Custom Contract input if chosen -->
-          {#if receiveAsset === 'custom'}
+          {#if receiveAssetObject?.isCustom}
             <div class="animate-scale-up">
               <label for="custom-contract-input" class="text-[10px] font-semibold text-vault-text block mb-1">Contract Address</label>
               <input
@@ -1392,9 +1483,9 @@
                 class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3 focus:outline-none"
               />
               {#if receiveCustomContract.startsWith('0x')}
-                <span class="text-[8px] text-vault-accent font-bold mt-1 block uppercase">EVM Token detected (Base Sepolia)</span>
+                <span class="text-[8px] text-vault-accent font-bold mt-1 block uppercase">EVM Token detected ({receiveChain})</span>
               {:else if receiveCustomContract.length >= 32}
-                <span class="text-[8px] text-vault-accent font-bold mt-1 block uppercase">Solana Mint detected (Devnet)</span>
+                <span class="text-[8px] text-vault-accent font-bold mt-1 block uppercase">Solana Mint detected ({receiveChain})</span>
               {/if}
             </div>
           {/if}
@@ -1482,24 +1573,78 @@
         </div>
 
         <div class="p-5 space-y-4">
-          <div>
-            <label for="asset-select" class="text-xs font-semibold text-vault-text block mb-1">Select Asset</label>
-            <select
-              id="asset-select"
-              bind:value={sendAsset}
-              class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-2.5 focus:outline-none font-sans"
-            >
-              <option value="ETH-Mainnet">ETH (Ethereum Mainnet) — Bal: {ethMainnetBalance}</option>
-              <option value="BTC">BTC (Bitcoin Mainnet) — Bal: {btcBalance}</option>
-              <option value="SOL">SOL (Solana Mainnet) — Bal: {solBalance}</option>
-              <option value="USDC-Solana">USDC (Solana Mainnet) — Bal: {solUsdcBalance}</option>
-              <option value="ETH-Base">ETH (Base Mainnet) — Bal: {baseMainnetBalance}</option>
-              <option value="ETH-Arbitrum">ETH (Arbitrum One) — Bal: {arbMainnetBalance}</option>
-              <option value="ETH-Optimism">ETH (Optimism Mainnet) — Bal: {opMainnetBalance}</option>
-              <option value="POL-Polygon">POL (Polygon Mainnet) — Bal: {maticBalance}</option>
-              <option value="ETH-Sepolia">ETH (Base Sepolia Testnet) — Bal: {evmBalance}</option>
-              <option value="USDC-Sepolia">USDC (Base Sepolia Testnet) — Bal: {evmUsdcBalance}</option>
-            </select>
+          <!-- Backdrop out-clicks dismisser -->
+          {#if showSendDropdown}
+            <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showSendDropdown = false} aria-label="Dismiss select dropdown"></button>
+          {/if}
+
+          <!-- Chain and Searchable Asset Selectors -->
+          <div class="grid grid-cols-2 gap-3 relative z-50">
+            <!-- 1. Chain Selector -->
+            <div>
+              <label for="send-chain-select" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Network / Chain</label>
+              <select
+                id="send-chain-select"
+                bind:value={sendChain}
+                class="select py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none cursor-pointer"
+              >
+                {#each AVAILABLE_CHAINS as chain}
+                  <option value={chain.id}>{chain.icon} {chain.name}</option>
+                {/each}
+              </select>
+            </div>
+
+            <!-- 2. Searchable Asset Input -->
+            <div class="relative">
+              <label for="send-asset-input" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Crypto Asset</label>
+              <div class="relative">
+                <input
+                  id="send-asset-input"
+                  type="text"
+                  bind:value={sendSearchQuery}
+                  on:focus={() => showSendDropdown = true}
+                  placeholder="BTC, ETH, USDC..."
+                  class="input py-2 pr-8 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-3 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  on:click|stopPropagation={() => showSendDropdown = !showSendDropdown}
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-vault-text-dim hover:text-vault-text border-none bg-transparent cursor-pointer text-[8px]"
+                >
+                  ▼
+                </button>
+              </div>
+
+              <!-- Search dropdown list overlay -->
+              {#if showSendDropdown}
+                <div class="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                  {#if filteredSendAssets.length === 0}
+                    <div class="p-2 text-center text-xs text-vault-text-dim">No matching assets</div>
+                  {:else}
+                    {#each filteredSendAssets as asset}
+                      <button
+                        type="button"
+                        on:click={() => {
+                          sendAssetObject = asset;
+                          sendSearchQuery = asset.symbol;
+                          showSendDropdown = false;
+                        }}
+                        class="w-full flex items-center justify-between p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
+                      >
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm">{asset.icon}</span>
+                          <div>
+                            <span class="font-bold">{asset.symbol}</span>
+                            <span class="text-[9px] text-vault-text-dim block">{asset.name}</span>
+                          </div>
+                        </div>
+                        <span class="font-mono text-vault-accent font-semibold">{asset.balance}</span>
+                      </button>
+                    {/each}
+                  {/if}
+                </div>
+              {/if}
+            </div>
           </div>
 
           <div>
@@ -1508,7 +1653,7 @@
               id="recipient-input"
               type="text"
               bind:value={sendRecipient}
-              placeholder={sendAsset.includes('Base') || sendAsset === 'ETH' ? '0x...' : 'Solana Address...'}
+              placeholder={sendAssetObject?.chainId === 'bitcoin' ? 'bc1... or legacy' : sendAssetObject?.chainId === 'solana-mainnet' ? 'Solana Address...' : '0x... EVM Address'}
               class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3"
             />
           </div>
