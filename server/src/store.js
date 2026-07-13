@@ -302,6 +302,14 @@ class DataStore {
     );
   }
 
+  async getMessage(id) {
+    const res = await this.pool.query(
+      `SELECT * FROM encrypted_messages WHERE id = $1`,
+      [id]
+    );
+    return res.rows.length > 0 ? res.rows[0] : null;
+  }
+
   async getUndeliveredMessages(recipientId) {
     const res = await this.pool.query(
       `SELECT m.*, u.username as sender_username FROM encrypted_messages m
@@ -460,15 +468,24 @@ class DataStore {
 
   // ─── Attachments (Disk + SQL Metadata) ────────────────────
 
-  async saveAttachment(filename, mimeType, ciphertext = '', burnOnRead = false, ownerId = null) {
+  async saveAttachment(filename, mimeType, totalChunksOrCiphertext = '', burnOnRead = false, ownerId = null) {
     const id = uuidv4();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    
+    let totalChunks = 1;
+    let ciphertext = '';
+    
+    if (typeof totalChunksOrCiphertext === 'number') {
+      totalChunks = totalChunksOrCiphertext;
+    } else {
+      ciphertext = totalChunksOrCiphertext;
+    }
     
     // Save metadata
     await this.pool.query(
       `INSERT INTO attachments (id, filename, mime_type, total_chunks, uploaded_chunks, burn_on_read, owner_id, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, filename, mimeType, 1, 0, burnOnRead, ownerId, expiresAt]
+      [id, filename, mimeType, totalChunks, 0, burnOnRead, ownerId, expiresAt]
     );
 
     // Save owner as allowed user
