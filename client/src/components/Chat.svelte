@@ -132,8 +132,14 @@
       if (existing) {
         existing.lastMessageAt = data.sentAt;
         existing.hasUndelivered = !isCurrentlyActive;
-        if (!existing.members && data.groupMembers) {
+        if (data.groupMembers) {
           existing.members = data.groupMembers;
+          if (isCurrentlyActive) {
+            activePeer.update(peer => {
+              if (peer) peer.members = data.groupMembers;
+              return peer;
+            });
+          }
         }
         const idx = convs.indexOf(existing);
         if (idx > 0) {
