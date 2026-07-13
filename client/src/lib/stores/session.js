@@ -33,7 +33,7 @@ export const groupSenderKeys = writable(new Map()); // Map<"groupId:senderId", S
 
 // ─── UI State ───────────────────────────────────────────────
 
-export const activeView = writable('auth');        // 'auth' | 'chat'
+export const activeView = writable('landing');        // 'landing' | 'auth' | 'chat'
 export const activePeer = writable(null);          // { id, username } — currently open chat
 export const sidebarOpen = writable(true);
 
@@ -41,7 +41,7 @@ export const sidebarOpen = writable(true);
 
 export function setUser(user) {
   currentUser.set(user);
-  activeView.set(user ? 'chat' : 'auth');
+  activeView.set(user ? 'chat' : 'landing');
   isLoading.set(false);
 }
 
@@ -66,7 +66,7 @@ export function clearSession() {
   localBackupPassphrase.set('');
 
   activePeer.set(null);
-  activeView.set('auth');
+  activeView.set('landing');
 }
 
 

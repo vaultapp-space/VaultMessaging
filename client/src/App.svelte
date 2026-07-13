@@ -4,6 +4,7 @@
   import { getMe } from './lib/api/http.js';
   import Auth from './components/Auth.svelte';
   import Chat from './components/Chat.svelte';
+  import Landing from './components/Landing.svelte';
 
   // Initialize theme from localStorage immediately (no flicker)
   const initialTheme = localStorage.getItem('vault_theme') || 'dark';
@@ -47,6 +48,8 @@
         <div class="text-vault-text-dim text-sm tracking-wider uppercase">Establishing secure connection...</div>
       </div>
     </div>
+  {:else if $activeView === 'landing'}
+    <Landing />
   {:else if $activeView === 'auth'}
     <Auth />
   {:else}
