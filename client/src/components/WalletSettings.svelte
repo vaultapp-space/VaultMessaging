@@ -2290,6 +2290,15 @@
               {derivedReceiveAddress}
             </div>
           </div>
+
+          <!-- Helpful Blockchain Architecture Note -->
+          <div class="bg-vault-black/20 border border-vault-border/40 p-2.5 rounded-xl text-[8px] text-vault-text-dim leading-relaxed flex items-start gap-1.5 animate-scale-up">
+            <span class="text-vault-accent text-[10px] leading-none">💡</span>
+            <div>
+              <span class="font-bold text-vault-text block mb-0.5">Deposit Address Info</span>
+              All tokens on the {receiveAssetObject?.chainId === 'bitcoin' ? 'Bitcoin' : (receiveAssetObject?.chainId === 'solana-mainnet' ? 'Solana' : 'EVM')} network share this identical deposit address. Your wallet dynamically routes assets based on the incoming token contract.
+            </div>
+          </div>
         </div>
 
         <!-- Modal Footer -->
