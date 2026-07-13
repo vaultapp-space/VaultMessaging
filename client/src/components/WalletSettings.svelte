@@ -326,14 +326,41 @@
     localStorage.setItem(`vault_contacts_${$currentUser.id}`, JSON.stringify(contacts));
   }
 
+  let addContactError = '';
+
   function addContact() {
-    if (!newContactLabel.trim()) return;
+    addContactError = '';
+    if (!newContactLabel.trim()) {
+      addContactError = 'Label is required';
+      return;
+    }
+    const evm = newContactEvm.trim();
+    const sol = newContactSol.trim();
+    const btc = newContactBtc.trim();
+
+    if (!evm && !sol && !btc) {
+      addContactError = 'At least one address must be provided';
+      return;
+    }
+    if (evm && !/^0x[a-fA-F0-9]{40}$/.test(evm)) {
+      addContactError = 'Invalid EVM Address (must start with 0x followed by 40 hex characters)';
+      return;
+    }
+    if (sol && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(sol)) {
+      addContactError = 'Invalid Solana Address format';
+      return;
+    }
+    if (btc && !/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,39}$/.test(btc)) {
+      addContactError = 'Invalid Bitcoin Address format';
+      return;
+    }
+
     contacts = [...contacts, {
       id: Date.now().toString(36),
       label: newContactLabel.trim(),
-      evmAddress: newContactEvm.trim(),
-      solAddress: newContactSol.trim(),
-      btcAddress: newContactBtc.trim()
+      evmAddress: evm,
+      solAddress: sol,
+      btcAddress: btc
     }];
     saveContacts();
     newContactLabel = '';
@@ -2081,6 +2108,11 @@
                 placeholder="Bitcoin address (bc1...)"
                 class="input py-1.5 text-[10px] bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-lg px-2.5"
               />
+              {#if addContactError}
+                <div class="text-[9px] text-vault-danger font-semibold flex items-center gap-1 animate-scale-up">
+                  <span>⚠</span> {addContactError}
+                </div>
+              {/if}
               <div class="flex gap-1.5">
                 <button
                   on:click={() => showAddContactForm = false}
@@ -2102,7 +2134,7 @@
 
         <div class="px-5 py-3 bg-vault-elevated border-t border-vault-border flex justify-between items-center">
           <button
-            on:click={() => { showAddContactForm = !showAddContactForm; }}
+            on:click={() => { showAddContactForm = !showAddContactForm; addContactError = ''; }}
             class="py-1.5 px-3 text-[10px] bg-vault-accent/10 text-vault-accent font-semibold rounded-lg hover:bg-vault-accent/20 cursor-pointer border border-vault-accent/20 flex items-center gap-1"
           >
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
