@@ -9,7 +9,7 @@
   import { x3dhInitiate, x3dhRespond, deriveInitialKeys } from '../lib/crypto/x3dh.js';
   import { exportPublicKeyBase64, encrypt as encryptSelf, decrypt as decryptSelf, encryptFile, generateKeyPair, signData, encryptChunk, decryptChunk, importStaticKey } from '../lib/crypto/keys.js';
   import { SenderKeySession } from '../lib/crypto/senderkeys.js';
-  import { randomHex } from '../lib/crypto/utils.js';
+  import { randomHex, toBase64, fromBase64 } from '../lib/crypto/utils.js';
   import { getAvatarGradient } from '../lib/avatar.js';
   import { syncCloudVault } from '../lib/crypto/sync.js';
   import MessageBubble from './MessageBubble.svelte';
