@@ -90,6 +90,7 @@
   let receiveCustomContract = '';
   let copiedReceiveAddress = false;
   let showHoldings = false;
+  let showSettings = false;
   let txHash = '';
 
   // Reactive assets array
@@ -1270,82 +1271,74 @@
     </div>
 
   {:else if step === 'dashboard'}
-    <div class="space-y-4 text-left">
-      <!-- Minimalist Header -->
-      <div class="flex items-center justify-between border-b border-vault-border pb-2">
+    <div class="space-y-3 text-left">
+      <!-- Clean Header -->
+      <div class="flex items-center justify-between pb-1">
         <span class="text-[10px] text-vault-text-dim font-bold uppercase tracking-wider flex items-center gap-1.5 animate-fade-in">
           <span class="w-1.5 h-1.5 rounded-full bg-vault-accent {isFetchingBalances ? 'animate-ping' : 'animate-pulse'}"></span>
-          Vault Multi-Chain Wallet
+          Vault Wallet
         </span>
         <button
           on:click={fetchBalances}
           disabled={isFetchingBalances}
-          class="text-vault-accent hover:text-vault-accent-hover text-[9px] uppercase font-bold tracking-wider cursor-pointer bg-transparent border-none focus:outline-none"
+          class="text-vault-accent hover:text-vault-accent-hover text-[9px] uppercase font-bold tracking-wider cursor-pointer bg-transparent border-none focus:outline-none flex items-center gap-1"
         >
-          {isFetchingBalances ? 'Refreshing...' : 'Refresh'}
+          <svg class="w-3 h-3 {isFetchingBalances ? 'animate-spin' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 4v6h6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M23 20v-6h-6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          {isFetchingBalances ? '...' : ''}
         </button>
       </div>
 
-      <!-- Premium Total Balance Card -->
-      <div class="p-5 rounded-2xl bg-gradient-to-br from-vault-black/80 to-vault-surface/80 border border-vault-border shadow-2xl relative overflow-hidden text-center select-none animate-scale-up">
-        <div class="absolute -right-10 -bottom-10 text-9xl opacity-5 select-none font-bold">Ξ</div>
-        <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold">Total Portfolio Value</span>
-        <h2 class="text-3xl font-extrabold text-vault-text leading-tight mt-1 font-mono tracking-tight text-glow-accent">
+      <!-- Compact Balance Card -->
+      <div class="p-4 rounded-2xl bg-gradient-to-br from-vault-elevated/60 to-vault-surface/40 border border-vault-border/60 text-center select-none animate-scale-up">
+        <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold">Total Balance</span>
+        <h2 class="text-2xl font-extrabold text-vault-text leading-tight mt-0.5 font-mono tracking-tight text-glow-accent">
           ${totalUSD}
         </h2>
-        <span class="text-[8px] px-2 py-0.5 rounded-full bg-vault-accent/10 border border-vault-accent/20 text-vault-accent font-semibold inline-block mt-2">
-          Base L2 & Solana Active
-        </span>
-      </div>
-
-      <!-- Portfolio Performance Chart -->
-      <div class="rounded-2xl bg-vault-surface/60 border border-vault-border p-4 mt-1 animate-scale-up">
-        <div class="flex items-center justify-between mb-2">
-          <div>
-            <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold block">Performance</span>
-            <span class="text-xs font-bold font-mono {chartChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}">
-              {chartChange >= 0 ? '+' : ''}{chartChangePct}%
-              <span class="text-[8px] text-vault-text-dim font-normal ml-1">{chartTimeframe}</span>
-            </span>
-          </div>
-          <div class="flex gap-1">
+        <!-- Mini inline chart -->
+        <div class="relative h-[50px] w-full mt-2">
+          {#if chartData.length >= 2}
+            <svg viewBox="0 0 280 70" class="w-full h-full" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stop-opacity="0.2" />
+                  <stop offset="100%" stop-color="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stop-opacity="0" />
+                </linearGradient>
+              </defs>
+              <path d={chartFillPath} fill="url(#chartGrad)" />
+              <path d={chartPath} fill="none" stroke="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          {:else}
+            <div class="flex items-center justify-center h-full text-[9px] text-vault-text-dim/50">
+              Chart populates on refresh
+            </div>
+          {/if}
+        </div>
+        <div class="flex items-center justify-center gap-2 mt-1">
+          <span class="text-[10px] font-bold font-mono {chartChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}">
+            {chartChange >= 0 ? '+' : ''}{chartChangePct}%
+          </span>
+          <div class="flex gap-0.5">
             {#each ['24H', '7D', '30D'] as tf}
               <button
                 on:click={() => chartTimeframe = tf}
-                class="py-0.5 px-2 text-[8px] font-bold rounded-lg border cursor-pointer transition-all
+                class="py-0.5 px-1.5 text-[7px] font-bold rounded-md border cursor-pointer transition-all
                   {chartTimeframe === tf
                     ? 'bg-vault-accent/15 border-vault-accent/30 text-vault-accent'
-                    : 'bg-transparent border-vault-border text-vault-text-dim hover:text-vault-text'}"
+                    : 'bg-transparent border-transparent text-vault-text-dim hover:text-vault-text'}"
               >
                 {tf}
               </button>
             {/each}
           </div>
         </div>
-        <div class="relative h-[80px] w-full">
-          {#if chartData.length >= 2}
-            <svg viewBox="0 0 280 70" class="w-full h-full" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stop-opacity="0.3" />
-                  <stop offset="100%" stop-color="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stop-opacity="0.02" />
-                </linearGradient>
-              </defs>
-              <path d={chartFillPath} fill="url(#chartGrad)" />
-              <path d={chartPath} fill="none" stroke="{chartChange >= 0 ? 'rgb(16,185,129)' : 'rgb(239,68,68)'}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <div class="absolute top-0 left-0 text-[7px] font-mono text-vault-text-dim">${chartMax.toFixed(2)}</div>
-            <div class="absolute bottom-0 left-0 text-[7px] font-mono text-vault-text-dim">${chartMin.toFixed(2)}</div>
-          {:else}
-            <div class="flex items-center justify-center h-full text-[10px] text-vault-text-dim">
-              Chart data populates as balances refresh
-            </div>
-          {/if}
-        </div>
       </div>
 
-      <!-- Action Grid: Large Minimalist Buttons -->
-      <div class="grid grid-cols-2 gap-3 mt-1 animate-scale-up">
+      <!-- 4-Icon Action Grid (MetaMask / Phantom style) -->
+      <div class="grid grid-cols-4 gap-2 animate-scale-up">
         <button
           on:click={() => {
             showSendModal = true;
@@ -1354,25 +1347,34 @@
             sendStatus = 'idle';
             sendError = '';
           }}
-          class="flex items-center justify-center gap-2 py-3 px-4 bg-vault-accent hover:bg-vault-accent-hover text-vault-black font-extrabold text-xs rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer border-none"
+          class="flex flex-col items-center gap-1.5 py-3 rounded-xl bg-vault-elevated/60 border border-vault-border/50 hover:bg-vault-accent/10 hover:border-vault-accent/30 text-vault-text transition-all cursor-pointer group"
         >
-          <span>↗️</span> Send Crypto
+          <div class="w-8 h-8 rounded-full bg-vault-accent/15 border border-vault-accent/25 flex items-center justify-center group-hover:bg-vault-accent/25 transition-all">
+            <svg class="w-4 h-4 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="19" x2="12" y2="5" stroke-linecap="round"/>
+              <polyline points="5 12 12 5 19 12" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <span class="text-[9px] font-semibold">Send</span>
         </button>
+
         <button
           on:click={() => {
             showReceiveModal = true;
-            receiveAsset = 'ETH';
             receiveCustomContract = '';
             copiedReceiveAddress = false;
           }}
-          class="flex items-center justify-center gap-2 py-3 px-4 bg-vault-elevated border border-vault-border hover:bg-vault-border text-vault-text font-bold text-xs rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer"
+          class="flex flex-col items-center gap-1.5 py-3 rounded-xl bg-vault-elevated/60 border border-vault-border/50 hover:bg-vault-accent/10 hover:border-vault-accent/30 text-vault-text transition-all cursor-pointer group"
         >
-          <span>↙️</span> Receive Crypto
+          <div class="w-8 h-8 rounded-full bg-vault-accent/15 border border-vault-accent/25 flex items-center justify-center group-hover:bg-vault-accent/25 transition-all">
+            <svg class="w-4 h-4 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" stroke-linecap="round"/>
+              <polyline points="19 12 12 19 5 12" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <span class="text-[9px] font-semibold">Receive</span>
         </button>
-      </div>
 
-      <!-- Collateral Secondary Actions -->
-      <div class="flex items-center justify-between text-[10px] px-1 mt-1 flex-wrap gap-y-1">
         <button
           on:click={() => {
             showSwapModal = true;
@@ -1381,248 +1383,546 @@
             swapStatus = 'idle';
             swapError = '';
           }}
-          class="text-vault-accent hover:text-vault-accent-hover font-semibold flex items-center gap-1 cursor-pointer border-none bg-transparent"
+          class="flex flex-col items-center gap-1.5 py-3 rounded-xl bg-vault-elevated/60 border border-vault-border/50 hover:bg-vault-accent/10 hover:border-vault-accent/30 text-vault-text transition-all cursor-pointer group"
         >
-          <span>🔄</span> Swap
+          <div class="w-8 h-8 rounded-full bg-vault-accent/15 border border-vault-accent/25 flex items-center justify-center group-hover:bg-vault-accent/25 transition-all">
+            <svg class="w-4 h-4 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="17 1 21 5 17 9" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M3 11V9a4 4 0 0 1 4-4h14" stroke-linecap="round" stroke-linejoin="round"/>
+              <polyline points="7 23 3 19 7 15" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M21 13v2a4 4 0 0 1-4 4H3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <span class="text-[9px] font-semibold">Swap</span>
         </button>
-        <button
-          on:click={() => { showAddressBook = true; showAddContactForm = false; }}
-          class="text-vault-accent hover:text-vault-accent-hover font-semibold flex items-center gap-1 cursor-pointer border-none bg-transparent"
-        >
-          <span>📒</span> Contacts
-        </button>
+
         <button
           on:click={() => showHistoryModal = true}
-          class="text-vault-accent hover:text-vault-accent-hover font-semibold flex items-center gap-1 cursor-pointer border-none bg-transparent"
+          class="flex flex-col items-center gap-1.5 py-3 rounded-xl bg-vault-elevated/60 border border-vault-border/50 hover:bg-vault-accent/10 hover:border-vault-accent/30 text-vault-text transition-all cursor-pointer group"
         >
-          <span>📜</span> History
-        </button>
-        <button
-          on:click={() => showConfirmWipe = !showConfirmWipe}
-          class="text-vault-text-dim hover:text-vault-danger font-semibold cursor-pointer border-none bg-transparent"
-        >
-          Wipe Keys
+          <div class="w-8 h-8 rounded-full bg-vault-accent/15 border border-vault-accent/25 flex items-center justify-center group-hover:bg-vault-accent/25 transition-all">
+            <svg class="w-4 h-4 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <span class="text-[9px] font-semibold">History</span>
         </button>
       </div>
 
-      {#if showConfirmWipe}
-        <div class="bg-vault-danger/10 border border-vault-danger/20 rounded-xl p-3 space-y-2 text-xs">
-          <div class="font-bold text-vault-danger">⚠️ Wipe Local Wallet Keys?</div>
-          <p class="text-[9px] text-vault-text-dim leading-relaxed">
-            This action deletes the secure credential backups from local IndexedDB storage. You must possess your 12-word seed recovery phrase to restore access.
-          </p>
-          <div class="flex gap-2">
-            <button
-              on:click={() => showConfirmWipe = false}
-              class="py-1 px-2.5 bg-vault-elevated text-vault-text text-[9px] rounded-lg border border-vault-border"
-            >
-              Cancel
-            </button>
-            <button
-              on:click={wipeWallet}
-              class="py-1 px-2.5 bg-vault-danger text-vault-white font-semibold text-[9px] rounded-lg border-none cursor-pointer"
-            >
-              Confirm Wipe
-            </button>
-          </div>
-        </div>
-      {/if}
-
-      <!-- Collapsible Holdings and Addresses Accordion -->
-      <div class="border border-vault-border rounded-2xl overflow-hidden mt-1">
+      <!-- Holdings List (Compact, hides zero-balance) -->
+      <div class="rounded-xl border border-vault-border/50 overflow-hidden animate-scale-up">
         <button
           on:click={() => showHoldings = !showHoldings}
-          class="w-full px-4 py-2.5 bg-vault-elevated/40 hover:bg-vault-elevated text-[10px] font-bold text-vault-text flex items-center justify-between border-none cursor-pointer select-none transition-all"
+          class="w-full px-3 py-2 bg-vault-elevated/30 hover:bg-vault-elevated/50 text-[10px] font-bold text-vault-text flex items-center justify-between border-none cursor-pointer select-none transition-all"
         >
-          <span>💳 Show Address Details & Holdings</span>
+          <span class="flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <path d="M22 10h-6a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h6" />
+            </svg>
+            Holdings & Addresses
+          </span>
           <span class="text-vault-text-dim text-[8px] transform transition-transform duration-200 {showHoldings ? 'rotate-180' : ''}">
             ▼
           </span>
         </button>
 
         {#if showHoldings}
-          <div class="p-4 space-y-3 bg-vault-black/20 border-t border-vault-border/60 animate-scale-up text-left">
+          <div class="p-3 space-y-2 bg-vault-black/20 border-t border-vault-border/40 animate-scale-up text-left">
             <!-- Addresses -->
-            <div class="space-y-2 bg-vault-black/30 border border-vault-border rounded-xl p-3">
-              <div class="space-y-1">
-                <div class="flex items-center justify-between">
-                  <span class="text-[9px] text-vault-text-dim uppercase font-semibold">EVM Address (Base Sepolia)</span>
-                  <button
-                    on:click={() => copyAddress($walletState.evmAddress, 'evm')}
-                    class="text-[9px] text-vault-accent hover:underline focus:outline-none cursor-pointer bg-transparent border-none"
-                  >
-                    {copiedAddressType === 'evm' ? 'Copied' : 'Copy'}
-                  </button>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between py-1.5 px-2.5 bg-vault-elevated/50 rounded-lg">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="text-[9px] text-vault-text-dim font-semibold shrink-0">EVM</span>
+                  <span class="font-mono text-[8px] text-vault-text truncate">{$walletState.evmAddress}</span>
                 </div>
-                <div class="font-mono text-[9px] bg-vault-elevated/50 p-2 rounded border border-vault-border-subtle truncate select-all">
-                  {$walletState.evmAddress}
-                </div>
+                <button
+                  on:click={() => copyAddress($walletState.evmAddress, 'evm')}
+                  class="text-[8px] text-vault-accent hover:text-vault-accent-hover cursor-pointer bg-transparent border-none shrink-0 ml-1"
+                >
+                  {copiedAddressType === 'evm' ? '✓' : 'Copy'}
+                </button>
               </div>
-
-              <div class="space-y-1">
-                <div class="flex items-center justify-between">
-                  <span class="text-[9px] text-vault-text-dim uppercase font-semibold">Solana Address (Devnet)</span>
-                  <button
-                    on:click={() => copyAddress($walletState.solAddress, 'sol')}
-                    class="text-[9px] text-vault-accent hover:underline focus:outline-none cursor-pointer bg-transparent border-none"
-                  >
-                    {copiedAddressType === 'sol' ? 'Copied' : 'Copy'}
-                  </button>
+              <div class="flex items-center justify-between py-1.5 px-2.5 bg-vault-elevated/50 rounded-lg">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="text-[9px] text-vault-text-dim font-semibold shrink-0">SOL</span>
+                  <span class="font-mono text-[8px] text-vault-text truncate">{$walletState.solAddress}</span>
                 </div>
-                <div class="font-mono text-[9px] bg-vault-elevated/50 p-2 rounded border border-vault-border-subtle truncate select-all">
-                  {$walletState.solAddress}
-                </div>
+                <button
+                  on:click={() => copyAddress($walletState.solAddress, 'sol')}
+                  class="text-[8px] text-vault-accent hover:text-vault-accent-hover cursor-pointer bg-transparent border-none shrink-0 ml-1"
+                >
+                  {copiedAddressType === 'sol' ? '✓' : 'Copy'}
+                </button>
               </div>
-
-              <div class="space-y-1">
-                <div class="flex items-center justify-between">
-                  <span class="text-[9px] text-vault-text-dim uppercase font-semibold">Bitcoin Address (Mainnet)</span>
-                  <button
-                    on:click={() => copyAddress($walletState.btcAddress, 'btc')}
-                    class="text-[9px] text-vault-accent hover:underline focus:outline-none cursor-pointer bg-transparent border-none"
-                  >
-                    {copiedAddressType === 'btc' ? 'Copied' : 'Copy'}
-                  </button>
+              <div class="flex items-center justify-between py-1.5 px-2.5 bg-vault-elevated/50 rounded-lg">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="text-[9px] text-vault-text-dim font-semibold shrink-0">BTC</span>
+                  <span class="font-mono text-[8px] text-vault-text truncate">{$walletState.btcAddress}</span>
                 </div>
-                <div class="font-mono text-[9px] bg-vault-elevated/50 p-2 rounded border border-vault-border-subtle truncate select-all">
-                  {$walletState.btcAddress}
-                </div>
+                <button
+                  on:click={() => copyAddress($walletState.btcAddress, 'btc')}
+                  class="text-[8px] text-vault-accent hover:text-vault-accent-hover cursor-pointer bg-transparent border-none shrink-0 ml-1"
+                >
+                  {copiedAddressType === 'btc' ? '✓' : 'Copy'}
+                </button>
               </div>
             </div>
 
-            <!-- Asset Holdings -->
-            <div class="space-y-2 pt-1">
-              <div class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold">Token Balances</div>
-              <div class="space-y-1.5">
-                {#each assets as asset}
-                  <div class="flex items-center justify-between px-3 py-1.5 bg-vault-elevated/80 border border-vault-border rounded-xl">
-                    <div class="flex items-center gap-2">
-                      <span class="text-xs font-semibold w-5 h-5 rounded-lg bg-vault-black/30 border border-vault-border flex items-center justify-center {asset.color}">
-                        {asset.icon}
-                      </span>
-                      <div>
-                        <span class="text-[10px] font-bold block leading-none text-vault-text">{asset.symbol}</span>
-                        <span class="text-[7px] text-vault-text-dim">{asset.network}</span>
-                      </div>
-                    </div>
-                    <div class="text-right">
-                      <span class="text-[10px] font-bold font-mono text-vault-text">{asset.balance}</span>
-                      <span class="text-[7px] text-vault-text-dim block leading-none">{asset.name}</span>
+            <!-- Token Balances (hide zero-balance by default) -->
+            <div class="space-y-1 pt-1">
+              <span class="text-[8px] text-vault-text-dim uppercase tracking-wider font-semibold">Balances</span>
+              {#each assets.filter(a => parseFloat(a.balance) > 0) as asset}
+                <div class="flex items-center justify-between px-2.5 py-1.5 bg-vault-elevated/40 border border-vault-border/30 rounded-lg">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs w-5 h-5 rounded-md bg-vault-black/30 border border-vault-border/40 flex items-center justify-center {asset.color}">
+                      {asset.icon}
+                    </span>
+                    <div>
+                      <span class="text-[10px] font-bold block leading-none text-vault-text">{asset.symbol}</span>
+                      <span class="text-[7px] text-vault-text-dim">{asset.network}</span>
                     </div>
                   </div>
-                {/each}
-              </div>
+                  <span class="text-[10px] font-bold font-mono text-vault-text">{asset.balance}</span>
+                </div>
+              {/each}
+              {#if assets.filter(a => parseFloat(a.balance) > 0).length === 0}
+                <div class="text-[9px] text-vault-text-dim text-center py-2">No balances found — deposit crypto to get started</div>
+              {/if}
+              {#if assets.filter(a => parseFloat(a.balance) <= 0).length > 0}
+                <button
+                  on:click={() => {/* toggle showing zero balances inline */}}
+                  class="text-[8px] text-vault-text-dim hover:text-vault-text cursor-pointer bg-transparent border-none pt-0.5"
+                >
+                  + {assets.filter(a => parseFloat(a.balance) <= 0).length} more tokens with zero balance
+                </button>
+              {/if}
             </div>
           </div>
         {/if}
       </div>
 
-      <!-- Security / Seed Phrase Export -->
-      <div class="border-t border-vault-border pt-3 space-y-2">
-        <span class="text-xs font-semibold text-vault-text block">Local Security Card</span>
-        <div class="flex gap-2">
-          <button
-            on:click={() => {
-              showMnemonicOnDashboard = !showMnemonicOnDashboard;
-              dashboardBlur = true;
-            }}
-            class="py-1.5 px-3 text-[10px] bg-vault-elevated text-vault-text hover:bg-vault-border border border-vault-border font-semibold rounded-xl cursor-pointer"
-          >
-            {showMnemonicOnDashboard ? 'Hide Seed' : 'View Seed'}
-          </button>
-          <button
-            on:click={() => downloadBackupPDF($walletState.mnemonic, $walletState.evmAddress, $walletState.solAddress)}
-            class="py-1.5 px-3 text-[10px] bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer"
-          >
-            Export Backup Card (PDF)
-          </button>
-          <button
-            on:click={() => {
-              showWCModal = true;
-              wcUri = '';
-            }}
-            class="py-1.5 px-3 text-[10px] bg-vault-elevated border border-vault-border text-vault-text hover:bg-vault-border font-semibold rounded-xl cursor-pointer"
-          >
-            🔌 Connect dApp
+      <!-- Settings & Security Accordion -->
+      <div class="rounded-xl border border-vault-border/50 overflow-hidden">
+        <button
+          on:click={() => showSettings = !showSettings}
+          class="w-full px-3 py-2 bg-vault-elevated/30 hover:bg-vault-elevated/50 text-[10px] font-bold text-vault-text flex items-center justify-between border-none cursor-pointer select-none transition-all"
+        >
+          <span class="flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-vault-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            Settings & Security
+          </span>
+          <span class="text-vault-text-dim text-[8px] transform transition-transform duration-200 {showSettings ? 'rotate-180' : ''}">
+            ▼
+          </span>
+        </button>
+
+        {#if showSettings}
+          <div class="p-3 space-y-3 bg-vault-black/20 border-t border-vault-border/40 animate-scale-up text-left">
+            <!-- Seed Phrase Controls -->
+            <div class="space-y-1.5">
+              <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold">Backup</span>
+              <div class="flex gap-2">
+                <button
+                  on:click={() => {
+                    showMnemonicOnDashboard = !showMnemonicOnDashboard;
+                    dashboardBlur = true;
+                  }}
+                  class="flex-1 py-1.5 px-2 text-[9px] bg-vault-elevated/60 text-vault-text hover:bg-vault-border border border-vault-border/50 font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1"
+                >
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    {#if showMnemonicOnDashboard}
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    {:else}
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    {/if}
+                  </svg>
+                  {showMnemonicOnDashboard ? 'Hide' : 'View'} Seed
+                </button>
+                <button
+                  on:click={() => downloadBackupPDF($walletState.mnemonic, $walletState.evmAddress, $walletState.solAddress)}
+                  class="flex-1 py-1.5 px-2 text-[9px] bg-vault-accent/10 text-vault-accent hover:bg-vault-accent/20 border border-vault-accent/20 font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1"
+                >
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  PDF Backup
+                </button>
+              </div>
+            </div>
+
+            {#if showMnemonicOnDashboard}
+              <div class="relative bg-vault-black/40 border border-vault-border/50 rounded-xl p-3 font-mono text-xs select-none">
+                <div class="grid grid-cols-3 gap-1.5 {dashboardBlur ? 'blur-sm select-none pointer-events-none' : ''}">
+                  {#each $walletState.mnemonic.split(' ') as word, idx}
+                    <div class="flex items-center gap-1 py-0.5 px-1.5 bg-vault-elevated/60 border border-vault-border-subtle/50 rounded text-[9px]">
+                      <span class="text-vault-text-dim text-[8px] w-3">{idx + 1}</span>
+                      <span class="text-vault-text font-semibold">{word}</span>
+                    </div>
+                  {/each}
+                </div>
+                {#if dashboardBlur}
+                  <div class="absolute inset-0 flex flex-col items-center justify-center bg-vault-surface/40 backdrop-blur-md rounded-xl p-3 text-center">
+                    <button
+                      on:click={() => dashboardBlur = false}
+                      class="py-1 px-3 bg-vault-accent text-vault-black font-semibold text-[9px] rounded-lg cursor-pointer hover:bg-vault-accent-hover transition-all"
+                    >
+                      Reveal
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+
+            <!-- Biometric Toggle -->
+            {#if isBiometricSupported}
+              <div class="flex items-center justify-between p-2 bg-vault-elevated/40 border border-vault-border/40 rounded-lg">
+                <div class="flex flex-col gap-0">
+                  <span class="text-[9px] font-semibold text-vault-text">Biometric Unlock</span>
+                  <span class="text-[7px] text-vault-text-dim">Use platform biometrics for wallet access</span>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={biometricActive}
+                    on:change={handleToggleBiometrics}
+                    class="sr-only peer"
+                  />
+                  <div class="w-7 h-3.5 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-vault-accent"></div>
+                </label>
+              </div>
+            {/if}
+
+            <!-- Connect dApp -->
+            <div class="space-y-1.5">
+              <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold">Connected dApps</span>
+              <button
+                on:click={() => {
+                  showWCModal = true;
+                  wcUri = '';
+                }}
+                class="w-full py-1.5 px-2 text-[9px] bg-vault-elevated/60 border border-vault-border/50 text-vault-text hover:bg-vault-border font-semibold rounded-lg cursor-pointer flex items-center justify-center gap-1"
+              >
+                <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                  <polyline points="15 3 21 3 21 9"/>
+                  <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+                Connect dApp (WalletConnect)
+              </button>
+
+              {#if activeWCSessions.length === 0}
+                <div class="text-[8px] text-vault-text-dim py-0.5">No active connections</div>
+              {:else}
+                <div class="space-y-1">
+                  {#each activeWCSessions as session}
+                    <div class="flex items-center justify-between p-1.5 bg-vault-elevated/40 border border-vault-border/30 rounded-lg">
+                      <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="text-sm">{session.logo}</span>
+                        <div class="min-w-0">
+                          <span class="text-[9px] font-bold block text-vault-text truncate">{session.name}</span>
+                          <a href={session.url} target="_blank" rel="noreferrer" class="text-[7px] text-vault-accent hover:underline block truncate">{session.url}</a>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-1 shrink-0">
+                        <button
+                          on:click={() => triggerMockSignRequest(session)}
+                          class="py-0.5 px-1.5 text-[7px] bg-vault-accent/10 text-vault-accent font-semibold rounded hover:bg-vault-accent/20 cursor-pointer border-none"
+                        >
+                          Sign
+                        </button>
+                        <button
+                          on:click={() => handleDisconnectWCSession(session.id)}
+                          class="py-0.5 px-1.5 text-[7px] bg-vault-danger/10 text-vault-danger font-semibold rounded hover:bg-vault-danger/20 cursor-pointer border-none"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="border-t border-vault-border/30 pt-2">
+              <span class="text-[9px] text-vault-danger/60 uppercase tracking-wider font-semibold">Danger Zone</span>
+              {#if !showConfirmWipe}
+                <button
+                  on:click={() => showConfirmWipe = true}
+                  class="w-full mt-1 py-1.5 text-[9px] bg-vault-danger/5 border border-vault-danger/15 text-vault-danger/70 hover:text-vault-danger hover:bg-vault-danger/10 font-semibold rounded-lg cursor-pointer transition-all"
+                >
+                  Wipe Wallet Keys
+                </button>
+              {:else}
+                <div class="bg-vault-danger/10 border border-vault-danger/20 rounded-lg p-2.5 space-y-1.5 text-xs mt-1 animate-scale-up">
+                  <div class="font-bold text-vault-danger text-[10px]">⚠️ Wipe All Local Keys?</div>
+                  <p class="text-[8px] text-vault-text-dim leading-relaxed">
+                    This permanently deletes wallet credentials from this device. You must have your seed phrase to restore access.
+                  </p>
+                  <div class="flex gap-1.5">
+                    <button
+                      on:click={() => showConfirmWipe = false}
+                      class="py-1 px-2 bg-vault-elevated text-vault-text text-[8px] rounded border border-vault-border cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      on:click={wipeWallet}
+                      class="py-1 px-2 bg-vault-danger text-white font-semibold text-[8px] rounded border-none cursor-pointer"
+                    >
+                      Confirm Wipe
+                    </button>
+                  </div>
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- ═══════════════════ HISTORY MODAL ═══════════════════ -->
+  {#if showHistoryModal}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
+      <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left">
+        <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
+          <h3 class="text-sm font-semibold text-vault-text flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Transaction History
+          </h3>
+          <button on:click={() => showHistoryModal = false} class="text-vault-text-dim hover:text-vault-text border-none bg-transparent cursor-pointer" aria-label="Close history">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
-        {#if isBiometricSupported}
-          <div class="flex items-center justify-between p-2.5 bg-vault-black/30 border border-vault-border rounded-xl w-full select-none">
-            <div class="flex flex-col gap-0.5 text-left">
-              <span class="text-[10px] font-semibold text-vault-text block">Biometric Wallet Unlock</span>
-              <span class="text-[8px] text-vault-text-dim block font-sans">Unlock wallet credentials using platform biometrics</span>
+        <div class="p-4 max-h-[400px] overflow-y-auto">
+          {#if txHistory.length === 0}
+            <div class="flex flex-col items-center justify-center py-8 text-center">
+              <svg class="w-10 h-10 text-vault-border mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span class="text-[11px] text-vault-text-dim font-medium">No transactions yet</span>
+              <span class="text-[9px] text-vault-text-dim/60 mt-0.5">Send or swap crypto to see history here</span>
             </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={biometricActive}
-                on:change={handleToggleBiometrics}
-                class="sr-only peer"
-              />
-              <div class="w-8 h-4 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-vault-accent"></div>
-            </label>
-          </div>
-        {/if}
-
-        <div class="border-t border-vault-border pt-3 mt-2 space-y-2 text-left">
-          <span class="text-xs font-semibold text-vault-text block">Connected dApp Sessions</span>
-          {#if activeWCSessions.length === 0}
-            <div class="text-[9px] text-vault-text-dim py-1">No active external dApp connections.</div>
           {:else}
             <div class="space-y-1.5">
-              {#each activeWCSessions as session}
-                <div class="flex items-center justify-between p-2 bg-vault-black/20 border border-vault-border rounded-xl">
-                  <div class="flex items-center gap-2">
-                    <span class="text-base">{session.logo}</span>
-                    <div>
-                      <span class="text-[10px] font-bold block text-vault-text">{session.name}</span>
-                      <a href={session.url} target="_blank" rel="noreferrer" class="text-[8px] text-vault-accent hover:underline block -mt-0.5">{session.url}</a>
+              {#each txHistory as tx}
+                <div class="p-2.5 bg-vault-elevated/50 border border-vault-border/40 rounded-xl space-y-1">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-1.5">
+                      <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px]
+                        {tx.type === 'send' ? 'bg-orange-500/10 text-orange-400' : tx.type === 'swap' ? 'bg-blue-500/10 text-blue-400' : 'bg-vault-accent/10 text-vault-accent'}">
+                        {tx.type === 'send' ? '↗' : tx.type === 'swap' ? '⇄' : '↙'}
+                      </div>
+                      <div>
+                        <span class="text-[10px] font-bold text-vault-text capitalize block leading-none">{tx.type}</span>
+                        <span class="text-[8px] text-vault-text-dim">{tx.asset} • {getRelativeTime(tx.timestamp)}</span>
+                      </div>
+                    </div>
+                    <div class="text-right">
+                      <span class="text-[10px] font-bold font-mono text-vault-text block leading-none">
+                        {tx.type === 'send' ? '-' : '+'}{tx.amount}
+                      </span>
+                      <span class="text-[7px] font-mono text-vault-text-dim truncate block max-w-[80px]">
+                        {tx.to ? tx.to.slice(0, 6) + '...' + tx.to.slice(-4) : ''}
+                      </span>
                     </div>
                   </div>
-                  <div class="flex items-center gap-1.5">
-                    <button
-                      on:click={() => triggerMockSignRequest(session)}
-                      class="py-1 px-2 text-[8px] bg-vault-accent text-vault-black font-semibold rounded-lg hover:bg-vault-accent-hover cursor-pointer border-none"
+                  {#if tx.hash}
+                    <a
+                      href={getExplorerUrl(tx.hash, tx.chain)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="text-[8px] text-vault-accent hover:underline font-mono flex items-center gap-0.5"
                     >
-                      Sign Msg
-                    </button>
-                    <button
-                      on:click={() => handleDisconnectWCSession(session.id)}
-                      class="py-1 px-2 text-[8px] bg-vault-danger/10 text-vault-danger font-semibold rounded-lg hover:bg-vault-danger/20 cursor-pointer border-none"
-                    >
-                      Disconnect
-                    </button>
-                  </div>
+                      <span class="truncate">{tx.hash.slice(0, 12)}...{tx.hash.slice(-6)}</span>
+                      <svg class="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/>
+                        <line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                    </a>
+                  {/if}
                 </div>
               {/each}
             </div>
           {/if}
         </div>
 
-        {#if showMnemonicOnDashboard}
-          <div class="relative bg-vault-black/40 border border-vault-border rounded-xl p-3 font-mono text-xs select-none mt-2">
-            <div class="grid grid-cols-3 gap-2 {dashboardBlur ? 'blur-sm select-none pointer-events-none' : ''}">
-              {#each $walletState.mnemonic.split(' ') as word, idx}
-                <div class="flex items-center gap-1.5 py-1 px-1.5 bg-vault-elevated border border-vault-border-subtle rounded-lg text-[10px]">
-                  <span class="text-vault-text-dim text-[9px] w-3">{idx + 1}</span>
-                  <span class="text-vault-text font-semibold">{word}</span>
+        <div class="px-5 py-3 bg-vault-elevated border-t border-vault-border flex justify-between items-center">
+          {#if txHistory.length > 0}
+            <button
+              on:click={clearTxHistory}
+              class="py-1 px-2 text-[9px] bg-vault-danger/10 text-vault-danger font-semibold rounded-lg hover:bg-vault-danger/20 cursor-pointer border-none"
+            >
+              Clear All
+            </button>
+          {:else}
+            <div></div>
+          {/if}
+          <button
+            on:click={() => showHistoryModal = false}
+            class="py-1.5 px-3 text-xs bg-transparent text-vault-text hover:text-vault-text-dim font-medium rounded-xl cursor-pointer border-none"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ═══════════════════ ADDRESS BOOK / CONTACTS MODAL ═══════════════════ -->
+  {#if showAddressBook}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
+      <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left">
+        <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
+          <h3 class="text-sm font-semibold text-vault-text flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            Address Book
+          </h3>
+          <button on:click={() => showAddressBook = false} class="text-vault-text-dim hover:text-vault-text border-none bg-transparent cursor-pointer" aria-label="Close address book">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="p-4 max-h-[400px] overflow-y-auto space-y-3">
+          {#if contacts.length === 0 && !showAddContactForm}
+            <div class="flex flex-col items-center justify-center py-8 text-center">
+              <svg class="w-10 h-10 text-vault-border mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <line x1="19" y1="8" x2="19" y2="14"/>
+                <line x1="22" y1="11" x2="16" y2="11"/>
+              </svg>
+              <span class="text-[11px] text-vault-text-dim font-medium">No contacts yet</span>
+              <span class="text-[9px] text-vault-text-dim/60 mt-0.5">Save addresses for easy sending</span>
+            </div>
+          {:else}
+            <div class="space-y-1.5">
+              {#each contacts as contact}
+                <div class="p-2.5 bg-vault-elevated/50 border border-vault-border/40 rounded-xl">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-[11px] font-bold text-vault-text">{contact.label}</span>
+                    <button
+                      on:click={() => removeContact(contact.id)}
+                      class="text-[8px] text-vault-danger/60 hover:text-vault-danger cursor-pointer bg-transparent border-none"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div class="space-y-0.5">
+                    {#if contact.evmAddress}
+                      <div class="flex items-center gap-1">
+                        <span class="text-[7px] text-vault-text-dim uppercase font-bold w-6">EVM</span>
+                        <span class="font-mono text-[8px] text-vault-text truncate">{contact.evmAddress}</span>
+                      </div>
+                    {/if}
+                    {#if contact.solAddress}
+                      <div class="flex items-center gap-1">
+                        <span class="text-[7px] text-vault-text-dim uppercase font-bold w-6">SOL</span>
+                        <span class="font-mono text-[8px] text-vault-text truncate">{contact.solAddress}</span>
+                      </div>
+                    {/if}
+                    {#if contact.btcAddress}
+                      <div class="flex items-center gap-1">
+                        <span class="text-[7px] text-vault-text-dim uppercase font-bold w-6">BTC</span>
+                        <span class="font-mono text-[8px] text-vault-text truncate">{contact.btcAddress}</span>
+                      </div>
+                    {/if}
+                  </div>
                 </div>
               {/each}
             </div>
+          {/if}
 
-            {#if dashboardBlur}
-              <div class="absolute inset-0 flex flex-col items-center justify-center bg-vault-surface/40 backdrop-blur-md rounded-xl p-3 text-center">
+          <!-- Add Contact Form -->
+          {#if showAddContactForm}
+            <div class="space-y-2 bg-vault-black/30 border border-vault-border/50 rounded-xl p-3 animate-scale-up">
+              <span class="text-[10px] font-bold text-vault-text block">New Contact</span>
+              <input
+                type="text"
+                bind:value={newContactLabel}
+                placeholder="Contact name"
+                class="input py-1.5 text-[10px] bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-lg px-2.5"
+              />
+              <input
+                type="text"
+                bind:value={newContactEvm}
+                placeholder="EVM address (0x...)"
+                class="input py-1.5 text-[10px] bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-lg px-2.5"
+              />
+              <input
+                type="text"
+                bind:value={newContactSol}
+                placeholder="Solana address"
+                class="input py-1.5 text-[10px] bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-lg px-2.5"
+              />
+              <input
+                type="text"
+                bind:value={newContactBtc}
+                placeholder="Bitcoin address (bc1...)"
+                class="input py-1.5 text-[10px] bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-lg px-2.5"
+              />
+              <div class="flex gap-1.5">
                 <button
-                  on:click={() => dashboardBlur = false}
-                  class="py-1.5 px-4 bg-vault-accent text-vault-black font-semibold text-[10px] rounded-lg cursor-pointer hover:bg-vault-accent-hover transition-all"
+                  on:click={() => showAddContactForm = false}
+                  class="flex-1 py-1 text-[9px] bg-transparent text-vault-text hover:text-vault-text-dim font-medium rounded-lg cursor-pointer border border-vault-border"
                 >
-                  Reveal
+                  Cancel
+                </button>
+                <button
+                  on:click={addContact}
+                  disabled={!newContactLabel.trim()}
+                  class="flex-1 py-1 text-[9px] bg-vault-accent text-vault-black font-semibold rounded-lg cursor-pointer border-none hover:bg-vault-accent-hover disabled:opacity-40"
+                >
+                  Save Contact
                 </button>
               </div>
-            {/if}
-          </div>
-        {/if}
+            </div>
+          {/if}
+        </div>
+
+        <div class="px-5 py-3 bg-vault-elevated border-t border-vault-border flex justify-between items-center">
+          <button
+            on:click={() => { showAddContactForm = !showAddContactForm; }}
+            class="py-1.5 px-3 text-[10px] bg-vault-accent/10 text-vault-accent font-semibold rounded-lg hover:bg-vault-accent/20 cursor-pointer border border-vault-accent/20 flex items-center gap-1"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            {showAddContactForm ? 'Cancel' : 'Add Contact'}
+          </button>
+          <button
+            on:click={() => showAddressBook = false}
+            class="py-1.5 px-3 text-xs bg-transparent text-vault-text hover:text-vault-text-dim font-medium rounded-xl cursor-pointer border-none"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   {/if}
@@ -1930,6 +2230,13 @@
                     </button>
                   {/each}
                 {/if}
+                <button
+                  type="button"
+                  on:click={() => { showContactPicker = false; showAddressBook = true; showAddContactForm = false; }}
+                  class="w-full p-1.5 text-center text-[9px] text-vault-accent hover:text-vault-accent-hover font-semibold border-t border-vault-border/30 mt-1 cursor-pointer bg-transparent border-x-0 border-b-0"
+                >
+                  Manage Contacts
+                </button>
               </div>
             {/if}
           </div>
@@ -1974,7 +2281,7 @@
                 Tx Hash: <span class="font-mono">{txHash}</span>
               </p>
               <a
-                href={sendAsset.includes('Base') || sendAsset === 'ETH' ? `https://sepolia.basescan.org/tx/${txHash}` : `https://solscan.io/tx/${txHash}?cluster=devnet`}
+                href={getExplorerUrl(txHash, sendAssetObject?.chainId || 'base-sepolia')}
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-[10px] text-vault-accent hover:underline font-semibold block"
