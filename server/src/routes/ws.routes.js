@@ -193,9 +193,12 @@ async function wsRoutes(fastify) {
       // ─── WebRTC Signaling Relay ────────────────────────────────
       const callEventTypes = ['call_invite', 'call_accept', 'call_reject', 'call_hangup', 'webrtc_sdp', 'webrtc_ice'];
       if (callEventTypes.includes(data.type) && data.recipientId) {
+        fastify.log.info({ type: data.type, userId, recipientId: data.recipientId }, 'WebRTC signaling event received');
+
         // Validate recipientId is a real user
         const recipient = await fastify.store.getUserById(data.recipientId);
         if (!recipient) {
+          fastify.log.warn({ recipientId: data.recipientId }, 'WebRTC signaling failed: Invalid recipient');
           socket.send(JSON.stringify({ type: 'error', message: 'Invalid call recipient' }));
           return;
         }
@@ -204,18 +207,22 @@ async function wsRoutes(fastify) {
         if (data.type === 'webrtc_sdp' || data.type === 'webrtc_ice') {
           const activePeer = fastify.store.getActiveCall(userId);
           if (!activePeer || activePeer !== data.recipientId) {
+            fastify.log.warn({ type: data.type, userId, recipientId: data.recipientId, activePeer }, 'WebRTC signaling check failed: No active call session');
             socket.send(JSON.stringify({ type: 'error', message: 'No active call session' }));
             return;
           }
         }
 
         if (data.type === 'call_accept') {
+          fastify.log.info({ userId, recipientId: data.recipientId }, 'WebRTC call_accept: Registering call mapping');
           fastify.store.registerCall(userId, data.recipientId);
         } else if (data.type === 'call_hangup') {
+          fastify.log.info({ userId }, 'WebRTC call_hangup: Unregistering call mapping');
           fastify.store.unregisterCall(userId);
         }
 
         const recipientSockets = fastify.store.getConnections(data.recipientId);
+        fastify.log.info({ type: data.type, recipientId: data.recipientId, socketCount: recipientSockets.size }, 'Forwarding WebRTC signaling event');
         const payload = JSON.stringify({
           ...data,
           senderId: userId,
