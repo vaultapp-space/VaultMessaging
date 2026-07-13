@@ -279,7 +279,8 @@
               type={showPassword ? 'text' : 'password'}
               bind:value={password}
               placeholder={mode === 'register' ? 'Min 12 characters' : 'Enter password'}
-              class="input pr-10"
+              class="input"
+              style="padding-right: 2.5rem;"
               disabled={loading}
               autocomplete={mode === 'register' ? 'new-password' : 'current-password'}
             />

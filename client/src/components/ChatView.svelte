@@ -1374,7 +1374,8 @@
           type="text"
           bind:value={searchQuery}
           placeholder="Search messages in this chat..."
-          class="input pl-8 py-1.5 text-xs bg-vault-elevated border-vault-border-subtle"
+          class="input py-1.5 text-xs bg-vault-elevated border-vault-border-subtle"
+          style="padding-left: 2rem;"
         />
         <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-vault-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8" />

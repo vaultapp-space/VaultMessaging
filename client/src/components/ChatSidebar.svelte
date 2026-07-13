@@ -392,7 +392,8 @@
         bind:value={searchQuery}
         on:input={handleSearch}
         placeholder="Search users..."
-        class="input pl-9 py-2 text-xs bg-vault-elevated border-vault-border-subtle"
+        class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle"
+        style="padding-left: 2.25rem;"
       />
     </div>
   </div>
