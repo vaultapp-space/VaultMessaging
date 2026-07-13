@@ -22,8 +22,8 @@ async function attachmentRoutes(fastify) {
   }, async (request, reply) => {
     const { filename, mimeType, ciphertext, burnOnRead } = request.body;
     
-    // Save attachment in memory store
-    const id = fastify.store.saveAttachment(filename, mimeType, ciphertext, burnOnRead, request.user.id);
+    // Save attachment in disk-backed store
+    const id = await fastify.store.saveAttachment(filename, mimeType, ciphertext, burnOnRead, request.user.id);
     
     return reply.code(201).send({ id });
   });
@@ -43,7 +43,7 @@ async function attachmentRoutes(fastify) {
   }, async (request, reply) => {
     const { id } = request.params;
     
-    const attachment = fastify.store.getAttachment(id);
+    const attachment = await fastify.store.getAttachment(id);
     if (!attachment) {
       return reply.code(404).send({ error: 'Attachment not found or expired' });
     }
@@ -53,15 +53,21 @@ async function attachmentRoutes(fastify) {
       return reply.code(403).send({ error: 'Forbidden' });
     }
 
+    // Read ciphertext from disk (chunk 0)
+    const ciphertext = await fastify.store.getChunk(id, 0);
+    if (!ciphertext) {
+      return reply.code(404).send({ error: 'Attachment file not found' });
+    }
+
     const payload = {
       filename: attachment.filename,
       mimeType: attachment.mimeType,
-      ciphertext: attachment.ciphertext
+      ciphertext: ciphertext
     };
 
     if (attachment.burn_on_read) {
-      fastify.store.media.delete(id);
-      fastify.log.info({ attachmentId: id }, 'Burn-on-read: purged attachment from memory');
+      await fastify.store.deleteAttachment(id);
+      fastify.log.info({ attachmentId: id }, 'Burn-on-read: purged attachment from disk and DB');
     }
     
     return reply.send(payload);

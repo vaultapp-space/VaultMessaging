@@ -7,6 +7,7 @@ import {
   generateKeyPair,
   exportPublicKeyBase64,
   importPublicKey,
+  importECDSAPublicKey,
   deriveAESKey,
   hmacSHA256,
   encrypt,
@@ -64,7 +65,7 @@ export class SenderKeySession {
   /** Initialize or update a peer's Sender Key using their distributed package. */
   async importDistributionPackage(pack) {
     this.chainKey = new Uint8Array(atob(pack.chainKey).split('').map(c => c.charCodeAt(0)));
-    this.signingPubKey = await importPublicKey(pack.signingPubKey, { name: 'ECDSA', namedCurve: 'P-256' }, ['verify']);
+    this.signingPubKey = await importECDSAPublicKey(pack.signingPubKey);
     this.messageNumber = pack.messageNumber;
   }
 
@@ -162,5 +163,68 @@ export class SenderKeySession {
 
     const aesKey = await deriveAESKey(msgKey, undefined, 'vault-group-encrypt');
     return await decrypt(aesKey, packet.iv, packet.ciphertext);
+  }
+
+  async serialize() {
+    let signingPubKeyJwk = null;
+    if (this.signingPubKey) {
+      signingPubKeyJwk = await crypto.subtle.exportKey('jwk', this.signingPubKey);
+    }
+    let signingPrivKeyJwk = null;
+    if (this.signingPrivKey) {
+      signingPrivKeyJwk = await crypto.subtle.exportKey('jwk', this.signingPrivKey);
+    }
+
+    const skippedKeysObj = {};
+    for (const [key, val] of this.skippedKeys.entries()) {
+      skippedKeysObj[key] = toBase64(val);
+    }
+
+    return {
+      senderId: this.senderId,
+      groupId: this.groupId,
+      chainKey: this.chainKey ? toBase64(this.chainKey) : null,
+      messageNumber: this.messageNumber,
+      signingPubKeyJwk,
+      signingPrivKeyJwk,
+      skippedKeys: skippedKeysObj
+    };
+  }
+
+  static async deserialize(data) {
+    const session = new SenderKeySession(data.senderId, data.groupId);
+    session.chainKey = data.chainKey ? new Uint8Array(atob(data.chainKey).split('').map(c => c.charCodeAt(0))) : null;
+    session.messageNumber = data.messageNumber;
+
+    if (data.signingPubKeyJwk) {
+      session.signingPubKey = await crypto.subtle.importKey(
+        'jwk',
+        data.signingPubKeyJwk,
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        true,
+        ['verify']
+      );
+    }
+
+    if (data.signingPrivKeyJwk) {
+      session.signingPrivKey = await crypto.subtle.importKey(
+        'jwk',
+        data.signingPrivKeyJwk,
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        true,
+        ['sign']
+      );
+    }
+
+    session.skippedKeys = new Map();
+    if (data.skippedKeys) {
+      for (const [key, val] of Object.entries(data.skippedKeys)) {
+        const num = parseInt(key, 10);
+        const bytes = new Uint8Array(atob(val).split('').map(c => c.charCodeAt(0)));
+        session.skippedKeys.set(num, bytes);
+      }
+    }
+
+    return session;
   }
 }

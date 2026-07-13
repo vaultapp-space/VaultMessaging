@@ -22,17 +22,9 @@ async function chunkRoutes(fastify) {
   }, async (request, reply) => {
     const { filename, mimeType, totalChunks, burnOnRead } = request.body;
     
-    // Save placeholder attachment in memory store
-    const id = fastify.store.saveAttachment(filename, mimeType, '', burnOnRead, request.user.id);
+    // Save placeholder attachment in disk-backed store
+    const id = await fastify.store.saveAttachment(filename, mimeType, totalChunks, burnOnRead, request.user.id);
     
-    // Supplement store data with chunk details
-    const attachment = fastify.store.getAttachment(id);
-    if (attachment) {
-      attachment.totalChunks = totalChunks;
-      attachment.uploadedChunks = 0;
-      attachment.chunks = new Array(totalChunks).fill(null);
-    }
-
     return reply.code(201).send({ id });
   });
 
@@ -60,7 +52,7 @@ async function chunkRoutes(fastify) {
     const { id, index } = request.params;
     const { ciphertext } = request.body;
 
-    const attachment = fastify.store.getAttachment(id);
+    const attachment = await fastify.store.getAttachment(id);
     if (!attachment) {
       return reply.code(404).send({ error: 'Upload session not found' });
     }
@@ -73,11 +65,12 @@ async function chunkRoutes(fastify) {
       return reply.code(400).send({ error: 'Index out of bounds' });
     }
 
-    // Save chunk
-    attachment.chunks[index] = ciphertext;
-    attachment.uploadedChunks++;
-
-    return reply.send({ success: true, uploadedChunks: attachment.uploadedChunks });
+    // Save chunk to disk
+    await fastify.store.saveChunk(id, index, ciphertext);
+    
+    // Fetch updated count
+    const updatedAttachment = await fastify.store.getAttachment(id);
+    return reply.send({ success: true, uploadedChunks: updatedAttachment.uploadedChunks });
   });
 
   // ─── DOWNLOAD chunk index ───────────────────────────────
@@ -96,7 +89,7 @@ async function chunkRoutes(fastify) {
   }, async (request, reply) => {
     const { id, index } = request.params;
 
-    const attachment = fastify.store.getAttachment(id);
+    const attachment = await fastify.store.getAttachment(id);
     if (!attachment) {
       return reply.code(404).send({ error: 'Attachment not found or expired' });
     }
@@ -110,7 +103,7 @@ async function chunkRoutes(fastify) {
       return reply.code(400).send({ error: 'Index out of bounds' });
     }
 
-    const chunkCiphertext = attachment.chunks[index];
+    const chunkCiphertext = await fastify.store.getChunk(id, index);
     if (!chunkCiphertext) {
       return reply.code(404).send({ error: 'Chunk not uploaded yet' });
     }
@@ -120,9 +113,9 @@ async function chunkRoutes(fastify) {
       // If it is the last chunk, clear the whole attachment after dispatching
       if (index === attachment.totalChunks - 1) {
         // Schedule cleanup after sending response
-        setImmediate(() => {
-          fastify.store.media.delete(id);
-          fastify.log.info({ attachmentId: id }, 'Burn-on-read: purged entire chunked attachment from memory');
+        setImmediate(async () => {
+          await fastify.store.deleteAttachment(id);
+          fastify.log.info({ attachmentId: id }, 'Burn-on-read: purged entire chunked attachment from disk and DB');
         });
       }
     }

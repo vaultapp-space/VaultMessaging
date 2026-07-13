@@ -27,7 +27,7 @@ async function groupRoutes(fastify) {
     // Ensure requesting user is always in the group members
     const allMembers = Array.from(new Set([request.user.id, ...members]));
     
-    const group = fastify.store.createGroup(name, allMembers);
+    const group = await fastify.store.createGroup(name, allMembers);
     
     return reply.code(201).send(group);
   });
@@ -36,7 +36,7 @@ async function groupRoutes(fastify) {
   fastify.get('/api/groups', {
     preValidation: [fastify.authenticate]
   }, async (request, reply) => {
-    const list = fastify.store.getGroupsForUser(request.user.id);
+    const list = await fastify.store.getGroupsForUser(request.user.id);
     return reply.send(list);
   });
 

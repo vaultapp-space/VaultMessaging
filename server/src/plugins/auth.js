@@ -23,13 +23,13 @@ async function authPlugin(fastify) {
       await request.jwtVerify();
 
       // Verify session still exists in store
-      const session = fastify.store.getSession(request.user.jti);
+      const session = await fastify.store.getSession(request.user.jti);
       if (!session) {
         return reply.code(401).send({ error: 'Session expired' });
       }
 
       // Touch session last-seen
-      fastify.store.touchSession(request.user.jti);
+      await fastify.store.touchSession(request.user.jti);
     } catch (err) {
       return reply.code(401).send({ error: 'Unauthorized' });
     }

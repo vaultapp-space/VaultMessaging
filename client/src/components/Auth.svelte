@@ -1,18 +1,29 @@
 <script>
-  import { currentUser, setUser, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, loginPassword } from '../lib/stores/session.js';
+  import { currentUser, setUser, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { register, login, updateKeys, fetchSalt, saveEncryptedVault } from '../lib/api/http.js';
   import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, encryptIdentityVault, decryptIdentityVault } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
+  import { RatchetSession } from '../lib/crypto/ratchet.js';
+  import { SenderKeySession } from '../lib/crypto/senderkeys.js';
 
   let mode = 'register'; // 'register' | 'login'
   let username = '';
   let password = '';
   let error = '';
   let loading = false;
+  let showPassword = false;
 
   async function handleRegister() {
     if (username.length < 3) { error = 'Username must be at least 3 characters'; return; }
-    if (password.length < 8) { error = 'Password must be at least 8 characters'; return; }
+    if (username.length > 20) { error = 'Username must be at most 20 characters'; return; }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      error = 'Username can only contain letters, numbers, and underscores';
+      return;
+    }
+    if (password.length < 12) {
+      error = 'Password must be at least 12 characters for strong end-to-end encryption';
+      return;
+    }
 
     error = '';
     loading = true;
@@ -44,7 +55,15 @@
       const identityKeyBase64 = btoa(JSON.stringify({ ecdh: ecdhPub, ecdsa: ecdsaPub }));
       const prekeySigBase64 = toBase64(sig);
 
-      // Register with server
+      // Create initial zero-knowledge identity vault before registering
+      const initialVault = await encryptIdentityVault({
+        identityKeyPair: { ecdh: ikp_ecdh, ecdsa: ikp_ecdsa },
+        signedPrekeyPair: spk,
+        localBackupKeyBase64: null,
+        localBackupPassphrase: null
+      }, password);
+
+      // Register with server atomically with vault backup
       const user = await register({
         username,
         password,
@@ -53,6 +72,7 @@
         prekeySig: prekeySigBase64,
         oneTimePrekeys: prekeys.publicKeys,
         salt: saltBase64,
+        encryptedVault: initialVault,
       });
 
       // Store keys in volatile memory ONLY
@@ -65,15 +85,6 @@
       }));
       oneTimePrekeyPairs.set(otpPairsWithPub);
       loginPassword.set(password);
-
-      // Create and save initial zero-knowledge identity vault on server
-      const initialVault = await encryptIdentityVault({
-        identityKeyPair: { ecdh: ikp_ecdh, ecdsa: ikp_ecdsa },
-        signedPrekeyPair: spk,
-        localBackupKeyBase64: null,
-        localBackupPassphrase: null
-      }, password);
-      await saveEncryptedVault(initialVault);
 
       // Set user session
       setUser(user);
@@ -122,6 +133,25 @@
             localBackupPassphrase.set(vault.localBackupPassphrase);
             localBackupEnabled.set(true);
           }
+
+          // Restore Double Ratchet Sessions
+          if (vault.ratchetSessions) {
+            const sessionsMap = new Map();
+            for (const [peerId, sessionData] of Object.entries(vault.ratchetSessions)) {
+              sessionsMap.set(peerId, await RatchetSession.deserialize(sessionData));
+            }
+            ratchetSessions.set(sessionsMap);
+          }
+
+          // Restore Group Sender Keys
+          if (vault.groupSenderKeys) {
+            const groupKeysMap = new Map();
+            for (const [key, sessionData] of Object.entries(vault.groupSenderKeys)) {
+              groupKeysMap.set(key, await SenderKeySession.deserialize(sessionData));
+            }
+            groupSenderKeys.set(groupKeysMap);
+          }
+
           isRestored = true;
         } catch (decErr) {
           console.error('Failed to decrypt identity vault, regenerating keys:', decErr);
@@ -191,6 +221,7 @@
   function toggleMode() {
     mode = mode === 'register' ? 'login' : 'register';
     error = '';
+    showPassword = false;
   }
 </script>
 
@@ -242,14 +273,35 @@
           <label for="auth-password" class="block text-xs font-medium text-vault-text-secondary mb-1.5 uppercase tracking-wider">
             Password
           </label>
-          <input
-            id="auth-password"
-            type="password"
-            bind:value={password}
-            placeholder={mode === 'register' ? 'Min 8 characters' : 'Enter password'}
-            class="input"
-            disabled={loading}
-          />
+          <div class="relative">
+            <input
+              id="auth-password"
+              type={showPassword ? 'text' : 'password'}
+              bind:value={password}
+              placeholder={mode === 'register' ? 'Min 12 characters' : 'Enter password'}
+              class="input pr-10"
+              disabled={loading}
+              autocomplete={mode === 'register' ? 'new-password' : 'current-password'}
+            />
+            <button
+              type="button"
+              class="absolute inset-y-0 right-0 pr-3 flex items-center text-vault-text-dim hover:text-vault-accent transition-colors"
+              on:click={() => showPassword = !showPassword}
+              tabindex="-1"
+            >
+              {#if showPassword}
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              {:else}
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              {/if}
+            </button>
+          </div>
         </div>
 
         <!-- Error -->

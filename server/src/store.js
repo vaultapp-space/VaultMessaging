@@ -1,368 +1,407 @@
 // ============================================================
-// Vault — In-Memory Data Store
-// Drop-in replacement for PostgreSQL + Redis during prototyping.
-// Same API shape, backed by Maps. Swap to real drivers later.
-//
-// PERFORMANCE: Uses secondary indexes for O(1) lookups instead
-// of O(n) full scans on every query.
+// Vault — PostgreSQL + Redis Production Data Store
 // ============================================================
 
+import pg from 'pg';
+import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-class InMemoryStore {
+const { Pool } = pg;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+
+// Ensure uploads directory exists
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const pgConfig = {
+  host: process.env.PGHOST || '127.0.0.1',
+  port: parseInt(process.env.PGPORT || '5432', 10),
+  user: process.env.PGUSER || 'vault',
+  password: process.env.PGPASSWORD || 'vault_dev_pass',
+  database: process.env.PGDATABASE || 'vault',
+};
+
+const redisConfig = {
+  host: process.env.REDIS_HOST || '127.0.0.1',
+  port: parseInt(process.env.REDIS_PORT || '6379', 10),
+};
+
+const initSchemaSQL = `
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS users (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username        VARCHAR(32) UNIQUE NOT NULL,
+    password_hash   TEXT NOT NULL,
+    identity_key    TEXT NOT NULL,
+    signed_prekey   TEXT NOT NULL,
+    prekey_sig      TEXT NOT NULL,
+    salt            TEXT NOT NULL,
+    encrypted_vault TEXT,
+    created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
+
+CREATE TABLE IF NOT EXISTS one_time_prekeys (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    public_key      TEXT NOT NULL,
+    used            BOOLEAN DEFAULT FALSE,
+    uploaded_at     TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_otp_user_unused ON one_time_prekeys (user_id, used)
+    WHERE used = FALSE;
+
+CREATE TABLE IF NOT EXISTS encrypted_messages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sender_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ciphertext      TEXT NOT NULL,
+    ephemeral_key   TEXT,
+    message_number  INTEGER NOT NULL,
+    previous_chain  INTEGER DEFAULT 0,
+    sent_at         TIMESTAMPTZ DEFAULT now(),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    delivered       BOOLEAN DEFAULT FALSE,
+    read            BOOLEAN DEFAULT FALSE,
+    iv              TEXT,
+    group_id        TEXT,
+    attachment_id   TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_msg_recipient_undelivered
+    ON encrypted_messages (recipient_id, delivered, sent_at)
+    WHERE delivered = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_msg_expires ON encrypted_messages (expires_at);
+
+CREATE TABLE IF NOT EXISTS groups (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name            TEXT NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+    group_id        UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (group_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS attachments (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    filename        TEXT NOT NULL,
+    mime_type       TEXT NOT NULL,
+    total_chunks    INTEGER NOT NULL DEFAULT 1,
+    uploaded_chunks INTEGER NOT NULL DEFAULT 0,
+    burn_on_read    BOOLEAN DEFAULT FALSE,
+    owner_id        UUID REFERENCES users(id) ON DELETE SET NULL,
+    expires_at      TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS attachment_allowed_users (
+    attachment_id   UUID NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (attachment_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_expires ON attachments (expires_at);
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subscription    TEXT NOT NULL,
+    PRIMARY KEY (user_id, subscription)
+);
+`;
+
+class DataStore {
   constructor() {
-    // "PostgreSQL" tables
-    this.users = new Map();            // id → user object
-    this.usernameIndex = new Map();    // username → id
-    this.prekeys = new Map();          // id → prekey object
-    this.messages = new Map();         // id → message object
-    this.media = new Map();            // id → media chunk object
-    this.groups = new Map();           // id → group object
+    this.pool = new Pool(pgConfig);
+    this.redis = new Redis(redisConfig);
+    this.wsConnections = new Map(); // userId -> Set of socket objects
+    this.activeCalls = new Map();   // userId -> peerId
 
-    // ─── Secondary Indexes (for O(1) lookups) ──────────────
-    this.prekeysByUser = new Map();            // userId → [prekeyId, ...]
-    this.undeliveredByRecipient = new Map();   // recipientId → Set<msgId>
-    this.messagesByConversation = new Map();   // conversationKey → msgId[] (sorted desc by ts)
-    this.peersByUser = new Map();              // userId → Set<peerId>
-    this.mediaByMessage = new Map();           // messageId → Set<mediaId>
-
-    // "Redis" structures
-    this.sessions = new Map();         // jwtId → session data
-    this.pendingQueues = new Map();    // recipientId → [{ score, messageId }]
-    this.wsConnections = new Map();    // userId → Set of socket refs
-    this.rateLimits = new Map();       // key → { count, resetAt }
-    this.activeCalls = new Map();      // userId → peerId
-  }
-
-  // ─── Helpers ──────────────────────────────────────────────
-
-  /** Canonical conversation key for two user IDs (order-independent). */
-  _convKey(id1, id2) {
-    return id1 < id2 ? `${id1}:${id2}` : `${id2}:${id1}`;
-  }
-
-  /** Insert a message ID into the sorted conversation index (descending by ts). */
-  _insertIntoConvIndex(convKey, msgId, ts) {
-    if (!this.messagesByConversation.has(convKey)) {
-      this.messagesByConversation.set(convKey, []);
-    }
-    const arr = this.messagesByConversation.get(convKey);
-    // Binary insert (descending by timestamp)
-    let lo = 0, hi = arr.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      const midMsg = this.messages.get(arr[mid]);
-      if (midMsg && midMsg._ts > ts) lo = mid + 1;
-      else hi = mid;
-    }
-    arr.splice(lo, 0, msgId);
-  }
-
-  /** Track a peer relationship for both users. */
-  _trackPeers(userId1, userId2) {
-    if (!this.peersByUser.has(userId1)) this.peersByUser.set(userId1, new Set());
-    if (!this.peersByUser.has(userId2)) this.peersByUser.set(userId2, new Set());
-    this.peersByUser.get(userId1).add(userId2);
-    this.peersByUser.get(userId2).add(userId1);
+    // Initialize Schema
+    this.pool.query(initSchemaSQL)
+      .then(() => console.log('[DB] Schema initialized successfully'))
+      .catch((err) => console.error('[DB] Schema initialization failed:', err));
   }
 
   // ─── Users ────────────────────────────────────────────────
 
-  createUser({ username, passwordHash, identityKey, signedPrekey, prekeySig, salt }) {
-    const id = uuidv4();
-    const user = {
-      id,
-      username,
-      password_hash: passwordHash,
-      identity_key: identityKey,
-      signed_prekey: signedPrekey,
-      prekey_sig: prekeySig,
-      salt: salt,
-      created_at: new Date().toISOString(),
-    };
-    this.users.set(id, user);
-    this.usernameIndex.set(username.toLowerCase(), id);
-    return { ...user };
+  async createUser({ username, passwordHash, identityKey, signedPrekey, prekeySig, salt, encryptedVault = null }) {
+    const res = await this.pool.query(
+      `INSERT INTO users (username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault, created_at`,
+      [username, passwordHash, identityKey, signedPrekey, prekeySig, salt, encryptedVault]
+    );
+    return res.rows[0];
   }
 
-  updateUserKeys(id, { identityKey, signedPrekey, prekeySig }) {
-    const user = this.users.get(id);
-    if (!user) return null;
-    user.identity_key = identityKey;
-    user.signed_prekey = signedPrekey;
-    user.prekey_sig = prekeySig;
-    return { ...user };
+  async updateUserKeys(id, { identityKey, signedPrekey, prekeySig }) {
+    const res = await this.pool.query(
+      `UPDATE users SET identity_key = $1, signed_prekey = $2, prekey_sig = $3
+       WHERE id = $4
+       RETURNING id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt`,
+      [identityKey, signedPrekey, prekeySig, id]
+    );
+    return res.rows[0] || null;
   }
 
-  updateSignedPrekey(id, signedPrekey, prekeySig) {
-    const user = this.users.get(id);
-    if (!user) return null;
-    user.signed_prekey = signedPrekey;
-    user.prekey_sig = prekeySig;
-    return { ...user };
+  async updateSignedPrekey(id, signedPrekey, prekeySig) {
+    const res = await this.pool.query(
+      `UPDATE users SET signed_prekey = $1, prekey_sig = $2
+       WHERE id = $3
+       RETURNING id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt`,
+      [signedPrekey, prekeySig, id]
+    );
+    return res.rows[0] || null;
   }
 
-  setEncryptedVault(id, encryptedVault) {
-    const user = this.users.get(id);
-    if (!user) return null;
-    user.encrypted_vault = encryptedVault;
-    return { ...user };
+  async setEncryptedVault(id, encryptedVault) {
+    const res = await this.pool.query(
+      `UPDATE users SET encrypted_vault = $1
+       WHERE id = $2
+       RETURNING id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault`,
+      [encryptedVault, id]
+    );
+    return res.rows[0] || null;
   }
 
-  resetPrekeys(userId, publicKeys) {
-    const userPrekeys = this.prekeysByUser.get(userId);
-    if (userPrekeys) {
-      for (const pkId of userPrekeys) {
-        this.prekeys.delete(pkId);
-      }
+  async resetPrekeys(userId, publicKeys) {
+    await this.pool.query(`DELETE FROM one_time_prekeys WHERE user_id = $1`, [userId]);
+    if (publicKeys.length > 0) {
+      await this.uploadPrekeys(userId, publicKeys);
     }
-    this.prekeysByUser.set(userId, []);
-    return this.uploadPrekeys(userId, publicKeys);
   }
 
   getDummySalt(username) {
-    const hash = crypto.createHash('sha256').update(username.toLowerCase() + '-salt-key').digest();
-    return hash.toString('base64').substring(0, 22);
+    return crypto.createHmac('sha256', 'dummy_salt_key')
+      .update(username)
+      .digest('base64')
+      .substring(0, 24);
   }
 
-  getUserByUsername(username) {
-    const id = this.usernameIndex.get(username.toLowerCase());
-    if (!id) return null;
-    return { ...this.users.get(id) };
+  async getUserByUsername(username) {
+    const res = await this.pool.query(
+      `SELECT id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault FROM users
+       WHERE LOWER(username) = LOWER($1)`,
+      [username]
+    );
+    return res.rows[0] || null;
   }
 
-  getUserById(id) {
-    const user = this.users.get(id);
-    return user ? { ...user } : null;
+  async getUserById(id) {
+    const res = await this.pool.query(
+      `SELECT id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault FROM users
+       WHERE id = $1`,
+      [id]
+    );
+    return res.rows[0] || null;
   }
 
-  // ─── One-Time Prekeys ────────────────────────────────────
+  // ─── Prekeys ──────────────────────────────────────────────
 
-  uploadPrekeys(userId, publicKeys) {
-    const created = [];
-    if (!this.prekeysByUser.has(userId)) {
-      this.prekeysByUser.set(userId, []);
-    }
-    const userPrekeys = this.prekeysByUser.get(userId);
-
-    for (const pk of publicKeys) {
-      const id = uuidv4();
-      const prekey = {
-        id,
-        user_id: userId,
-        public_key: pk,
-        used: false,
-        uploaded_at: new Date().toISOString(),
-      };
-      this.prekeys.set(id, prekey);
-      userPrekeys.push(id);
-      created.push(prekey);
-    }
-    return created;
-  }
-
-  consumePrekey(userId) {
-    const userPrekeys = this.prekeysByUser.get(userId);
-    if (!userPrekeys || userPrekeys.length === 0) return null;
-
-    for (let i = 0; i < userPrekeys.length; i++) {
-      const pkId = userPrekeys[i];
-      const pk = this.prekeys.get(pkId);
-      if (pk && !pk.used) {
-        pk.used = true;
-        // Delete prekey from internal store map to prevent memory leak
-        this.prekeys.delete(pkId);
-        // Remove from user index array
-        userPrekeys.splice(i, 1);
-        return { ...pk };
+  async uploadPrekeys(userId, publicKeys) {
+    if (publicKeys.length === 0) return;
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const pk of publicKeys) {
+        await client.query(
+          `INSERT INTO one_time_prekeys (user_id, public_key) VALUES ($1, $2)`,
+          [userId, pk]
+        );
       }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
     }
-    return null;
   }
 
-  countUnusedPrekeys(userId) {
-    const userPrekeys = this.prekeysByUser.get(userId);
-    if (!userPrekeys) return 0;
-
-    let count = 0;
-    for (const pkId of userPrekeys) {
-      const pk = this.prekeys.get(pkId);
-      if (pk && !pk.used) count++;
-    }
-    return count;
+  async consumePrekey(userId) {
+    const res = await this.pool.query(
+      `UPDATE one_time_prekeys SET used = TRUE
+       WHERE id = (
+         SELECT id FROM one_time_prekeys
+         WHERE user_id = $1 AND used = FALSE
+         ORDER BY uploaded_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING public_key`,
+      [userId]
+    );
+    return res.rows[0] ? res.rows[0].public_key : null;
   }
 
-  // ─── Key Bundle ──────────────────────────────────────────
+  async countUnusedPrekeys(userId) {
+    const res = await this.pool.query(
+      `SELECT COUNT(*) as count FROM one_time_prekeys
+       WHERE user_id = $1 AND used = FALSE`,
+      [userId]
+    );
+    return parseInt(res.rows[0].count, 10);
+  }
 
-  getKeyBundle(username) {
-    const user = this.getUserByUsername(username);
+  async getKeyBundle(username) {
+    const user = await this.getUserByUsername(username);
     if (!user) return null;
-
-    const oneTimePrekey = this.consumePrekey(user.id);
-
+    const opk = await this.consumePrekey(user.id);
     return {
       identityKey: user.identity_key,
       signedPrekey: user.signed_prekey,
       prekeySig: user.prekey_sig,
-      oneTimePrekey: oneTimePrekey ? oneTimePrekey.public_key : null,
-      oneTimePrekeyId: oneTimePrekey ? oneTimePrekey.id : null,
+      oneTimePrekey: opk
     };
   }
 
-  // ─── Encrypted Messages ──────────────────────────────────
+  // ─── Messages ─────────────────────────────────────────────
 
-  createMessage({ senderId, recipientId, ciphertext, ephemeralKey, messageNumber, previousChain, expiresAt, iv, groupId = null, attachmentId = null }) {
-    const id = uuidv4();
-    const now = Date.now();
-    const msg = {
-      id,
-      sender_id: senderId,
-      recipient_id: recipientId,
-      ciphertext,
-      ephemeral_key: ephemeralKey,
-      message_number: messageNumber,
-      previous_chain: previousChain || 0,
-      sent_at: new Date(now).toISOString(),
-      _ts: now,  // Numeric timestamp for fast sorting
-      expires_at: expiresAt,
-      _expires_ts: new Date(expiresAt).getTime(),
-      delivered: false,
-      iv,
-      group_id: groupId
-    };
-    this.messages.set(id, msg);
+  async createMessage({ senderId, recipientId, ciphertext, ephemeralKey, messageNumber, previousChain, expiresAt, iv, groupId = null, attachmentId = null }) {
+    const res = await this.pool.query(
+      `INSERT INTO encrypted_messages (sender_id, recipient_id, ciphertext, ephemeral_key, message_number, previous_chain, expires_at, iv, group_id, attachment_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, sender_id, recipient_id, ciphertext, ephemeral_key, message_number, previous_chain, expires_at, sent_at, iv, group_id, attachment_id`,
+      [senderId, recipientId, ciphertext, ephemeralKey, messageNumber, previousChain, expiresAt, iv, groupId, attachmentId]
+    );
 
-    // Update secondary indexes
-    const convKey = this._convKey(senderId, recipientId);
-    this._insertIntoConvIndex(convKey, id, now);
-    this._trackPeers(senderId, recipientId);
+    const msg = res.rows[0];
 
-    // Track attachment mapping and authorize recipient
+    // Auto authorize recipient on attachment if any
     if (attachmentId) {
-      if (!this.mediaByMessage.has(id)) {
-        this.mediaByMessage.set(id, new Set());
-      }
-      this.mediaByMessage.get(id).add(attachmentId);
-
-      const mediaItem = this.media.get(attachmentId);
-      if (mediaItem) {
-        if (!mediaItem.allowed_users) {
-          mediaItem.allowed_users = new Set([mediaItem.owner_id || senderId]);
-        }
-        mediaItem.allowed_users.add(recipientId);
-      }
+      await this.authorizeAttachmentUser(attachmentId, recipientId);
     }
 
-    // Track as undelivered
-    if (!this.undeliveredByRecipient.has(recipientId)) {
-      this.undeliveredByRecipient.set(recipientId, new Set());
+    return msg;
+  }
+
+  async markDelivered(messageId) {
+    await this.pool.query(
+      `UPDATE encrypted_messages SET delivered = TRUE WHERE id = $1`,
+      [messageId]
+    );
+  }
+
+  async markRead(messageId) {
+    await this.pool.query(
+      `UPDATE encrypted_messages SET read = TRUE WHERE id = $1`,
+      [messageId]
+    );
+  }
+
+  async getUndeliveredMessages(recipientId) {
+    const res = await this.pool.query(
+      `SELECT m.*, u.username as sender_username FROM encrypted_messages m
+       JOIN users u ON m.sender_id = u.id
+       WHERE m.recipient_id = $1 AND m.delivered = FALSE
+       ORDER BY m.sent_at ASC`,
+      [recipientId]
+    );
+    return res.rows.map(row => ({
+      id: row.id,
+      sender_id: row.sender_id,
+      sender_username: row.sender_username,
+      recipient_id: row.recipient_id,
+      ciphertext: row.ciphertext,
+      ephemeral_key: row.ephemeral_key,
+      message_number: row.message_number,
+      previous_chain: row.previous_chain,
+      sent_at: row.sent_at,
+      expires_at: row.expires_at,
+      iv: row.iv,
+      group_id: row.group_id,
+      attachment_id: row.attachment_id,
+      read: row.read
+    }));
+  }
+
+  async getConversationMessages(userId1, userId2, limit = 50, before = null) {
+    let query = `
+      SELECT m.*, u.username as sender_username FROM encrypted_messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE (
+        (m.sender_id = $1 AND m.recipient_id = $2) OR
+        (m.sender_id = $2 AND m.recipient_id = $1)
+      )
+    `;
+    const params = [userId1, userId2, limit];
+    if (before) {
+      query += ` AND m.sent_at < $4`;
+      params.push(before);
     }
-    this.undeliveredByRecipient.get(recipientId).add(id);
-
-    return { ...msg };
+    query += ` ORDER BY m.sent_at DESC LIMIT $3`;
+    const res = await this.pool.query(query, params);
+    return res.rows.map(row => ({
+      id: row.id,
+      sender_id: row.sender_id,
+      sender_username: row.sender_username,
+      recipient_id: row.recipient_id,
+      ciphertext: row.ciphertext,
+      ephemeral_key: row.ephemeral_key,
+      message_number: row.message_number,
+      previous_chain: row.previous_chain,
+      sent_at: row.sent_at,
+      expires_at: row.expires_at,
+      iv: row.iv,
+      group_id: row.group_id,
+      attachment_id: row.attachment_id,
+      read: row.read
+    }));
   }
 
-  markDelivered(messageId) {
-    const msg = this.messages.get(messageId);
-    if (msg && !msg.delivered) {
-      msg.delivered = true;
-      // Remove from undelivered index
-      const undelivered = this.undeliveredByRecipient.get(msg.recipient_id);
-      if (undelivered) undelivered.delete(messageId);
-    }
+  async getConversationsForUser(userId) {
+    const res = await this.pool.query(
+      `SELECT DISTINCT ON (peer_id)
+         peer_id,
+         username as peer_username,
+         last_message_at
+       FROM (
+         SELECT recipient_id as peer_id, sent_at as last_message_at FROM encrypted_messages WHERE sender_id = $1
+         UNION ALL
+         SELECT sender_id as peer_id, sent_at as last_message_at FROM encrypted_messages WHERE recipient_id = $1
+       ) t
+       JOIN users u ON t.peer_id = u.id
+       ORDER BY peer_id, last_message_at DESC`,
+      [userId]
+    );
+    return res.rows.map(row => ({
+      peerId: row.peer_id,
+      peerUsername: row.peer_username,
+      lastMessageAt: row.last_message_at,
+      hasUndelivered: false
+    }));
   }
 
-  getUndeliveredMessages(recipientId) {
-    const undelivered = this.undeliveredByRecipient.get(recipientId);
-    if (!undelivered || undelivered.size === 0) return [];
+  // ─── Pending Queue (Redis) ───────────────────────────────
 
-    const results = [];
-    for (const msgId of undelivered) {
-      const msg = this.messages.get(msgId);
-      if (msg) results.push({ ...msg });
-    }
-    // Sort ascending by numeric timestamp (no Date allocation)
-    return results.sort((a, b) => a._ts - b._ts);
+  async enqueuePending(recipientId, messageId) {
+    await this.redis.sadd(`pending:${recipientId}`, messageId);
   }
 
-  getConversationMessages(userId1, userId2, limit = 50, before = null) {
-    const convKey = this._convKey(userId1, userId2);
-    const msgIds = this.messagesByConversation.get(convKey);
-    if (!msgIds || msgIds.length === 0) return [];
-
-    const beforeTs = before ? new Date(before).getTime() : Infinity;
-    const results = [];
-
-    // msgIds are sorted descending by timestamp — iterate and collect
-    for (const msgId of msgIds) {
-      if (results.length >= limit) break;
-      const msg = this.messages.get(msgId);
-      if (!msg) continue;
-      if (msg._ts >= beforeTs) continue;
-      results.push({ ...msg });
-    }
-    return results;
+  async dequeuePending(recipientId) {
+    const messages = await this.redis.smembers(`pending:${recipientId}`);
+    await this.redis.del(`pending:${recipientId}`);
+    return messages;
   }
 
-  getConversationsForUser(userId) {
-    const peers = this.peersByUser.get(userId);
-    if (!peers || peers.size === 0) return [];
-
-    const conversations = [];
-    for (const peerId of peers) {
-      const peer = this.getUserById(peerId);
-      if (!peer) continue;
-
-      // Get the latest message from the conversation index (first element = most recent)
-      const convKey = this._convKey(userId, peerId);
-      const msgIds = this.messagesByConversation.get(convKey);
-      let latest = null;
-      if (msgIds && msgIds.length > 0) {
-        latest = this.messages.get(msgIds[0]);
-      }
-
-      conversations.push({
-        peerId,
-        peerUsername: peer.username,
-        lastMessageAt: latest?.sent_at,
-        _lastTs: latest?._ts || 0,
-        hasUndelivered: latest && !latest.delivered && latest.recipient_id === userId,
-      });
-    }
-
-    // Sort by numeric timestamp (no Date allocation)
-    return conversations.sort((a, b) => b._lastTs - a._lastTs);
+  async removePending(recipientId, messageId) {
+    await this.redis.srem(`pending:${recipientId}`, messageId);
   }
 
-  // ─── Pending Delivery Queue (Redis analog) ───────────────
-
-  enqueuePending(recipientId, messageId) {
-    if (!this.pendingQueues.has(recipientId)) {
-      this.pendingQueues.set(recipientId, []);
-    }
-    this.pendingQueues.get(recipientId).push({
-      score: Date.now(),
-      messageId,
-    });
-  }
-
-  dequeuePending(recipientId) {
-    const queue = this.pendingQueues.get(recipientId);
-    if (!queue || queue.length === 0) return [];
-    const items = [...queue];
-    this.pendingQueues.set(recipientId, []);
-    return items.map(i => i.messageId);
-  }
-
-  removePending(recipientId, messageId) {
-    const queue = this.pendingQueues.get(recipientId);
-    if (!queue) return;
-    const idx = queue.findIndex(i => i.messageId === messageId);
-    if (idx !== -1) queue.splice(idx, 1);
-  }
-
-  // ─── WebSocket Registry (Redis analog) ───────────────────
+  // ─── WebSockets Connections (Volatile RAM) ────────────────
 
   registerConnection(userId, socket) {
     if (!this.wsConnections.has(userId)) {
@@ -372,10 +411,11 @@ class InMemoryStore {
   }
 
   unregisterConnection(userId, socket) {
-    const conns = this.wsConnections.get(userId);
-    if (conns) {
-      conns.delete(socket);
-      if (conns.size === 0) this.wsConnections.delete(userId);
+    if (this.wsConnections.has(userId)) {
+      this.wsConnections.get(userId).delete(socket);
+      if (this.wsConnections.get(userId).size === 0) {
+        this.wsConnections.delete(userId);
+      }
     }
   }
 
@@ -384,180 +424,222 @@ class InMemoryStore {
   }
 
   isOnline(userId) {
-    const conns = this.wsConnections.get(userId);
-    return conns && conns.size > 0;
+    return this.wsConnections.has(userId);
   }
 
-  // ─── Reaper — 24h Hard Deletion ──────────────────────────
+  // ─── Sessions (Redis) ─────────────────────────────────────
 
-  reap() {
-    const now = Date.now();
-    let reaped = 0;
-
-    // Collect expired message IDs first (avoid delete-while-iterate issues)
-    const expiredMsgIds = [];
-    for (const [id, msg] of this.messages) {
-      if (msg._expires_ts <= now) {
-        expiredMsgIds.push(id);
-      }
-    }
-
-    // Batch delete expired messages and their associated media
-    for (const id of expiredMsgIds) {
-      const msg = this.messages.get(id);
-      if (!msg) continue;
-
-      // Remove from pending queues
-      this.removePending(msg.recipient_id, id);
-
-      // Remove associated media using the index (O(k) not O(all_media))
-      const mediaIds = this.mediaByMessage.get(id);
-      if (mediaIds) {
-        for (const mediaId of mediaIds) {
-          this.media.delete(mediaId);
-        }
-        this.mediaByMessage.delete(id);
-        reaped += mediaIds.size;
-      }
-
-      // Remove from conversation index
-      const convKey = this._convKey(msg.sender_id, msg.recipient_id);
-      const convMsgs = this.messagesByConversation.get(convKey);
-      if (convMsgs) {
-        const idx = convMsgs.indexOf(id);
-        if (idx !== -1) convMsgs.splice(idx, 1);
-        if (convMsgs.length === 0) this.messagesByConversation.delete(convKey);
-      }
-
-      // Remove from undelivered index
-      if (!msg.delivered) {
-        const undelivered = this.undeliveredByRecipient.get(msg.recipient_id);
-        if (undelivered) undelivered.delete(id);
-      }
-
-      // True delete (not soft-delete)
-      this.messages.delete(id);
-      reaped++;
-    }
-
-    // Also reap orphan media (collect first, then delete)
-    const expiredMediaIds = [];
-    for (const [mediaId, media] of this.media) {
-      if (new Date(media.expires_at).getTime() <= now) {
-        expiredMediaIds.push(mediaId);
-      }
-    }
-    for (const mediaId of expiredMediaIds) {
-      this.media.delete(mediaId);
-      reaped++;
-    }
-
-    // Reap expired sessions (older than 24h created OR 2h inactive)
-    const sessionExpiryTime = 24 * 60 * 60 * 1000;
-    const inactiveExpiryTime = 2 * 60 * 60 * 1000; // 2 hours
-    const expiredSessionKeys = [];
-    for (const [jwtId, session] of this.sessions) {
-      const expired = now - session.createdAt > sessionExpiryTime;
-      const inactive = now - (session.lastSeen || session.createdAt) > inactiveExpiryTime;
-      if (expired || inactive) {
-        expiredSessionKeys.push(jwtId);
-      }
-    }
-    for (const jwtId of expiredSessionKeys) {
-      this.sessions.delete(jwtId);
-    }
-
-    return reaped;
+  async createSession(jwtId, userId) {
+    await this.redis.set(`session:${jwtId}`, userId, 'EX', 24 * 60 * 60);
   }
 
-  // ─── Sessions (Redis analog) ─────────────────────────────
-
-  createSession(jwtId, userId) {
-    this.sessions.set(jwtId, {
-      userId,
-      createdAt: Date.now(),
-      lastSeen: Date.now(),
-    });
+  async getSession(jwtId) {
+    const userId = await this.redis.get(`session:${jwtId}`);
+    return userId ? { userId } : null;
   }
 
-  getSession(jwtId) {
-    return this.sessions.get(jwtId) || null;
+  async deleteSession(jwtId) {
+    await this.redis.del(`session:${jwtId}`);
   }
 
-  deleteSession(jwtId) {
-    this.sessions.delete(jwtId);
+  async touchSession(jwtId) {
+    await this.redis.expire(`session:${jwtId}`, 24 * 60 * 60);
   }
 
-  touchSession(jwtId) {
-    const session = this.sessions.get(jwtId);
-    if (session) session.lastSeen = Date.now();
+  // ─── User Search ──────────────────────────────────────────
+
+  async searchUsers(query, excludeUserId) {
+    const res = await this.pool.query(
+      `SELECT id, username FROM users
+       WHERE username ILIKE $1 AND id <> $2
+       LIMIT 20`,
+      [`%${query}%`, excludeUserId]
+    );
+    return res.rows;
   }
 
-  // ─── Search users ────────────────────────────────────────
+  // ─── Attachments (Disk + SQL Metadata) ────────────────────
 
-  searchUsers(query, excludeUserId) {
-    const results = [];
-    const q = query.toLowerCase();
-    for (const user of this.users.values()) {
-      if (user.id === excludeUserId) continue;
-      if (user.username.toLowerCase().includes(q)) {
-        results.push({
-          id: user.id,
-          username: user.username,
-        });
-      }
-      if (results.length >= 20) break;
-    }
-    return results;
-  }
-
-  saveAttachment(filename, mimeType, ciphertext, burnOnRead = false, ownerId = null) {
+  async saveAttachment(filename, mimeType, ciphertext = '', burnOnRead = false, ownerId = null) {
     const id = uuidv4();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    this.media.set(id, {
-      id,
-      filename,
-      mimeType,
-      ciphertext,
-      expires_at: expiresAt,
-      burn_on_read: burnOnRead,
-      owner_id: ownerId,
-      allowed_users: new Set(ownerId ? [ownerId] : [])
-    });
+    
+    // Save metadata
+    await this.pool.query(
+      `INSERT INTO attachments (id, filename, mime_type, total_chunks, uploaded_chunks, burn_on_read, owner_id, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, filename, mimeType, 1, 0, burnOnRead, ownerId, expiresAt]
+    );
+
+    // Save owner as allowed user
+    if (ownerId) {
+      await this.authorizeAttachmentUser(id, ownerId);
+    }
+
+    // Write chunk 0 if ciphertext is provided immediately
+    if (ciphertext) {
+      await this.saveChunk(id, 0, ciphertext);
+    }
+
     return id;
   }
 
-  getAttachment(id) {
-    return this.media.get(id);
+  async getAttachment(id) {
+    const res = await this.pool.query(
+      `SELECT * FROM attachments WHERE id = $1`,
+      [id]
+    );
+    if (res.rows.length === 0) return null;
+
+    const row = res.rows[0];
+    const allowed = await this.pool.query(
+      `SELECT user_id FROM attachment_allowed_users WHERE attachment_id = $1`,
+      [id]
+    );
+    const allowedUsers = new Set(allowed.rows.map(r => r.user_id));
+
+    return {
+      id: row.id,
+      filename: row.filename,
+      mimeType: row.mime_type,
+      totalChunks: row.total_chunks,
+      uploadedChunks: row.uploaded_chunks,
+      burn_on_read: row.burn_on_read,
+      owner_id: row.owner_id,
+      expires_at: row.expires_at,
+      allowed_users: allowedUsers
+    };
   }
 
-  getMessage(id) {
-    return this.messages.get(id);
+  async authorizeAttachmentUser(attachmentId, userId) {
+    await this.pool.query(
+      `INSERT INTO attachment_allowed_users (attachment_id, user_id)
+       VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [attachmentId, userId]
+    );
   }
 
-  createGroup(name, memberIds) {
+  async saveChunk(id, index, ciphertext) {
+    const filePath = path.join(UPLOADS_DIR, `${id}_${index}.txt`);
+    await fs.promises.writeFile(filePath, ciphertext, 'utf8');
+
+    // Update chunk metadata
+    await this.pool.query(
+      `UPDATE attachments
+       SET uploaded_chunks = uploaded_chunks + 1,
+           total_chunks = GREATEST(total_chunks, $2 + 1)
+       WHERE id = $1`,
+      [id, index]
+    );
+  }
+
+  async getChunk(id, index) {
+    const filePath = path.join(UPLOADS_DIR, `${id}_${index}.txt`);
+    try {
+      return await fs.promises.readFile(filePath, 'utf8');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async deleteAttachment(id) {
+    const attachment = await this.getAttachment(id);
+    if (!attachment) return;
+
+    // Delete chunks from disk
+    for (let i = 0; i < attachment.totalChunks; i++) {
+      const filePath = path.join(UPLOADS_DIR, `${id}_${i}.txt`);
+      await fs.promises.unlink(filePath).catch(() => {});
+    }
+
+    // Delete database records
+    await this.pool.query(`DELETE FROM attachments WHERE id = $1`, [id]);
+  }
+
+  // ─── Groups (PostgreSQL) ──────────────────────────────────
+
+  async createGroup(name, memberIds) {
     const id = uuidv4();
-    const members = memberIds.map(mId => {
-      const u = this.getUserById(mId);
-      return { id: mId, username: u ? u.username : 'Unknown' };
-    });
-    this.groups.set(id, { id, name, members });
-    return { id, name, members };
-  }
+    await this.pool.query(
+      `INSERT INTO groups (id, name) VALUES ($1, $2)`,
+      [id, name]
+    );
 
-  getGroup(id) {
-    return this.groups.get(id);
-  }
-
-  getGroupsForUser(userId) {
-    const list = [];
-    for (const group of this.groups.values()) {
-      if (group.members.some(m => m.id === userId)) {
-        list.push(group);
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const mId of memberIds) {
+        await client.query(
+          `INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)`,
+          [id, mId]
+        );
       }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    return await this.getGroup(id);
+  }
+
+  async getGroup(id) {
+    const res = await this.pool.query(
+      `SELECT * FROM groups WHERE id = $1`,
+      [id]
+    );
+    if (res.rows.length === 0) return null;
+
+    const group = res.rows[0];
+    const membersRes = await this.pool.query(
+      `SELECT u.id, u.username FROM group_members gm
+       JOIN users u ON gm.user_id = u.id
+       WHERE gm.group_id = $1`,
+      [id]
+    );
+
+    return {
+      id: group.id,
+      name: group.name,
+      members: membersRes.rows
+    };
+  }
+
+  async getGroupsForUser(userId) {
+    const res = await this.pool.query(
+      `SELECT group_id FROM group_members WHERE user_id = $1`,
+      [userId]
+    );
+    
+    const list = [];
+    for (const row of res.rows) {
+      const group = await this.getGroup(row.group_id);
+      if (group) list.push(group);
     }
     return list;
   }
+
+  // ─── Push Subscriptions (PostgreSQL) ──────────────────────
+
+  async addPushSubscription(userId, subscription) {
+    await this.pool.query(
+      `INSERT INTO push_subscriptions (user_id, subscription)
+       VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [userId, subscription]
+    );
+  }
+
+  async getPushSubscriptions(userId) {
+    const res = await this.pool.query(
+      `SELECT subscription FROM push_subscriptions WHERE user_id = $1`,
+      [userId]
+    );
+    return new Set(res.rows.map(r => r.subscription));
+  }
+
+  // ─── Calls (Volatile RAM) ─────────────────────────────────
 
   registerCall(userId, peerId) {
     this.activeCalls.set(userId, peerId);
@@ -575,8 +657,38 @@ class InMemoryStore {
   getActiveCall(userId) {
     return this.activeCalls.get(userId);
   }
+
+  // ─── Reaper (Cleanup Job) ─────────────────────────────────
+
+  async reap() {
+    const now = new Date().toISOString();
+    
+    // Delete expired attachments from disk
+    const expiredAttachments = await this.pool.query(
+      `SELECT id, total_chunks FROM attachments WHERE expires_at < $1`,
+      [now]
+    );
+
+    for (const row of expiredAttachments.rows) {
+      for (let i = 0; i < row.total_chunks; i++) {
+        const filePath = path.join(UPLOADS_DIR, `${row.id}_${i}.txt`);
+        await fs.promises.unlink(filePath).catch(() => {});
+      }
+    }
+
+    // Delete records from DB
+    await this.pool.query(`DELETE FROM attachments WHERE expires_at < $1`, [now]);
+
+    // Delete expired messages
+    const expiredMsgs = await this.pool.query(
+      `DELETE FROM encrypted_messages WHERE expires_at < $1 RETURNING id`,
+      [now]
+    );
+    
+    return expiredMsgs.rowCount;
+  }
 }
 
 // Singleton instance
-const store = new InMemoryStore();
+const store = new DataStore();
 export default store;

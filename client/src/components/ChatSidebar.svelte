@@ -26,7 +26,7 @@
     const enabled = e.target.checked;
     if (enabled) {
       try {
-        const result = await registerBiometric($currentUser.username);
+        const result = await registerBiometric($currentUser.username, $currentUser.salt);
         localStorage.setItem(`vault_bio_enabled_${$currentUser.id}`, 'true');
         localStorage.setItem(`vault_bio_cred_id_${$currentUser.id}`, result.credentialId);
         
@@ -479,7 +479,7 @@
               try {
                 const credId = localStorage.getItem(`vault_bio_cred_id_${$currentUser.id}`);
                 if (!credId) throw new Error('Biometric credential not found. Please re-enable Biometric Vault Unlock.');
-                const prfKey = await authenticateBiometric(credId);
+                const prfKey = await authenticateBiometric(credId, $currentUser.salt);
                 localBackupKey.set(prfKey);
                 localBackupPassphrase.set('BIOMETRIC_UNLOCKED');
                 localBackupEnabled.set(true);

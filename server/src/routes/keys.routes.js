@@ -33,7 +33,7 @@ async function keysRoutes(fastify) {
       return reply.code(400).send({ error: 'Cannot fetch own key bundle' });
     }
 
-    const bundle = fastify.store.getKeyBundle(username);
+    const bundle = await fastify.store.getKeyBundle(username);
     if (!bundle) {
       return reply.code(404).send({ error: 'User not found' });
     }
@@ -60,8 +60,8 @@ async function keysRoutes(fastify) {
     },
   }, async (request, reply) => {
     const { prekeys } = request.body;
-    fastify.store.uploadPrekeys(request.user.id, prekeys);
-    const remaining = fastify.store.countUnusedPrekeys(request.user.id);
+    await fastify.store.uploadPrekeys(request.user.id, prekeys);
+    const remaining = await fastify.store.countUnusedPrekeys(request.user.id);
     return { uploaded: prekeys.length, remaining };
   });
 
@@ -69,7 +69,7 @@ async function keysRoutes(fastify) {
   fastify.get('/api/keys/count', {
     preValidation: [fastify.authenticate],
   }, async (request) => {
-    const count = fastify.store.countUnusedPrekeys(request.user.id);
+    const count = await fastify.store.countUnusedPrekeys(request.user.id);
     return { count, low: count < LOW_PREKEY_THRESHOLD };
   });
 
@@ -109,13 +109,13 @@ async function keysRoutes(fastify) {
       }
     }
 
-    fastify.store.updateUserKeys(request.user.id, {
+    await fastify.store.updateUserKeys(request.user.id, {
       identityKey,
       signedPrekey,
       prekeySig,
     });
 
-    fastify.store.resetPrekeys(request.user.id, oneTimePrekeys);
+    await fastify.store.resetPrekeys(request.user.id, oneTimePrekeys);
 
     return { status: 'success' };
   });
@@ -136,7 +136,7 @@ async function keysRoutes(fastify) {
   }, async (request, reply) => {
     const { signedPrekey, prekeySig } = request.body;
     
-    fastify.store.updateSignedPrekey(request.user.id, signedPrekey, prekeySig);
+    await fastify.store.updateSignedPrekey(request.user.id, signedPrekey, prekeySig);
     
     return { status: 'success' };
   });

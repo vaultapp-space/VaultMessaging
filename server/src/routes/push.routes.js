@@ -18,10 +18,7 @@ const VAPID_PUBLIC_KEY_BASE64URL = vapidPublicKeyDer.toString('base64')
   .replace(/=+$/, '');
 
 async function pushRoutes(fastify) {
-  // Store subscriptions in fastify.store
-  if (!fastify.store.pushSubscriptions) {
-    fastify.store.pushSubscriptions = new Map(); // userId → Set of subscriptions
-  }
+
 
   // ─── GET VAPID PUBLIC KEY ────────────────────────────────
   fastify.get('/api/push/public-key', async (request, reply) => {
@@ -58,20 +55,15 @@ async function pushRoutes(fastify) {
     const { subscription } = request.body;
     const userId = request.user.id;
 
-    if (!fastify.store.pushSubscriptions.has(userId)) {
-      fastify.store.pushSubscriptions.set(userId, new Set());
-    }
-    
-    // Add subscription stringified to prevent duplicate objects in Set
-    fastify.store.pushSubscriptions.get(userId).add(JSON.stringify(subscription));
+    // Add subscription stringified to database
+    await fastify.store.addPushSubscription(userId, JSON.stringify(subscription));
     fastify.log.info({ userId }, 'Push notification subscription registered');
-
+ 
     return reply.send({ success: true });
   });
 
-  // ─── PUSH NOTIFICATION SENDER (Internal Helper method) ───
   fastify.decorate('sendPushNotification', async (userId, payloadObj) => {
-    const subscriptions = fastify.store.pushSubscriptions.get(userId);
+    const subscriptions = await fastify.store.getPushSubscriptions(userId);
     if (!subscriptions || subscriptions.size === 0) return;
 
     const payload = JSON.stringify(payloadObj);

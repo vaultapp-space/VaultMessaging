@@ -18,6 +18,7 @@ import { decrypt as aesDecrypt } from './keys.js';
 import { x3dhRespond, deriveInitialKeys } from './x3dh.js';
 import { RatchetSession } from './ratchet.js';
 import { SenderKeySession } from './senderkeys.js';
+import { syncCloudVault } from './sync.js';
 
 const initLocks = new Map();
 
@@ -79,6 +80,8 @@ export async function decryptMessage(msg) {
             await innerSession.importDistributionPackage(payload.pack);
             groupSenderKeys.update(m => { m.set(innerSessionKey, innerSession); return m; });
             
+            await syncCloudVault();
+            
             return {
               ...msg,
               text: '🔒 Group session key received.',
@@ -86,6 +89,8 @@ export async function decryptMessage(msg) {
             };
           }
         } catch {}
+
+        await syncCloudVault();
 
         return {
           ...msg,
@@ -189,6 +194,8 @@ export async function decryptMessage(msg) {
         parsed.bob.iv,
         parsed.bob.ct
       );
+
+      await syncCloudVault();
 
       return {
         ...msg,

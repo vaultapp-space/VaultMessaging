@@ -69,6 +69,24 @@ export async function importPublicKey(rawBytes) {
 }
 
 /**
+ * Import a peer's ECDSA public key from raw bytes.
+ * @param {Uint8Array|string} rawBytes
+ * @returns {Promise<CryptoKey>}
+ */
+export async function importECDSAPublicKey(rawBytes) {
+  if (typeof rawBytes === 'string') {
+    rawBytes = fromBase64(rawBytes);
+  }
+  return await crypto.subtle.importKey(
+    'raw',
+    rawBytes,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['verify']
+  );
+}
+
+/**
  * Perform ECDH key agreement and derive an AES-256-GCM key via HKDF.
  * @param {CryptoKey} privateKey - Our ECDH private key
  * @param {CryptoKey} peerPublicKey - Peer's ECDH public key
@@ -584,7 +602,9 @@ export async function encryptIdentityVault(vaultObj, passphrase) {
     spkPrivateJwk,
     spkPublicJwk,
     localBackupKeyBase64: vaultObj.localBackupKeyBase64,
-    localBackupPassphrase: vaultObj.localBackupPassphrase
+    localBackupPassphrase: vaultObj.localBackupPassphrase,
+    ratchetSessions: vaultObj.ratchetSessions || null,
+    groupSenderKeys: vaultObj.groupSenderKeys || null
   });
 
   const encoder = new TextEncoder();
@@ -680,7 +700,19 @@ export async function decryptIdentityVault(encryptedJson, passphrase) {
     },
     signedPrekeyPair: { privateKey: spkPrivate, publicKey: spkPublic },
     localBackupKeyBase64: payload.localBackupKeyBase64,
-    localBackupPassphrase: payload.localBackupPassphrase
+    localBackupPassphrase: payload.localBackupPassphrase,
+    ratchetSessions: payload.ratchetSessions || null,
+    groupSenderKeys: payload.groupSenderKeys || null
   };
+}
+
+export async function importStaticKey(rawBytes) {
+  return await crypto.subtle.importKey(
+    'raw',
+    rawBytes,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
 }
 

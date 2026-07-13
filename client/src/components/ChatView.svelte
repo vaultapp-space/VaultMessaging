@@ -7,10 +7,11 @@
   import { sendTyping, wsConnected, onWsEvent, wsSend } from '../lib/api/ws.js';
   import { RatchetSession } from '../lib/crypto/ratchet.js';
   import { x3dhInitiate, x3dhRespond, deriveInitialKeys } from '../lib/crypto/x3dh.js';
-  import { exportPublicKeyBase64, encrypt as encryptSelf, encryptFile, generateKeyPair, signData, encryptChunk, decryptChunk } from '../lib/crypto/keys.js';
+  import { exportPublicKeyBase64, encrypt as encryptSelf, decrypt as decryptSelf, encryptFile, generateKeyPair, signData, encryptChunk, decryptChunk, importStaticKey } from '../lib/crypto/keys.js';
   import { SenderKeySession } from '../lib/crypto/senderkeys.js';
   import { randomHex } from '../lib/crypto/utils.js';
   import { getAvatarGradient } from '../lib/avatar.js';
+  import { syncCloudVault } from '../lib/crypto/sync.js';
   import MessageBubble from './MessageBubble.svelte';
 
   let messageText = '';
@@ -18,6 +19,7 @@
   let sendingMessage = false;
   let loading = false;
   let ttlMinutes = 1440; // Default 24h
+  let currentCallKey = null;
   let showTtlSelector = false;
 
   // Optimistic & Scroll helpers
@@ -235,6 +237,19 @@
       previousChain: header.previousChainLength,
       iv: iv
     };
+  }
+
+  async function encryptStaticSignalingPayload(payloadObj) {
+    if (!currentCallKey) throw new Error('No call session key active');
+    const plaintext = JSON.stringify(payloadObj);
+    const { iv, ciphertext } = await encryptSelf(currentCallKey, plaintext);
+    return { iv, ciphertext };
+  }
+
+  async function decryptStaticSignalingPayload(data) {
+    if (!currentCallKey) throw new Error('No call session key active');
+    const plaintext = await decryptSelf(currentCallKey, data.iv, data.ciphertext);
+    return JSON.parse(plaintext);
   }
 
   async function decryptSignalingPayload(senderId, data) {
@@ -456,6 +471,8 @@
         throw new Error('Failed to send group message.');
       }
 
+      await syncCloudVault();
+
       confirmMessage($activePeer.id, tempId, {
         id: successResult.id,
         sentAt: successResult.sentAt,
@@ -515,6 +532,8 @@
         iv: iv,
         attachmentId
       });
+
+      await syncCloudVault();
 
       confirmMessage($activePeer.id, tempId, {
         id: result.id,
@@ -700,9 +719,9 @@
     const file = e.target.files[0];
     if (!file || !$activePeer) return;
 
-    // Support uploads up to 10MB!
-    if (file.size > 10 * 1024 * 1024) {
-      alert('Attachment size exceeds 10MB limit');
+    // Support uploads up to 100MB!
+    if (file.size > 100 * 1024 * 1024) {
+      alert('Attachment size exceeds 100MB limit');
       return;
     }
 
@@ -887,11 +906,20 @@
       return;
     }
 
+    // Generate static call key
+    const rawKeyBytes = crypto.getRandomValues(new Uint8Array(32));
+    const staticCallKeyBase64 = toBase64(rawKeyBytes);
+    currentCallKey = await importStaticKey(rawKeyBytes);
+
+    // Encrypt static key using Double Ratchet E2EE
+    const encryptedKey = await encryptSignalingPayload($activePeer.id, { key: staticCallKeyBase64 });
+
     wsSend({
       type: 'call_invite',
       recipientId: $activePeer.id,
       callType: type,
-      senderUsername: $currentUser.username
+      senderUsername: $currentUser.username,
+      encryptedKey
     });
     isCallActive = true;
   }
@@ -914,7 +942,7 @@
     peerConnection.onicecandidate = async (event) => {
       if (event.candidate) {
         try {
-          const encrypted = await encryptSignalingPayload(peerId, event.candidate);
+          const encrypted = await encryptStaticSignalingPayload(event.candidate);
           wsSend({
             type: 'webrtc_ice',
             recipientId: peerId,
@@ -933,7 +961,7 @@
       try {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
-        const encrypted = await encryptSignalingPayload(peerId, offer);
+        const encrypted = await encryptStaticSignalingPayload(offer);
         wsSend({
           type: 'webrtc_sdp',
           recipientId: peerId,
@@ -998,6 +1026,7 @@
     remoteStream = null;
     micMuted = false;
     cameraOff = false;
+    currentCallKey = null;
   }
 
   onMount(() => {
@@ -1008,6 +1037,17 @@
     wsUnsubscribes.push(onWsEvent('call_invite', async (data) => {
       if (isCallActive || isIncomingCall) {
         wsSend({ type: 'call_reject', recipientId: data.senderId, reason: 'busy' });
+        return;
+      }
+      // Decrypt the call session key
+      try {
+        const decrypted = await decryptSignalingPayload(data.senderId, data.encryptedKey);
+        if (decrypted && decrypted.key) {
+          const rawBytes = fromBase64(decrypted.key);
+          currentCallKey = await importStaticKey(rawBytes);
+        }
+      } catch (err) {
+        console.error('Failed to decrypt call invite key:', err);
         return;
       }
       callingPeer = data.senderUsername;
@@ -1031,41 +1071,41 @@
     }));
 
     wsUnsubscribes.push(onWsEvent('webrtc_sdp', async (data) => {
-      const decryptedSdp = await decryptSignalingPayload(data.senderId, data);
-      if (!decryptedSdp) return;
-      if (!peerConnection && $activePeer) {
-        initializePeerConnection($activePeer.id);
-      }
-      if (!peerConnection) return;
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(decryptedSdp));
-      if (decryptedSdp.type === 'offer') {
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        try {
-          const encrypted = await encryptSignalingPayload(data.senderId, answer);
+      try {
+        const decryptedSdp = await decryptStaticSignalingPayload(data);
+        if (!decryptedSdp) return;
+        if (!peerConnection && $activePeer) {
+          initializePeerConnection($activePeer.id);
+        }
+        if (!peerConnection) return;
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(decryptedSdp));
+        if (decryptedSdp.type === 'offer') {
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          const encrypted = await encryptStaticSignalingPayload(answer);
           wsSend({
             type: 'webrtc_sdp',
-            recipientId: $activePeer.id,
+            recipientId: data.senderId,
             ...encrypted
           });
-        } catch (err) {
-          console.error('Failed to encrypt answer:', err);
         }
+      } catch (err) {
+        console.error('Failed to process incoming SDP:', err);
       }
     }));
 
     wsUnsubscribes.push(onWsEvent('webrtc_ice', async (data) => {
-      const decryptedCandidate = await decryptSignalingPayload(data.senderId, data);
-      if (!decryptedCandidate) return;
-      if (!peerConnection && $activePeer) {
-        initializePeerConnection($activePeer.id);
-      }
-      if (peerConnection && decryptedCandidate) {
-        try {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(decryptedCandidate));
-        } catch (e) {
-          console.error('Error adding ICE candidate:', e);
+      try {
+        const decryptedCandidate = await decryptStaticSignalingPayload(data);
+        if (!decryptedCandidate) return;
+        if (!peerConnection && $activePeer) {
+          initializePeerConnection($activePeer.id);
         }
+        if (peerConnection && decryptedCandidate) {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(decryptedCandidate));
+        }
+      } catch (err) {
+        console.error('Failed to process incoming ICE candidate:', err);
       }
     }));
 

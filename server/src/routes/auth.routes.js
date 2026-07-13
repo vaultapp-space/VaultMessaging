@@ -36,14 +36,15 @@ async function authRoutes(fastify) {
           prekeySig:      { type: 'string', maxLength: 500 },  // base64 signature
           oneTimePrekeys: { type: 'array', items: { type: 'string', maxLength: 500 }, minItems: 1, maxItems: 100 },
           salt:           { type: 'string', maxLength: 50 },   // base64 salt
+          encryptedVault: { type: 'string', maxLength: 50000 },
         },
       },
     },
   }, async (request, reply) => {
-    const { username, password, identityKey, signedPrekey, prekeySig, oneTimePrekeys, salt } = request.body;
+    const { username, password, identityKey, signedPrekey, prekeySig, oneTimePrekeys, salt, encryptedVault } = request.body;
 
     // Check uniqueness
-    const existing = fastify.store.getUserByUsername(username);
+    const existing = await fastify.store.getUserByUsername(username);
     if (existing) {
       return reply.code(409).send({ error: 'Username already taken' });
     }
@@ -52,17 +53,18 @@ async function authRoutes(fastify) {
     const passwordHash = await hashPassword(password);
 
     // Create user
-    const user = fastify.store.createUser({
+    const user = await fastify.store.createUser({
       username,
       passwordHash,
       identityKey,
       signedPrekey,
       prekeySig,
       salt,
+      encryptedVault,
     });
 
     // Upload one-time prekeys
-    fastify.store.uploadPrekeys(user.id, oneTimePrekeys);
+    await fastify.store.uploadPrekeys(user.id, oneTimePrekeys);
 
     // Issue JWT as HTTP-only cookie
     const jti = uuidv4();
@@ -72,7 +74,7 @@ async function authRoutes(fastify) {
     );
 
     // Create server-side session
-    fastify.store.createSession(jti, user.id);
+    await fastify.store.createSession(jti, user.id);
 
     reply
       .setCookie(config.cookieName, token, {
@@ -86,6 +88,7 @@ async function authRoutes(fastify) {
       .send({
         id: user.id,
         username: user.username,
+        salt: user.salt,
       });
   });
 
@@ -110,7 +113,7 @@ async function authRoutes(fastify) {
   }, async (request, reply) => {
     const { username, password } = request.body;
 
-    const user = fastify.store.getUserByUsername(username);
+    const user = await fastify.store.getUserByUsername(username);
     if (!user) {
       await verifyPassword(dummyHash, password);
       return reply.code(401).send({ error: 'Invalid credentials' });
@@ -127,7 +130,7 @@ async function authRoutes(fastify) {
       { expiresIn: config.jwtExpiresIn }
     );
 
-    fastify.store.createSession(jti, user.id);
+    await fastify.store.createSession(jti, user.id);
 
     reply
       .setCookie(config.cookieName, token, {
@@ -140,7 +143,8 @@ async function authRoutes(fastify) {
       .send({
         id: user.id,
         username: user.username,
-        encryptedVault: user.encrypted_vault || null
+        encryptedVault: user.encrypted_vault || null,
+        salt: user.salt
       });
   });
 
@@ -157,7 +161,7 @@ async function authRoutes(fastify) {
       }
     }
   }, async (request, reply) => {
-    fastify.store.setEncryptedVault(request.user.id, request.body.encryptedVault);
+    await fastify.store.setEncryptedVault(request.user.id, request.body.encryptedVault);
     return reply.send({ success: true });
   });
 
@@ -166,7 +170,7 @@ async function authRoutes(fastify) {
     preValidation: [fastify.authenticate],
   }, async (request, reply) => {
     // Destroy server-side session
-    fastify.store.deleteSession(request.user.jti);
+    await fastify.store.deleteSession(request.user.jti);
 
     reply
       .clearCookie(config.cookieName, { path: '/' })
@@ -177,11 +181,12 @@ async function authRoutes(fastify) {
   fastify.get('/api/auth/me', {
     preValidation: [fastify.authenticate],
   }, async (request) => {
-    const user = fastify.store.getUserById(request.user.id);
+    const user = await fastify.store.getUserById(request.user.id);
     return {
       id: request.user.id,
       username: request.user.username,
-      encryptedVault: user ? user.encrypted_vault : null
+      encryptedVault: user ? user.encrypted_vault : null,
+      salt: user ? user.salt : null
     };
   });
 
@@ -198,7 +203,7 @@ async function authRoutes(fastify) {
     },
   }, async (request, reply) => {
     const { username } = request.params;
-    const user = fastify.store.getUserByUsername(username);
+    const user = await fastify.store.getUserByUsername(username);
     if (user) {
       return { salt: user.salt };
     }

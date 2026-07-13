@@ -11,21 +11,31 @@ import config from '../config.js';
  * Flush pending messages to a WebSocket.
  * Extracted to avoid code duplication between cookie and message auth paths.
  */
-function flushPendingMessages(fastify, userId, socket) {
-  const pendingIds = fastify.store.dequeuePending(userId);
+async function flushPendingMessages(fastify, userId, socket) {
+  const pendingIds = await fastify.store.dequeuePending(userId);
   if (pendingIds.length === 0) return;
 
-  const messages = fastify.store.getUndeliveredMessages(userId);
+  const messages = await fastify.store.getUndeliveredMessages(userId);
 
   // Batch user lookups — collect unique sender IDs first
   const senderIds = new Set(messages.map(m => m.sender_id));
   const senderMap = new Map();
   for (const sid of senderIds) {
-    const sender = fastify.store.getUserById(sid);
+    const sender = await fastify.store.getUserById(sid);
     senderMap.set(sid, sender?.username || 'unknown');
   }
 
   for (const msg of messages) {
+    let groupName = null;
+    let groupMembers = null;
+    if (msg.group_id) {
+      const groupObj = await fastify.store.getGroup(msg.group_id);
+      if (groupObj) {
+        groupName = groupObj.name;
+        groupMembers = groupObj.members;
+      }
+    }
+
     socket.send(JSON.stringify({
       type: 'message',
       data: {
@@ -40,11 +50,11 @@ function flushPendingMessages(fastify, userId, socket) {
         sentAt: msg.sent_at,
         expiresAt: msg.expires_at,
         groupId: msg.group_id,
-        groupName: msg.group_id ? fastify.store.getGroup(msg.group_id)?.name : null,
-        groupMembers: msg.group_id ? fastify.store.getGroup(msg.group_id)?.members : null
+        groupName,
+        groupMembers
       },
     }));
-    fastify.store.markDelivered(msg.id);
+    await fastify.store.markDelivered(msg.id);
   }
 }
 
@@ -60,7 +70,7 @@ function startHeartbeat(socket) {
 }
 
 async function wsRoutes(fastify) {
-  fastify.get('/ws', { websocket: true }, (socket, request) => {
+  fastify.get('/ws', { websocket: true }, async (socket, request) => {
     // Verify Origin header to prevent Cross-Site WebSocket Hijacking (CSWSH)
     const origin = request.headers.origin;
     const isDev = process.env.NODE_ENV !== 'production';
@@ -83,7 +93,7 @@ async function wsRoutes(fastify) {
       const cookieValue = request.cookies?.[config.cookieName];
       if (cookieValue) {
         const decoded = fastify.jwt.verify(cookieValue);
-        const session = fastify.store.getSession(decoded.jti);
+        const session = await fastify.store.getSession(decoded.jti);
         if (session) {
           userId = decoded.id;
           authenticated = true;
@@ -95,7 +105,7 @@ async function wsRoutes(fastify) {
           heartbeatTimer = startHeartbeat(socket);
 
           // Flush pending delivery queue
-          flushPendingMessages(fastify, userId, socket);
+          await flushPendingMessages(fastify, userId, socket);
 
           socket.send(JSON.stringify({ type: 'auth_ok', userId }));
           fastify.log.info({ userId }, 'WebSocket authenticated via cookie');
@@ -127,7 +137,7 @@ async function wsRoutes(fastify) {
         if (authTimeout) clearTimeout(authTimeout);
         try {
           const decoded = fastify.jwt.verify(data.token);
-          const session = fastify.store.getSession(decoded.jti);
+          const session = await fastify.store.getSession(decoded.jti);
           if (!session) {
             socket.send(JSON.stringify({ type: 'error', message: 'Session expired' }));
             socket.close();
@@ -141,7 +151,7 @@ async function wsRoutes(fastify) {
           heartbeatTimer = startHeartbeat(socket);
 
           // Flush pending
-          flushPendingMessages(fastify, userId, socket);
+          await flushPendingMessages(fastify, userId, socket);
 
           socket.send(JSON.stringify({ type: 'auth_ok', userId }));
           fastify.log.info({ userId }, 'WebSocket authenticated via message');
@@ -198,8 +208,8 @@ async function wsRoutes(fastify) {
 
       // ─── DELIVERED acknowledgment ──────────────────────────────
       if (data.type === WS_EVENTS.DELIVERED && data.messageId) {
-        fastify.store.markDelivered(data.messageId);
-        const msg = fastify.store.getMessage(data.messageId);
+        await fastify.store.markDelivered(data.messageId);
+        const msg = await fastify.store.getMessage(data.messageId);
         if (msg) {
           const senderSockets = fastify.store.getConnections(msg.sender_id);
           const payload = JSON.stringify({
@@ -216,7 +226,8 @@ async function wsRoutes(fastify) {
 
       // ─── READ acknowledgment ───────────────────────────────────
       if (data.type === 'read' && data.messageId) {
-        const msg = fastify.store.getMessage(data.messageId);
+        await fastify.store.markRead(data.messageId);
+        const msg = await fastify.store.getMessage(data.messageId);
         if (msg) {
           const senderSockets = fastify.store.getConnections(msg.sender_id);
           const payload = JSON.stringify({

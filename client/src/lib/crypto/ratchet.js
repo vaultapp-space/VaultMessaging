@@ -228,4 +228,72 @@ export class RatchetSession {
     this.skippedKeys.clear();
     this.initialized = false;
   }
+
+  async serialize() {
+    let sendKeyPairJwk = null;
+    if (this.sendRatchetKeyPair) {
+      const pubJwk = await crypto.subtle.exportKey('jwk', this.sendRatchetKeyPair.publicKey);
+      const privJwk = await crypto.subtle.exportKey('jwk', this.sendRatchetKeyPair.privateKey);
+      sendKeyPairJwk = { publicKey: pubJwk, privateKey: privJwk };
+    }
+
+    const skippedKeysObj = {};
+    for (const [key, val] of this.skippedKeys.entries()) {
+      skippedKeysObj[key] = toBase64(val);
+    }
+
+    return {
+      rootKey: this.rootKey ? toBase64(this.rootKey) : null,
+      sendChainKey: this.sendChainKey ? toBase64(this.sendChainKey) : null,
+      recvChainKey: this.recvChainKey ? toBase64(this.recvChainKey) : null,
+      sendKeyPairJwk,
+      recvRatchetPubKey: this.recvRatchetPubKey,
+      sendCount: this.sendCount,
+      recvCount: this.recvCount,
+      prevSendCount: this.prevSendCount,
+      skippedKeys: skippedKeysObj,
+      initialized: this.initialized,
+      peerIdentityKey: this.peerIdentityKey
+    };
+  }
+
+  static async deserialize(data) {
+    const session = new RatchetSession();
+    session.rootKey = data.rootKey ? fromBase64(data.rootKey) : null;
+    session.sendChainKey = data.sendChainKey ? fromBase64(data.sendChainKey) : null;
+    session.recvChainKey = data.recvChainKey ? fromBase64(data.recvChainKey) : null;
+    session.recvRatchetPubKey = data.recvRatchetPubKey;
+    session.sendCount = data.sendCount;
+    session.recvCount = data.recvCount;
+    session.prevSendCount = data.prevSendCount;
+    session.initialized = data.initialized;
+    session.peerIdentityKey = data.peerIdentityKey;
+
+    if (data.sendKeyPairJwk) {
+      const publicKey = await crypto.subtle.importKey(
+        'jwk',
+        data.sendKeyPairJwk.publicKey,
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        []
+      );
+      const privateKey = await crypto.subtle.importKey(
+        'jwk',
+        data.sendKeyPairJwk.privateKey,
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        ['deriveBits']
+      );
+      session.sendRatchetKeyPair = { publicKey, privateKey };
+    }
+
+    session.skippedKeys = new Map();
+    if (data.skippedKeys) {
+      for (const [key, val] of Object.entries(data.skippedKeys)) {
+        session.skippedKeys.set(key, fromBase64(val));
+      }
+    }
+
+    return session;
+  }
 }

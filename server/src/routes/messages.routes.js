@@ -34,7 +34,7 @@ async function messageRoutes(fastify) {
     const senderId = request.user.id;
 
     // Validate recipient exists
-    const recipient = fastify.store.getUserById(recipientId);
+    const recipient = await fastify.store.getUserById(recipientId);
     if (!recipient) {
       return reply.code(404).send({ error: 'Recipient not found' });
     }
@@ -44,7 +44,7 @@ async function messageRoutes(fastify) {
     const expiresAt = new Date(Date.now() + ttl * 60 * 1000).toISOString();
 
     // Store encrypted blob
-    const msg = fastify.store.createMessage({
+    const msg = await fastify.store.createMessage({
       senderId,
       recipientId,
       ciphertext,
@@ -61,6 +61,16 @@ async function messageRoutes(fastify) {
     let delivered = false;
     const sockets = fastify.store.getConnections(recipientId);
     if (sockets.size > 0) {
+      let groupName = null;
+      let groupMembers = null;
+      if (groupId) {
+        const groupObj = await fastify.store.getGroup(groupId);
+        if (groupObj) {
+          groupName = groupObj.name;
+          groupMembers = groupObj.members;
+        }
+      }
+
       const payload = JSON.stringify({
         type: 'message',
         data: {
@@ -75,8 +85,8 @@ async function messageRoutes(fastify) {
           sentAt: msg.sent_at,
           expiresAt: msg.expires_at,
           groupId,
-          groupName: groupId ? fastify.store.getGroup(groupId)?.name : null,
-          groupMembers: groupId ? fastify.store.getGroup(groupId)?.members : null
+          groupName,
+          groupMembers
         },
       });
 
@@ -92,9 +102,9 @@ async function messageRoutes(fastify) {
 
     // If not delivered, enqueue for later delivery
     if (!delivered) {
-      fastify.store.enqueuePending(recipientId, msg.id);
+      await fastify.store.enqueuePending(recipientId, msg.id);
     } else {
-      fastify.store.markDelivered(msg.id);
+      await fastify.store.markDelivered(msg.id);
     }
 
     // Send delivery confirmation back to sender's other connections
@@ -142,7 +152,7 @@ async function messageRoutes(fastify) {
   }, async (request) => {
     const { peerId } = request.params;
     const { limit, before } = request.query;
-    const messages = fastify.store.getConversationMessages(
+    const messages = await fastify.store.getConversationMessages(
       request.user.id, peerId, limit || 50, before
     );
     return { messages, hasMore: messages.length === (limit || 50) };
@@ -152,11 +162,11 @@ async function messageRoutes(fastify) {
   fastify.get('/api/messages/pending/all', {
     preValidation: [fastify.authenticate],
   }, async (request) => {
-    const messages = fastify.store.getUndeliveredMessages(request.user.id);
+    const messages = await fastify.store.getUndeliveredMessages(request.user.id);
     // Mark as delivered now that client has fetched them
     for (const msg of messages) {
-      fastify.store.markDelivered(msg.id);
-      fastify.store.removePending(request.user.id, msg.id);
+      await fastify.store.markDelivered(msg.id);
+      await fastify.store.removePending(request.user.id, msg.id);
     }
     return { messages };
   });
@@ -165,7 +175,7 @@ async function messageRoutes(fastify) {
   fastify.get('/api/conversations', {
     preValidation: [fastify.authenticate],
   }, async (request) => {
-    const conversations = fastify.store.getConversationsForUser(request.user.id);
+    const conversations = await fastify.store.getConversationsForUser(request.user.id);
     return { conversations };
   });
 
@@ -182,7 +192,7 @@ async function messageRoutes(fastify) {
       },
     },
   }, async (request) => {
-    const results = fastify.store.searchUsers(request.query.q, request.user.id);
+    const results = await fastify.store.searchUsers(request.query.q, request.user.id);
     return { users: results };
   });
 }
