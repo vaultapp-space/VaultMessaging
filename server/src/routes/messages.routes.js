@@ -63,11 +63,13 @@ async function messageRoutes(fastify) {
     if (sockets.size > 0) {
       let groupName = null;
       let groupMembers = null;
+      let groupJoinKey = null;
       if (groupId) {
         const groupObj = await fastify.store.getGroup(groupId);
         if (groupObj) {
           groupName = groupObj.name;
           groupMembers = groupObj.members;
+          groupJoinKey = groupObj.joinKey;
         }
       }
 
@@ -86,7 +88,8 @@ async function messageRoutes(fastify) {
           expiresAt: msg.expires_at,
           groupId,
           groupName,
-          groupMembers
+          groupMembers,
+          groupJoinKey
         },
       });
 

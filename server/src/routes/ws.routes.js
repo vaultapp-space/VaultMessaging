@@ -28,11 +28,13 @@ async function flushPendingMessages(fastify, userId, socket) {
   for (const msg of messages) {
     let groupName = null;
     let groupMembers = null;
+    let groupJoinKey = null;
     if (msg.group_id) {
       const groupObj = await fastify.store.getGroup(msg.group_id);
       if (groupObj) {
         groupName = groupObj.name;
         groupMembers = groupObj.members;
+        groupJoinKey = groupObj.joinKey;
       }
     }
 
@@ -51,7 +53,8 @@ async function flushPendingMessages(fastify, userId, socket) {
         expiresAt: msg.expires_at,
         groupId: msg.group_id,
         groupName,
-        groupMembers
+        groupMembers,
+        groupJoinKey
       },
     }));
     await fastify.store.markDelivered(msg.id);

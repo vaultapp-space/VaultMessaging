@@ -21,6 +21,7 @@
         peerUsername: g.name,
         isGroup: true,
         members: g.members,
+        joinKey: g.joinKey,
         lastMessageAt: null,
         hasUndelivered: false
       }));
@@ -152,6 +153,7 @@
           peerUsername: data.groupName || data.senderUsername,
           isGroup: !!data.groupId,
           members: data.groupMembers || [],
+          joinKey: data.groupJoinKey,
           lastMessageAt: data.sentAt,
           hasUndelivered: !isCurrentlyActive,
         });
