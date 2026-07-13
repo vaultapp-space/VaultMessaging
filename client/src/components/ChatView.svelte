@@ -1141,9 +1141,6 @@
         const data = await fetchTurnCredentials();
         if (data && data.iceServers) {
           iceServers = data.iceServers;
-          sendClientDebugLog('fetchTurnCredentials success', null, { iceServers });
-        } else {
-          sendClientDebugLog('fetchTurnCredentials success but no iceServers data', null, { data });
         }
       } catch (e) {
         console.warn('Failed to fetch ephemeral TURN credentials, falling back to public STUN:', e);
@@ -1152,7 +1149,6 @@
 
       try {
         peerConnection = new RTCPeerConnection({ iceServers });
-        sendClientDebugLog('RTCPeerConnection instantiated successfully', null);
       } catch (e) {
         sendClientDebugLog('RTCPeerConnection instantiation failed', e);
         throw e;
@@ -1179,7 +1175,6 @@
       // ICE connection state monitoring for auto-reconnection
       peerConnection.oniceconnectionstatechange = () => {
         const state = peerConnection?.iceConnectionState;
-        sendClientDebugLog('ICE connection state changed', null, { state });
         if (state === 'failed') {
           // Attempt ICE restart
           peerConnection.restartIce();
@@ -1215,7 +1210,6 @@
 
   async function startOfferNegotiation(peerId) {
     try {
-      sendClientDebugLog('startOfferNegotiation triggered', null, { peerId });
       await initializePeerConnection(peerId);
       if (!localStream) {
         throw new Error('localStream is null inside startOfferNegotiation');
@@ -1233,7 +1227,6 @@
         recipientId: peerId,
         ...encrypted
       });
-      sendClientDebugLog('startOfferNegotiation: offer sent successfully', null, { peerId });
     } catch (err) {
       console.error('Failed to create offer:', err);
       sendClientDebugLog('startOfferNegotiation failed error caught', err, { peerId });
