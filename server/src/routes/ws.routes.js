@@ -209,9 +209,9 @@ async function wsRoutes(fastify) {
           }
         }
 
-        if (data.type === 'call_invite' || data.type === 'call_accept') {
+        if (data.type === 'call_accept') {
           fastify.store.registerCall(userId, data.recipientId);
-        } else if (data.type === 'call_reject' || data.type === 'call_hangup') {
+        } else if (data.type === 'call_hangup') {
           fastify.store.unregisterCall(userId);
         }
 
