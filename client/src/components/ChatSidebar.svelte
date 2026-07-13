@@ -417,6 +417,13 @@
     >
       Calls
     </button>
+    <button
+      on:click={() => activeTab = 'wallet'}
+      class="flex-1 py-2 font-semibold transition-all border-b-2 text-center cursor-pointer focus:outline-none
+        {activeTab === 'wallet' ? 'border-vault-accent text-vault-accent' : 'border-transparent text-vault-text-dim hover:text-vault-text'}"
+    >
+      Wallet
+    </button>
   </div>
 
   {#if activeTab === 'chats'}
@@ -587,6 +594,10 @@
           </div>
         {/each}
       {/if}
+    </div>
+  {:else if activeTab === 'wallet'}
+    <div class="flex-1 overflow-y-auto p-4 text-left bg-vault-surface/40">
+      <WalletSettings />
     </div>
   {/if}
 
