@@ -423,27 +423,20 @@ export function generatePDFBackup(username, mnemonic, evmAddr, solAddr) {
 // DeFi Wallet Phase 2: On-chain Balances & Transfers
 // ============================================================
 
-export const BASE_SEPOLIA_RPC = 'https://sepolia.base.org';
 export const SOLANA_DEVNET_RPC = 'https://api.devnet.solana.com';
 export const SOLANA_MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
 
 export const ERC20_TOKENS = {
-  USDC: '0x03498113b8e93d508e028f522e8ec502ef49048a' // Base Sepolia USDC contract
+  ethereum: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  base: '0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913',
+  arbitrum: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  optimism: '0x0b2C639c533813F4Aa9d7837CAf62653d097Ff85',
+  polygon: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913' // Base USDC fallback
 };
 
 export const SPL_TOKENS = {
-  USDC: '4zMMC9srt5Ri5X14GAgXwiWYcQ873fETy8F7z271Ab66' // Solana Devnet USDC Mint
-};
-
-const baseSepolia = {
-  id: 84532,
-  name: 'Base Sepolia',
-  network: 'base-sepolia',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: {
-    default: { http: [BASE_SEPOLIA_RPC] },
-    public: { http: [BASE_SEPOLIA_RPC] }
-  }
+  USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' // Solana Mainnet USDC Mint
 };
 
 const erc20Abi = [
@@ -481,15 +474,14 @@ const CHAIN_MAP = {
   'base': base,
   'arbitrum': arbitrum,
   'optimism': optimism,
-  'polygon': polygon,
-  'base-sepolia': baseSepolia
+  'polygon': polygon
 };
 
 /**
  * Fetch native ETH/MATIC balance on any EVM chain
  */
-export async function getEVMBalance(address, chainKey = 'base-sepolia') {
-  const chain = CHAIN_MAP[chainKey] || baseSepolia;
+export async function getEVMBalance(address, chainKey = 'ethereum') {
+  const chain = CHAIN_MAP[chainKey] || mainnet;
   const client = createPublicClient({
     chain,
     transport: http()
@@ -501,8 +493,8 @@ export async function getEVMBalance(address, chainKey = 'base-sepolia') {
 /**
  * Fetch ERC-20 token balance on any EVM chain
  */
-export async function getERC20Balance(address, tokenAddress, chainKey = 'base-sepolia') {
-  const chain = CHAIN_MAP[chainKey] || baseSepolia;
+export async function getERC20Balance(address, tokenAddress, chainKey = 'ethereum') {
+  const chain = CHAIN_MAP[chainKey] || mainnet;
   const client = createPublicClient({
     chain,
     transport: http()
@@ -532,7 +524,7 @@ export async function getERC20Balance(address, tokenAddress, chainKey = 'base-se
 /**
  * Fetch native SOL balance on Solana Devnet
  */
-export async function getSolanaBalance(address, isMainnet = false) {
+export async function getSolanaBalance(address, isMainnet = true) {
   const rpc = isMainnet ? SOLANA_MAINNET_RPC : SOLANA_DEVNET_RPC;
   const connection = new Connection(rpc, 'confirmed');
   const pubKey = new PublicKey(address);
@@ -543,7 +535,7 @@ export async function getSolanaBalance(address, isMainnet = false) {
 /**
  * Fetch SPL token balance on Solana
  */
-export async function getSolanaTokenBalance(address, tokenMintAddress, isMainnet = false) {
+export async function getSolanaTokenBalance(address, tokenMintAddress, isMainnet = true) {
   const rpc = isMainnet ? SOLANA_MAINNET_RPC : SOLANA_DEVNET_RPC;
   const connection = new Connection(rpc, 'confirmed');
   const owner = new PublicKey(address);
@@ -592,10 +584,10 @@ async function deriveEVMPrivateKey(mnemonic) {
 /**
  * Send EVM native or ERC-20 tokens
  */
-export async function sendEVMTransaction(mnemonic, toAddress, amount, tokenAddress = null, chainKey = 'base-sepolia') {
+export async function sendEVMTransaction(mnemonic, toAddress, amount, tokenAddress = null, chainKey = 'ethereum') {
   const privateKeyHex = await deriveEVMPrivateKey(mnemonic);
   const account = privateKeyToAccount(privateKeyHex);
-  const chain = CHAIN_MAP[chainKey] || baseSepolia;
+  const chain = CHAIN_MAP[chainKey] || mainnet;
   
   if (tokenAddress) {
     // Send ERC-20
@@ -648,7 +640,7 @@ export async function sendEVMTransaction(mnemonic, toAddress, amount, tokenAddre
 /**
  * Send Solana native SOL or SPL token
  */
-export async function sendSolanaTransaction(mnemonic, toAddress, amount, tokenMintAddress = null, isMainnet = false) {
+export async function sendSolanaTransaction(mnemonic, toAddress, amount, tokenMintAddress = null, isMainnet = true) {
   const cleanMnemonic = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
   const seed = await mnemonicToSeed(cleanMnemonic);
   const solPrivateKey = await deriveSolanaKeyFromSeed(seed);
@@ -715,9 +707,10 @@ export async function sendSolanaTransaction(mnemonic, toAddress, amount, tokenMi
 /**
  * Checks receipt status for EVM transactions.
  */
-export async function getEVMTransactionStatus(txHash) {
+export async function getEVMTransactionStatus(txHash, chainKey = 'ethereum') {
+  const chain = CHAIN_MAP[chainKey] || mainnet;
   const client = createPublicClient({
-    chain: baseSepolia,
+    chain,
     transport: http()
   });
   try {
@@ -734,8 +727,9 @@ export async function getEVMTransactionStatus(txHash) {
 /**
  * Checks signature confirmation status for Solana transactions.
  */
-export async function getSolanaTransactionStatus(txHash) {
-  const connection = new Connection(SOLANA_DEVNET_RPC, 'confirmed');
+export async function getSolanaTransactionStatus(txHash, isMainnet = true) {
+  const rpc = isMainnet ? SOLANA_MAINNET_RPC : SOLANA_DEVNET_RPC;
+  const connection = new Connection(rpc, 'confirmed');
   try {
     const response = await connection.getSignatureStatus(txHash);
     const status = response.value;
@@ -814,7 +808,7 @@ export async function generateShieldedProof(amount, tokenSymbol) {
  * Calculates a simulated cross-chain bridging swap route using Li.Fi protocol models.
  */
 export function getCrossChainRoute(amount, fromToken, fromChain, toToken, toChain) {
-  const rate = fromChain === 'base-sepolia' ? 1 / 145.20 : 145.20;
+  const rate = fromChain !== 'solana-mainnet' ? 1 / 145.20 : 145.20;
   const estOutput = (parseFloat(amount) * rate * 0.985).toFixed(4);
   
   return {
@@ -833,8 +827,8 @@ export async function executeCrossChainBridge(mnemonic, amount, fromToken, fromC
   console.log(`[Li.Fi Bridge] Initiating transfer of ${amount} ${fromToken} from ${fromChain}...`);
   console.log(`[Li.Fi Bridge] Depositing to L1 Gateway Pool...`);
   
-  if (fromChain === 'base-sepolia') {
-    return await sendEVMTransaction(mnemonic, '0x0000000000000000000000000000000000000000', '0.0001');
+  if (fromChain !== 'solana-mainnet') {
+    return await sendEVMTransaction(mnemonic, '0x0000000000000000000000000000000000000000', '0.0001', null, fromChain);
   } else {
     return await sendSolanaTransaction(mnemonic, '11111111111111111111111111111111', '0.001');
   }
@@ -867,8 +861,8 @@ export function resolveDomainHandle(handle) {
  */
 export async function lockEscrowAssets(mnemonic, amount, tokenSymbol, network) {
   console.log(`[SmartContract] Locking ${amount} ${tokenSymbol} on ${network} in Escrow Contract...`);
-  if (network === 'base-sepolia') {
-    return await sendEVMTransaction(mnemonic, '0x0000000000000000000000000000000000000000', '0.0001');
+  if (network !== 'solana-mainnet') {
+    return await sendEVMTransaction(mnemonic, '0x0000000000000000000000000000000000000000', '0.0001', null, network);
   } else {
     return await sendSolanaTransaction(mnemonic, '11111111111111111111111111111111', '0.001');
   }
@@ -879,11 +873,11 @@ export async function lockEscrowAssets(mnemonic, amount, tokenSymbol, network) {
  */
 export async function releaseEscrowAssets(mnemonic, amount, tokenSymbol, network, recipient) {
   console.log(`[SmartContract] Triggering Release for Escrow: sending ${amount} ${tokenSymbol} to ${recipient}...`);
-  if (network === 'base-sepolia') {
+  if (network !== 'solana-mainnet') {
     if (tokenSymbol === 'ETH') {
-      return await sendEVMTransaction(mnemonic, recipient, amount);
+      return await sendEVMTransaction(mnemonic, recipient, amount, null, network);
     } else {
-      return await sendEVMTransaction(mnemonic, recipient, amount, ERC20_TOKENS.USDC);
+      return await sendEVMTransaction(mnemonic, recipient, amount, ERC20_TOKENS[network] || ERC20_TOKENS.base, network);
     }
   } else {
     if (tokenSymbol === 'SOL') {
@@ -899,8 +893,8 @@ export async function releaseEscrowAssets(mnemonic, amount, tokenSymbol, network
  */
 export async function lockRedPacketAssets(mnemonic, amount, tokenSymbol, network) {
   console.log(`[SmartContract] Locking total ${amount} ${tokenSymbol} on ${network} in Red Packet Envelope...`);
-  if (network === 'base-sepolia') {
-    return await sendEVMTransaction(mnemonic, '0x0000000000000000000000000000000000000000', '0.0001');
+  if (network !== 'solana-mainnet') {
+    return await sendEVMTransaction(mnemonic, '0x0000000000000000000000000000000000000000', '0.0001', null, network);
   } else {
     return await sendSolanaTransaction(mnemonic, '11111111111111111111111111111111', '0.001');
   }

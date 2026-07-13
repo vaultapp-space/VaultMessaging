@@ -636,204 +636,180 @@
         </button>
       </div>
 
-      <!-- Settings Tab Switcher -->
-      <div class="flex border-b border-vault-border text-xs px-5 pt-2 gap-1 bg-vault-surface">
-        <button
-          on:click={() => settingsTab = 'general'}
-          class="flex-1 py-2 font-semibold transition-all border-b-2 text-center cursor-pointer focus:outline-none
-            {settingsTab === 'general' ? 'border-vault-accent text-vault-accent' : 'border-transparent text-vault-text-dim hover:text-vault-text'}"
-        >
-          General
-        </button>
-        <button
-          on:click={() => settingsTab = 'wallet'}
-          class="flex-1 py-2 font-semibold transition-all border-b-2 text-center cursor-pointer focus:outline-none
-            {settingsTab === 'wallet' ? 'border-vault-accent text-vault-accent' : 'border-transparent text-vault-text-dim hover:text-vault-text'}"
-        >
-          DeFi Wallet
-        </button>
-      </div>
-
-      {#if settingsTab === 'general'}
-        <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
-          <!-- Appearance Settings -->
-          <div class="flex items-center justify-between border-b border-vault-border pb-4">
-            <div>
-              <span class="text-xs font-semibold text-vault-text block">Appearance</span>
-              <span class="text-[10px] text-vault-text-dim">Toggle between dark and light interface</span>
-            </div>
-            <div class="flex items-center gap-1 bg-vault-elevated border border-vault-border rounded-xl p-0.5">
-              <button
-                on:click={() => applyTheme('dark')}
-                class="py-1 px-3 rounded-lg text-[10px] font-semibold transition-all cursor-pointer focus:outline-none
-                  {theme === 'dark' ? 'bg-vault-accent text-vault-black' : 'text-vault-text-dim hover:text-vault-text'}"
-              >
-                Dark
-              </button>
-              <button
-                on:click={() => applyTheme('light')}
-                class="py-1 px-3 rounded-lg text-[10px] font-semibold transition-all cursor-pointer focus:outline-none
-                  {theme === 'light' ? 'bg-vault-accent text-vault-black' : 'text-vault-text-dim hover:text-vault-text'}"
-              >
-                Light
-              </button>
-            </div>
+      <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
+        <!-- Appearance Settings -->
+        <div class="flex items-center justify-between border-b border-vault-border pb-4">
+          <div>
+            <span class="text-xs font-semibold text-vault-text block">Appearance</span>
+            <span class="text-[10px] text-vault-text-dim">Toggle between dark and light interface</span>
           </div>
-
-          {#if biometricEnabled && !$localBackupEnabled}
+          <div class="flex items-center gap-1 bg-vault-elevated border border-vault-border rounded-xl p-0.5">
             <button
-              on:click={async () => {
-                try {
-                  const credId = localStorage.getItem(`vault_bio_cred_id_${$currentUser.id}`);
-                  if (!credId) throw new Error('Biometric credential not found. Please re-enable Biometric Vault Unlock.');
-                  const prfKey = await authenticateBiometric(credId, $currentUser.salt);
-                  localBackupKey.set(prfKey);
-                  localBackupPassphrase.set('BIOMETRIC_UNLOCKED');
-                  localBackupEnabled.set(true);
-                  await restoreBackup();
-                  alert('Vault unlocked successfully using biometrics!');
-                } catch (err) {
-                  console.error('Biometric unlock failed:', err);
-                  alert(err.message || 'Biometric unlock failed');
-                }
-              }}
-              class="w-full py-2 bg-vault-accent hover:bg-vault-accent-hover text-vault-black font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none"
+              on:click={() => applyTheme('dark')}
+              class="py-1 px-3 rounded-lg text-[10px] font-semibold transition-all cursor-pointer focus:outline-none
+                {theme === 'dark' ? 'bg-vault-accent text-vault-black' : 'text-vault-text-dim hover:text-vault-text'}"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              Biometric Unlock Vault
+              Dark
             </button>
-          {/if}
+            <button
+              on:click={() => applyTheme('light')}
+              class="py-1 px-3 rounded-lg text-[10px] font-semibold transition-all cursor-pointer focus:outline-none
+                {theme === 'light' ? 'bg-vault-accent text-vault-black' : 'text-vault-text-dim hover:text-vault-text'}"
+            >
+              Light
+            </button>
+          </div>
+        </div>
 
-          {#if biometricSupported}
-            <div class="flex items-center justify-between">
-              <div>
-                <span class="text-xs font-semibold text-vault-text block">Biometric Unlock</span>
-                <span class="text-[10px] text-vault-text-dim font-normal block">Use fingerprint or face recognition</span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={biometricEnabled}
-                  on:change={toggleBiometric}
-                  class="sr-only peer"
-                />
-                <div class="w-9 h-5 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-vault-accent"></div>
-              </label>
-            </div>
-          {/if}
+        {#if biometricEnabled && !$localBackupEnabled}
+          <button
+            on:click={async () => {
+              try {
+                const credId = localStorage.getItem(`vault_bio_cred_id_${$currentUser.id}`);
+                if (!credId) throw new Error('Biometric credential not found. Please re-enable Biometric Vault Unlock.');
+                const prfKey = await authenticateBiometric(credId, $currentUser.salt);
+                localBackupKey.set(prfKey);
+                localBackupPassphrase.set('BIOMETRIC_UNLOCKED');
+                localBackupEnabled.set(true);
+                await restoreBackup();
+                alert('Vault unlocked successfully using biometrics!');
+              } catch (err) {
+                console.error('Biometric unlock failed:', err);
+                alert(err.message || 'Biometric unlock failed');
+              }
+            }}
+            class="w-full py-2 bg-vault-accent hover:bg-vault-accent-hover text-vault-black font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Biometric Unlock Vault
+          </button>
+        {/if}
 
+        {#if biometricSupported}
           <div class="flex items-center justify-between">
             <div>
-              <span class="text-xs font-semibold text-vault-text block">Local Encrypted Backup</span>
-              <span class="text-[10px] text-vault-text-dim">Caches history securely inside IndexedDB</span>
+              <span class="text-xs font-semibold text-vault-text block">Biometric Unlock</span>
+              <span class="text-[10px] text-vault-text-dim font-normal block">Use fingerprint or face recognition</span>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
-                checked={$localBackupEnabled}
-                on:change={(e) => {
-                  const enabled = e.target.checked;
-                  if (!enabled) {
-                    localBackupEnabled.set(false);
-                    localBackupPassphrase.set('');
-                    localBackupKey.set(null);
-                    clearBackup();
-                    setTimeout(syncVault, 100);
-                  } else {
-                    const phrase = prompt('Enter a passphrase to encrypt your local database:');
-                    if (phrase) {
-                      localBackupPassphrase.set(phrase);
-                      localBackupEnabled.set(true);
-                      setTimeout(syncVault, 100);
-                    } else {
-                      e.target.checked = false;
-                    }
-                  }
-                }}
+                checked={biometricEnabled}
+                on:change={toggleBiometric}
                 class="sr-only peer"
               />
               <div class="w-9 h-5 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-vault-accent"></div>
             </label>
           </div>
+        {/if}
 
-          {#if $localBackupEnabled}
-            <div class="space-y-1">
-              <span class="text-[10px] text-vault-text-dim block uppercase tracking-wider font-semibold">Current Backup Passphrase</span>
-              <div class="flex items-center justify-between gap-2 px-3 py-2 bg-vault-elevated border border-vault-border rounded-xl">
-                <span class="text-xs font-mono truncate">{$localBackupPassphrase.replace(/./g, '•')}</span>
-                <button
-                  on:click={() => {
-                    const phrase = prompt('Enter new passphrase:');
-                    if (phrase) {
-                      localBackupPassphrase.set(phrase);
-                      setTimeout(syncVault, 100);
-                    }
-                  }}
-                  class="text-[10px] text-vault-accent hover:underline focus:outline-none"
-                >
-                  Change
-                </button>
-              </div>
-            </div>
-          {/if}
-
-          <div class="text-[10px] text-vault-text-dim leading-relaxed bg-vault-elevated p-3 border border-vault-border rounded-xl">
-            🔒 **Zero-Knowledge Security:** Your backup is encrypted on your client using PBKDF2/AES-GCM before writing to storage. The server never receives your passphrase or decrypted message logs.
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-xs font-semibold text-vault-text block">Local Encrypted Backup</span>
+            <span class="text-[10px] text-vault-text-dim">Caches history securely inside IndexedDB</span>
           </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={$localBackupEnabled}
+              on:change={(e) => {
+                const enabled = e.target.checked;
+                if (!enabled) {
+                  localBackupEnabled.set(false);
+                  localBackupPassphrase.set('');
+                  localBackupKey.set(null);
+                  clearBackup();
+                  setTimeout(syncVault, 100);
+                } else {
+                  const phrase = prompt('Enter a passphrase to encrypt your local database:');
+                  if (phrase) {
+                    localBackupPassphrase.set(phrase);
+                    localBackupEnabled.set(true);
+                    setTimeout(syncVault, 100);
+                  } else {
+                    e.target.checked = false;
+                  }
+                }
+              }}
+              class="sr-only peer"
+            />
+            <div class="w-9 h-5 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-vault-accent"></div>
+          </label>
+        </div>
 
-          <div class="border-t border-vault-border pt-4 space-y-3">
-            <span class="text-xs font-semibold text-vault-text block">Identity Key Backup</span>
-            <span class="text-[10px] text-vault-text-dim block">Export or import your E2EE keys to preserve stable safety numbers.</span>
-            <div class="flex gap-2">
+        {#if $localBackupEnabled}
+          <div class="space-y-1">
+            <span class="text-[10px] text-vault-text-dim block uppercase tracking-wider font-semibold">Current Backup Passphrase</span>
+            <div class="flex items-center justify-between gap-2 px-3 py-2 bg-vault-elevated border border-vault-border rounded-xl">
+              <span class="text-xs font-mono truncate">{$localBackupPassphrase.replace(/./g, '•')}</span>
               <button
-                on:click={exportIdentity}
-                class="py-1.5 px-3 text-[10px] bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer"
+                on:click={() => {
+                  const phrase = prompt('Enter new passphrase:');
+                  if (phrase) {
+                    localBackupPassphrase.set(phrase);
+                    setTimeout(syncVault, 100);
+                  }
+                }}
+                class="text-[10px] text-vault-accent hover:underline focus:outline-none"
               >
-                Export Keys
-              </button>
-              <label
-                class="py-1.5 px-3 text-[10px] bg-vault-elevated text-vault-text hover:bg-vault-border border border-vault-border font-semibold rounded-xl cursor-pointer text-center"
-              >
-                Import Keys
-                <input type="file" accept=".vaultkey" on:change={importIdentity} class="hidden" />
-              </label>
-            </div>
-          </div>
-
-          <div class="border-t border-vault-border pt-4 space-y-3">
-            <span class="text-xs font-semibold text-vault-text block">Zero-Knowledge Cloud Backup</span>
-            <span class="text-[10px] text-vault-text-dim block">Vault automatically backs up your encrypted keys & sessions to the cloud. You can also trigger a manual sync.</span>
-            <div class="flex items-center justify-between p-2.5 bg-vault-black/30 border border-vault-border rounded-xl w-full select-none">
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-bold flex items-center gap-1">
-                  <span class="w-1.5 h-1.5 rounded-full {isSyncing ? 'bg-vault-warning animate-pulse' : (syncError ? 'bg-vault-danger' : 'bg-vault-accent')}"></span>
-                  Status: {isSyncing ? 'Syncing...' : (syncError ? syncError : 'Synchronized')}
-                </span>
-                <span class="text-[9px] text-vault-text-dim">Last Synced: {lastSyncedTime}</span>
-              </div>
-              <button
-                on:click={triggerManualSync}
-                disabled={isSyncing}
-                class="py-1.5 px-3 text-[10px] bg-vault-accent hover:bg-vault-accent-hover text-vault-black font-semibold rounded-xl cursor-pointer flex items-center gap-1 border-none disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {#if isSyncing}
-                  <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
-                    <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
-                  </svg>
-                {/if}
-                Sync Now
+                Change
               </button>
             </div>
           </div>
+        {/if}
+
+        <div class="text-[10px] text-vault-text-dim leading-relaxed bg-vault-elevated p-3 border border-vault-border rounded-xl">
+          🔒 **Zero-Knowledge Security:** Your backup is encrypted on your client using PBKDF2/AES-GCM before writing to storage. The server never receives your passphrase or decrypted message logs.
         </div>
-      {:else}
-        <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
-          <WalletSettings />
+
+        <div class="border-t border-vault-border pt-4 space-y-3">
+          <span class="text-xs font-semibold text-vault-text block">Identity Key Backup</span>
+          <span class="text-[10px] text-vault-text-dim block">Export or import your E2EE keys to preserve stable safety numbers.</span>
+          <div class="flex gap-2">
+            <button
+              on:click={exportIdentity}
+              class="py-1.5 px-3 text-[10px] bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer"
+            >
+              Export Keys
+            </button>
+            <label
+              class="py-1.5 px-3 text-[10px] bg-vault-elevated text-vault-text hover:bg-vault-border border border-vault-border font-semibold rounded-xl cursor-pointer text-center"
+            >
+              Import Keys
+              <input type="file" accept=".vaultkey" on:change={importIdentity} class="hidden" />
+            </label>
+          </div>
         </div>
-      {/if}
+
+        <div class="border-t border-vault-border pt-4 space-y-3">
+          <span class="text-xs font-semibold text-vault-text block">Zero-Knowledge Cloud Backup</span>
+          <span class="text-[10px] text-vault-text-dim block">Vault automatically backs up your encrypted keys & sessions to the cloud. You can also trigger a manual sync.</span>
+          <div class="flex items-center justify-between p-2.5 bg-vault-black/30 border border-vault-border rounded-xl w-full select-none">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-bold flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full {isSyncing ? 'bg-vault-warning animate-pulse' : (syncError ? 'bg-vault-danger' : 'bg-vault-accent')}"></span>
+                Status: {isSyncing ? 'Syncing...' : (syncError ? syncError : 'Synchronized')}
+              </span>
+              <span class="text-[9px] text-vault-text-dim">Last Synced: {lastSyncedTime}</span>
+            </div>
+            <button
+              on:click={triggerManualSync}
+              disabled={isSyncing}
+              class="py-1.5 px-3 text-[10px] bg-vault-accent hover:bg-vault-accent-hover text-vault-black font-semibold rounded-xl cursor-pointer flex items-center gap-1 border-none disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {#if isSyncing}
+                <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
+                </svg>
+              {/if}
+              Sync Now
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div class="px-5 py-3.5 bg-vault-elevated border-t border-vault-border flex justify-end">
         <button

@@ -27,6 +27,31 @@
     return `${Math.floor(diff / 3600000)}h`;
   }
 
+  function getExplorerUrl(hash, network) {
+    if (!hash) return '#';
+    const chain = network ? network.toLowerCase() : 'ethereum';
+    if (chain === 'bitcoin') return `https://mempool.space/tx/${hash}`;
+    if (chain === 'solana' || chain === 'solana-devnet' || chain === 'solana-mainnet') return `https://solscan.io/tx/${hash}`;
+    if (chain === 'base' || chain === 'base-sepolia') return `https://basescan.org/tx/${hash}`;
+    if (chain === 'arbitrum') return `https://arbiscan.io/tx/${hash}`;
+    if (chain === 'optimism') return `https://optimistic.etherscan.io/tx/${hash}`;
+    if (chain === 'polygon') return `https://polygonscan.com/tx/${hash}`;
+    return `https://etherscan.io/tx/${hash}`;
+  }
+
+  function getChainName(network) {
+    if (!network) return 'Ethereum';
+    const chain = network.toLowerCase();
+    if (chain === 'bitcoin') return 'Bitcoin';
+    if (chain.includes('solana')) return 'Solana';
+    if (chain === 'base' || chain === 'base-sepolia') return 'Base L2';
+    if (chain === 'arbitrum') return 'Arbitrum L2';
+    if (chain === 'optimism') return 'Optimism L2';
+    if (chain === 'polygon') return 'Polygon';
+    if (chain === 'ethereum') return 'Ethereum';
+    return network;
+  }
+
   let timer;
   let expiryText = getExpiryInfo(message.expiresAt);
 
@@ -489,9 +514,10 @@
     if (!paymentData || paymentStatus !== 'pending') return;
     try {
       let status = 'pending';
-      if (paymentData.network === 'base' || paymentData.network === 'base-sepolia') {
-        status = await getEVMTransactionStatus(paymentData.txHash);
-      } else if (paymentData.network === 'solana' || paymentData.network === 'solana-devnet') {
+      const isSolana = paymentData.network && paymentData.network.includes('solana');
+      if (!isSolana) {
+        status = await getEVMTransactionStatus(paymentData.txHash, paymentData.network);
+      } else {
         status = await getSolanaTransactionStatus(paymentData.txHash);
       }
       
@@ -713,7 +739,7 @@
                   {/if}
                 </span>
                 <span class="text-[8px] text-vault-text-dim font-bold uppercase">
-                  {paymentData.network === 'base' || paymentData.network === 'base-sepolia' ? 'Base L2' : 'Solana'}
+                  {getChainName(paymentData.network)}
                 </span>
               </div>
 
@@ -732,7 +758,7 @@
                   Hash: <span class="font-mono">{paymentData.txHash}</span>
                 </div>
                 <a
-                  href={paymentData.network.includes('base') ? `https://sepolia.basescan.org/tx/${paymentData.txHash}` : `https://solscan.io/tx/${paymentData.txHash}?cluster=devnet`}
+                  href={getExplorerUrl(paymentData.txHash, paymentData.network)}
                   target="_blank"
                   rel="noopener noreferrer"
                   class="text-vault-accent font-semibold hover:underline block"

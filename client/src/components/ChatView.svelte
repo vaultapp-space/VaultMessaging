@@ -1793,8 +1793,8 @@
 
   // Phase 3 DeFi: In-Chat Payment Drawer State
   let showPaymentDrawer = false;
-  let payNetwork = 'base-sepolia'; // 'base-sepolia' | 'solana-devnet'
-  let payAsset = 'USDC'; // 'USDC' | 'ETH' | 'SOL'
+  let payNetwork = 'ethereum'; // 'ethereum' | 'base' | 'arbitrum' | 'optimism' | 'polygon' | 'solana-mainnet'
+  let payAsset = 'USDC'; // 'USDC' | 'ETH' | 'SOL' | 'POL'
   let payRecipient = '';
   let payAmount = '';
   
@@ -1833,15 +1833,15 @@
       const isRecipientEVM = /^0x[a-fA-F0-9]{40}$/.test(recipientAddr);
       const isRecipientSol = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(recipientAddr);
       
-      const isSourceEVM = payNetwork === 'base-sepolia';
-      const isSourceSol = payNetwork === 'solana-devnet';
+      const isSourceSol = payNetwork === 'solana-mainnet';
+      const isSourceEVM = !isSourceSol;
 
       if ((isSourceEVM && isRecipientSol) || (isSourceSol && isRecipientEVM)) {
         isCrossChain = true;
         const fromToken = payAsset;
         const fromChain = payNetwork;
-        const toToken = isRecipientEVM ? 'USDC' : 'USDC';
-        const toChain = isRecipientEVM ? 'base-sepolia' : 'solana-devnet';
+        const toToken = 'USDC';
+        const toChain = isRecipientEVM ? 'base' : 'solana-mainnet';
         
         crossChainRoute = getCrossChainRoute(payAmount, fromToken, fromChain, toToken, toChain);
       } else {
@@ -1867,11 +1867,11 @@
     }
     isLoadingBalance = true;
     try {
-      if (payNetwork === 'base-sepolia') {
-        if (payAsset === 'ETH') {
-          payBalance = await getEVMBalance($walletState.evmAddress);
+      if (payNetwork !== 'solana-mainnet') {
+        if (payAsset === 'ETH' || payAsset === 'POL') {
+          payBalance = await getEVMBalance($walletState.evmAddress, payNetwork);
         } else {
-          payBalance = await getERC20Balance($walletState.evmAddress, ERC20_TOKENS.USDC);
+          payBalance = await getERC20Balance($walletState.evmAddress, ERC20_TOKENS[payNetwork] || ERC20_TOKENS.base, payNetwork);
         }
       } else {
         if (payAsset === 'SOL') {
@@ -1897,7 +1897,7 @@
   $: {
     if ($activePaymentDetails) {
       showPaymentDrawer = true;
-      if (payNetwork === 'base-sepolia') {
+      if (payNetwork !== 'solana-mainnet') {
         payRecipient = $activePaymentDetails.evmAddress || '';
       } else {
         payRecipient = $activePaymentDetails.solAddress || '';
@@ -1907,9 +1907,9 @@
 
   // Keep asset select aligned with network select
   $: {
-    if (payNetwork === 'base-sepolia' && payAsset === 'SOL') {
+    if (payNetwork !== 'solana-mainnet' && payAsset === 'SOL') {
       payAsset = 'USDC';
-    } else if (payNetwork === 'solana-devnet' && payAsset === 'ETH') {
+    } else if (payNetwork === 'solana-mainnet' && (payAsset === 'ETH' || payAsset === 'POL')) {
       payAsset = 'USDC';
     }
   }
@@ -1949,7 +1949,7 @@
     const recipientAddr = isResolved ? resolvedAddress : payRecipient;
     
     if (payMode !== 'redpacket') {
-      if (payNetwork === 'base-sepolia') {
+      if (payNetwork !== 'solana-mainnet') {
         if (!/^0x[a-fA-F0-9]{40}$/.test(recipientAddr)) {
           payError = 'Invalid EVM Address';
           payStatus = 'error';
@@ -2020,18 +2020,19 @@
             payAsset,
             payNetwork,
             payAsset,
-            payNetwork === 'base-sepolia' ? 'solana-devnet' : 'base-sepolia',
+            payNetwork !== 'solana-mainnet' ? 'solana-mainnet' : 'base',
             recipientAddr
           );
         } else {
-          if (payNetwork === 'base-sepolia') {
-            if (payAsset === 'ETH') {
-              hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount);
+          if (payNetwork !== 'solana-mainnet') {
+            const tokenAddress = payAsset === 'USDC' ? (ERC20_TOKENS[payNetwork] || ERC20_TOKENS.base) : null;
+            if (payAsset === 'ETH' || payAsset === 'POL') {
+              hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount, null, payNetwork);
             } else {
               if (payGasless) {
-                hash = await sendGaslessEVMTransaction(mnemonic, recipientAddr, payAmount, ERC20_TOKENS.USDC);
+                hash = await sendGaslessEVMTransaction(mnemonic, recipientAddr, payAmount, tokenAddress);
               } else {
-                hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount, ERC20_TOKENS.USDC);
+                hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount, tokenAddress, payNetwork);
               }
             }
           } else {
@@ -2089,7 +2090,7 @@
           escrowId: 'esc-' + Math.random().toString(36).substring(2, 11),
           sellerAddress: recipientAddr,
           sellerUsername: isResolved ? payRecipient : ($activePeer?.username || 'Buyer'),
-          buyerAddress: payNetwork === 'base-sepolia' ? $walletState.evmAddress : $walletState.solAddress,
+          buyerAddress: payNetwork !== 'solana-mainnet' ? $walletState.evmAddress : $walletState.solAddress,
           buyerUsername: $currentUser.username,
           amount: payAmount,
           tokenSymbol: payAsset,
@@ -2813,18 +2814,18 @@
                     id="drawer-network"
                     bind:value={payNetwork}
                     on:change={() => {
-                      if (payNetwork === 'base-sepolia') {
-                        payAsset = 'USDC';
-                      } else {
-                        payAsset = 'USDC';
-                      }
+                      payAsset = 'USDC';
                       fetchPayBalance();
                     }}
                     class="input py-2 text-[11px] bg-vault-black/40 border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none"
                     disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
                   >
-                    <option value="base-sepolia">Base Sepolia</option>
-                    <option value="solana-devnet">Solana Devnet</option>
+                    <option value="ethereum">Ethereum Mainnet</option>
+                    <option value="base">Base Mainnet</option>
+                    <option value="arbitrum">Arbitrum One</option>
+                    <option value="optimism">Optimism Mainnet</option>
+                    <option value="polygon">Polygon Mainnet</option>
+                    <option value="solana-mainnet">Solana Mainnet</option>
                   </select>
                 </div>
 
@@ -2837,12 +2838,24 @@
                     class="input py-2 text-[11px] bg-vault-black/40 border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none"
                     disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
                   >
-                    {#if payNetwork === 'base-sepolia'}
+                    {#if payNetwork === 'ethereum'}
+                      <option value="USDC">USDC (Ethereum USDC)</option>
+                      <option value="ETH">ETH (Ethereum Native)</option>
+                    {:else if payNetwork === 'base'}
                       <option value="USDC">USDC (Base USDC)</option>
-                      <option value="ETH">ETH (Base Sepolia ETH)</option>
-                    {:else}
+                      <option value="ETH">ETH (Base Native)</option>
+                    {:else if payNetwork === 'arbitrum'}
+                      <option value="USDC">USDC (Arbitrum USDC)</option>
+                      <option value="ETH">ETH (Arbitrum Native)</option>
+                    {:else if payNetwork === 'optimism'}
+                      <option value="USDC">USDC (Optimism USDC)</option>
+                      <option value="ETH">ETH (Optimism Native)</option>
+                    {:else if payNetwork === 'polygon'}
+                      <option value="USDC">USDC (Polygon USDC)</option>
+                      <option value="POL">POL (Polygon Native)</option>
+                    {:else if payNetwork === 'solana-mainnet'}
                       <option value="USDC">USDC (Solana USDC)</option>
-                      <option value="SOL">SOL (Solana Devnet SOL)</option>
+                      <option value="SOL">SOL (Solana Native)</option>
                     {/if}
                   </select>
                 </div>
@@ -2896,7 +2909,7 @@
                     disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
                   />
                 </div>
-              {:else if payNetwork === 'base-sepolia' && payAsset === 'USDC'}
+              {:else if payNetwork !== 'solana-mainnet' && payAsset === 'USDC'}
                 <div class="flex items-center justify-between bg-vault-black/30 border border-vault-border-subtle rounded-xl p-2 select-none">
                   <div class="flex flex-col gap-0.5">
                     <span class="text-[10px] font-semibold text-vault-text block">Gasless Transaction</span>

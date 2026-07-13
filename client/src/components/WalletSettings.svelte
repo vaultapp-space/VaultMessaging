@@ -46,17 +46,21 @@
   let showConfirmWipe = false;
 
   // Live balances
-  let evmBalance = '0.00';       // Base Sepolia ETH
-  let evmUsdcBalance = '0.00';   // Base Sepolia USDC
   let ethMainnetBalance = '0.00'; // Ethereum Mainnet ETH
+  let ethUsdcBalance = '0.00';    // Ethereum Mainnet USDC
   let baseMainnetBalance = '0.00'; // Base Mainnet ETH
+  let baseUsdcBalance = '0.00';   // Base Mainnet USDC
   let arbMainnetBalance = '0.00';  // Arbitrum ETH
+  let arbUsdcBalance = '0.00';    // Arbitrum USDC
   let opMainnetBalance = '0.00';   // Optimism ETH
+  let opUsdcBalance = '0.00';     // Optimism USDC
   let maticBalance = '0.00';       // Polygon MATIC
+  let polygonUsdcBalance = '0.00'; // Polygon USDC
   let solBalance = '0.00';       // Solana SOL
   let solUsdcBalance = '0.00';   // Solana USDC
   let btcBalance = '0.00000000'; // Bitcoin BTC
   let isFetchingBalances = false;
+  let showZeroBalances = false;
 
   // Chain selector values
   const AVAILABLE_CHAINS = [
@@ -66,13 +70,12 @@
     { id: 'optimism', name: 'Optimism Mainnet', type: 'evm', icon: 'Ξ' },
     { id: 'polygon', name: 'Polygon Mainnet', type: 'evm', icon: '⬡' },
     { id: 'solana-mainnet', name: 'Solana Mainnet', type: 'solana', icon: '◎' },
-    { id: 'bitcoin', name: 'Bitcoin Mainnet', type: 'bitcoin', icon: '₿' },
-    { id: 'base-sepolia', name: 'Base Sepolia Testnet', type: 'evm', icon: 'Ξ' }
+    { id: 'bitcoin', name: 'Bitcoin Mainnet', type: 'bitcoin', icon: '₿' }
   ];
 
   // Send state
   let showSendModal = false;
-  let sendChain = 'base-sepolia';
+  let sendChain = 'ethereum';
   let sendSearchQuery = '';
   let showSendDropdown = false;
   let sendAssetObject = null;
@@ -83,7 +86,7 @@
 
   // Receive state
   let showReceiveModal = false;
-  let receiveChain = 'base-sepolia';
+  let receiveChain = 'ethereum';
   let receiveSearchQuery = '';
   let showReceiveDropdown = false;
   let receiveAssetObject = null;
@@ -96,15 +99,18 @@
   // Reactive assets array
   $: assets = [
     { name: 'Ethereum', symbol: 'ETH', balance: ethMainnetBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', icon: 'Ξ', color: 'text-indigo-400' },
+    { name: 'USD Coin', symbol: 'USDC', balance: ethUsdcBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', icon: '💲', color: 'text-blue-400' },
     { name: 'Bitcoin', symbol: 'BTC', balance: btcBalance, network: 'Bitcoin Mainnet', chainId: 'bitcoin', icon: '₿', color: 'text-amber-500' },
     { name: 'Solana', symbol: 'SOL', balance: solBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', icon: '◎', color: 'text-teal-400' },
     { name: 'USD Coin', symbol: 'USDC', balance: solUsdcBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', icon: '💲', color: 'text-blue-400' },
     { name: 'Ethereum (Base L2)', symbol: 'ETH', balance: baseMainnetBalance, network: 'Base Mainnet', chainId: 'base', icon: 'Ξ', color: 'text-sky-400' },
+    { name: 'USD Coin (Base L2)', symbol: 'USDC', balance: baseUsdcBalance, network: 'Base Mainnet', chainId: 'base', icon: '💲', color: 'text-blue-400' },
     { name: 'Ethereum (Arbitrum)', symbol: 'ETH', balance: arbMainnetBalance, network: 'Arbitrum One', chainId: 'arbitrum', icon: 'Ξ', color: 'text-blue-500' },
+    { name: 'USD Coin (Arbitrum)', symbol: 'USDC', balance: arbUsdcBalance, network: 'Arbitrum One', chainId: 'arbitrum', icon: '💲', color: 'text-blue-400' },
     { name: 'Ethereum (Optimism)', symbol: 'ETH', balance: opMainnetBalance, network: 'Optimism Mainnet', chainId: 'optimism', icon: 'Ξ', color: 'text-red-500' },
+    { name: 'USD Coin (Optimism)', symbol: 'USDC', balance: opUsdcBalance, network: 'Optimism Mainnet', chainId: 'optimism', icon: '💲', color: 'text-blue-400' },
     { name: 'Polygon', symbol: 'POL', balance: maticBalance, network: 'Polygon Mainnet', chainId: 'polygon', icon: '⬡', color: 'text-purple-500' },
-    { name: 'Base Sepolia ETH (Testnet)', symbol: 'ETH', balance: evmBalance, network: 'Base Sepolia', chainId: 'base-sepolia', icon: 'Ξ', color: 'text-purple-400' },
-    { name: 'Base Sepolia USDC (Testnet)', symbol: 'USDC', balance: evmUsdcBalance, network: 'Base Sepolia', chainId: 'base-sepolia', icon: '💲', color: 'text-blue-400' }
+    { name: 'USD Coin (Polygon)', symbol: 'USDC', balance: polygonUsdcBalance, network: 'Polygon Mainnet', chainId: 'polygon', icon: '💲', color: 'text-blue-400' }
   ];
 
   // Send filters
@@ -125,7 +131,7 @@
     const firstAsset = assets.find(a => a.chainId === sendChain);
     if (firstAsset) {
       sendAssetObject = firstAsset;
-      sendSearchQuery = firstAsset.symbol;
+      sendSearchQuery = '';
     }
   }
 
@@ -133,21 +139,24 @@
     const firstAsset = assets.find(a => a.chainId === receiveChain);
     if (firstAsset) {
       receiveAssetObject = firstAsset;
-      receiveSearchQuery = firstAsset.symbol;
+      receiveSearchQuery = '';
     }
   }
 
   $: totalUSD = (
     (parseFloat(ethMainnetBalance) || 0) * 3120.00 +
+    (parseFloat(ethUsdcBalance) || 0) * 1.0 +
     (parseFloat(baseMainnetBalance) || 0) * 3120.00 +
+    (parseFloat(baseUsdcBalance) || 0) * 1.0 +
     (parseFloat(arbMainnetBalance) || 0) * 3120.00 +
+    (parseFloat(arbUsdcBalance) || 0) * 1.0 +
     (parseFloat(opMainnetBalance) || 0) * 3120.00 +
+    (parseFloat(opUsdcBalance) || 0) * 1.0 +
     (parseFloat(maticBalance) || 0) * 0.42 +
+    (parseFloat(polygonUsdcBalance) || 0) * 1.0 +
     (parseFloat(solBalance) || 0) * 145.20 +
     (parseFloat(solUsdcBalance) || 0) * 1.0 +
-    (parseFloat(btcBalance) || 0) * 64250.00 +
-    (parseFloat(evmBalance) || 0) * 3120.00 +
-    (parseFloat(evmUsdcBalance) || 0) * 1.0
+    (parseFloat(btcBalance) || 0) * 64250.00
   ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // ── Portfolio Chart State ──
@@ -714,9 +723,9 @@
       
       let hash = '';
       if (swapFromAsset === 'ETH') {
-        hash = await sendEVMTransaction(mnemonic, $walletState.evmAddress, '0.0001');
+        hash = await sendEVMTransaction(mnemonic, $walletState.evmAddress, '0.0001', null, 'base');
       } else if (swapFromAsset === 'USDC-Base') {
-        hash = await sendEVMTransaction(mnemonic, $walletState.evmAddress, '0.001', ERC20_TOKENS.USDC);
+        hash = await sendEVMTransaction(mnemonic, $walletState.evmAddress, '0.001', ERC20_TOKENS.base, 'base');
       } else if (swapFromAsset === 'SOL') {
         hash = await sendSolanaTransaction(mnemonic, $walletState.solAddress, '0.001');
       } else if (swapFromAsset === 'USDC-Solana') {
@@ -732,16 +741,16 @@
         to: $walletState.evmAddress,
         from: $walletState.evmAddress,
         hash: hash,
-        chain: swapFromAsset.includes('Sol') ? 'solana-mainnet' : 'base-sepolia',
+        chain: swapFromAsset.includes('Sol') ? 'solana-mainnet' : 'base',
         status: 'success'
       });
       
       if (swapFromAsset === 'ETH') {
-        evmBalance = (parseFloat(evmBalance) - parseFloat(swapFromAmount)).toFixed(4);
-        evmUsdcBalance = (parseFloat(evmUsdcBalance) + parseFloat(swapToAmount)).toFixed(2);
+        baseMainnetBalance = (parseFloat(baseMainnetBalance) - parseFloat(swapFromAmount)).toFixed(4);
+        baseUsdcBalance = (parseFloat(baseUsdcBalance) + parseFloat(swapToAmount)).toFixed(2);
       } else if (swapFromAsset === 'USDC-Base') {
-        evmUsdcBalance = (parseFloat(evmUsdcBalance) - parseFloat(swapFromAmount)).toFixed(2);
-        evmBalance = (parseFloat(evmBalance) + parseFloat(swapToAmount)).toFixed(4);
+        baseUsdcBalance = (parseFloat(baseUsdcBalance) - parseFloat(swapFromAmount)).toFixed(2);
+        baseMainnetBalance = (parseFloat(baseMainnetBalance) + parseFloat(swapToAmount)).toFixed(4);
       } else if (swapFromAsset === 'SOL') {
         solBalance = (parseFloat(solBalance) - parseFloat(swapFromAmount)).toFixed(4);
         solUsdcBalance = (parseFloat(solUsdcBalance) + parseFloat(swapToAmount)).toFixed(2);
@@ -777,35 +786,44 @@
     isFetchingBalances = true;
     try {
       const [
-        ethSepolia,
-        usdcSepolia,
         ethMainnet,
+        ethUsdc,
         ethBase,
+        baseUsdc,
         ethArb,
+        arbUsdc,
         ethOp,
+        opUsdc,
         matic,
+        polygonUsdc,
         sol,
         solUsdc,
         btc
       ] = await Promise.all([
-        getEVMBalance($walletState.evmAddress, 'base-sepolia').catch(() => '0.00'),
-        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.USDC, 'base-sepolia').catch(() => '0.00'),
         getEVMBalance($walletState.evmAddress, 'ethereum').catch(() => '0.00'),
+        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.ethereum, 'ethereum').catch(() => '0.00'),
         getEVMBalance($walletState.evmAddress, 'base').catch(() => '0.00'),
+        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.base, 'base').catch(() => '0.00'),
         getEVMBalance($walletState.evmAddress, 'arbitrum').catch(() => '0.00'),
+        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.arbitrum, 'arbitrum').catch(() => '0.00'),
         getEVMBalance($walletState.evmAddress, 'optimism').catch(() => '0.00'),
+        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.optimism, 'optimism').catch(() => '0.00'),
         getEVMBalance($walletState.evmAddress, 'polygon').catch(() => '0.00'),
+        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.polygon, 'polygon').catch(() => '0.00'),
         getSolanaBalance($walletState.solAddress, true).catch(() => '0.00'),
         getSolanaTokenBalance($walletState.solAddress, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', true).catch(() => '0.00'), // Live Mainnet USDC
         getBitcoinBalance($walletState.btcAddress).catch(() => '0.00000000')
       ]);
-      evmBalance = ethSepolia;
-      evmUsdcBalance = usdcSepolia;
       ethMainnetBalance = ethMainnet;
+      ethUsdcBalance = ethUsdc;
       baseMainnetBalance = ethBase;
+      baseUsdcBalance = baseUsdc;
       arbMainnetBalance = ethArb;
+      arbUsdcBalance = arbUsdc;
       opMainnetBalance = ethOp;
+      opUsdcBalance = opUsdc;
       maticBalance = matic;
+      polygonUsdcBalance = polygonUsdc;
       solBalance = sol;
       solUsdcBalance = solUsdc;
       btcBalance = btc;
@@ -813,15 +831,18 @@
       // Push portfolio snapshot after balances update
       const currentTotal = (
         (parseFloat(ethMainnet) || 0) * 3120 +
+        (parseFloat(ethUsdc) || 0) * 1.0 +
         (parseFloat(ethBase) || 0) * 3120 +
+        (parseFloat(baseUsdc) || 0) * 1.0 +
         (parseFloat(ethArb) || 0) * 3120 +
+        (parseFloat(arbUsdc) || 0) * 1.0 +
         (parseFloat(ethOp) || 0) * 3120 +
+        (parseFloat(opUsdc) || 0) * 1.0 +
         (parseFloat(matic) || 0) * 0.42 +
+        (parseFloat(polygonUsdc) || 0) * 1.0 +
         (parseFloat(sol) || 0) * 145.20 +
         (parseFloat(solUsdc) || 0) * 1.0 +
-        (parseFloat(btc) || 0) * 64250 +
-        (parseFloat(ethSepolia) || 0) * 3120 +
-        (parseFloat(usdcSepolia) || 0) * 1.0
+        (parseFloat(btc) || 0) * 64250
       );
       pushPortfolioSnapshot(currentTotal);
     } catch (err) {
@@ -987,7 +1008,7 @@
         const tokenMint = sendAssetObject.symbol === 'USDC' ? 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' : null;
         hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, tokenMint, true);
       } else { // EVM
-        const tokenMint = (sendAssetObject.symbol === 'USDC' && sendAssetObject.chainId === 'base-sepolia') ? ERC20_TOKENS.USDC : null;
+        const tokenMint = sendAssetObject.symbol === 'USDC' ? (ERC20_TOKENS[sendAssetObject.chainId] || null) : null;
         hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, tokenMint, sendAssetObject.chainId);
       }
       
@@ -1009,6 +1030,70 @@
       sendError = err.message || 'Transaction failed';
       sendStatus = 'error';
     }
+  }
+
+  $: if ($walletState && step === 'dashboard') {
+    fetchBalances();
+  }
+
+  // Inline SVG logos for cryptos and chains
+  function getCryptoLogo(symbol, chainId) {
+    const cleanSym = symbol ? symbol.toUpperCase() : '';
+    if (cleanSym === 'BTC') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#F7931A"/><path d="M22.3,14.8c0.4-2.4-1.5-3.7-4-4.6l0.8-3.3l-2-0.5l-0.8,3.2c-0.5-0.1-1.1-0.2-1.6-0.3l0.8-3.2l-2-0.5l-0.8,3.3 c-0.4-0.1-0.9-0.2-1.3-0.3l0-0.1l-2.8-0.7l-0.5,2.2c0,0,1.5,0.3,1.5,0.4c0.8,0.2,1,0.7,0.9,1.2L9.7,16.1c0.1,0,0.1,0.1,0.2,0.1 c-0.1-0.1-0.2-0.2-0.2-0.2l-2.2,8.9c-0.1,0.3-0.4,0.7-1,0.6c0,0-1.5-0.4-1.5-0.4l-1,2.3l2.6,0.7c0.5,0.1,1,0.2,1.5,0.3l-0.8,3.3 l2,0.5l0.8-3.2c0.6,0.2,1.1,0.3,1.6,0.3l-0.8,3.2l2,0.5l0.8-3.3c3.4,0.6,6,0.4,7.1-2.7c0.9-2.5-0.1-3.9-1.9-4.8 C21.4,18.4,22.4,17,22.3,14.8z M18.4,22.9c-0.6,2.5-4.8,1.2-6.2,0.8l1.1-4.4C14.7,19.7,19.1,20.2,18.4,22.9z M19.4,15.1 c-0.6,2.3-4.1,1.1-5.3,0.8l1-4.1C16.3,12.1,20,12.6,19.4,15.1z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'SOL') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#14F195" fill-opacity="0.1"/><circle cx="16" cy="16" r="15" stroke="url(#solana-gradient)" stroke-width="1.5" fill="none"/><defs><linearGradient id="solana-gradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#9945FF"/><stop offset="100%" stop-color="#14F195"/></linearGradient></defs><g fill="url(#solana-gradient)"><path d="M22.5 8.7h-11.8c-0.3 0-0.5 0.2-0.6 0.4l-1.8 3.1c-0.1 0.2-0.1 0.5 0 0.7 0.1 0.2 0.3 0.4 0.6 0.4h11.8c0.3 0 0.5-0.2 0.6-0.4l1.8-3.1c0.1-0.2 0.1-0.5 0-0.7-0.1-0.2-0.3-0.4-0.6-0.4z"/><path d="M11.9 14.7h11.8c0.3 0 0.5 0.2 0.6 0.4l1.8 3.1c0.1 0.2 0.1 0.5 0 0.7-0.1 0.2-0.3 0.4-0.6 0.4h-11.8c-0.3 0-0.5-0.2-0.6-0.4l-1.8-3.1c-0.1-0.2-0.1-0.5 0-0.7 0.1-0.2 0.3-0.4 0.6-0.4z"/><path d="M22.5 20.7h-11.8c-0.3 0-0.5 0.2-0.6 0.4l-1.8 3.1c-0.1 0.2-0.1 0.5 0 0.7 0.1 0.2 0.3 0.4 0.6 0.4h11.8c0.3 0 0.5-0.2 0.6-0.4l1.8-3.1c0.1-0.2 0.1-0.5 0-0.7-0.1-0.2-0.3-0.4-0.6-0.4z"/></g></svg>`;
+    }
+    if (cleanSym === 'USDC') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path d="M16 6.5C10.75 6.5 6.5 10.75 6.5 16S10.75 25.5 16 25.5 25.5 21.25 25.5 16 21.25 6.5 16 6.5zm0 17.5c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm2-10c0-1.1-.9-2-2-2s-2 .9-2 2 .9 2 2 2c1.1 0 2-.9 2-2zm-2 4c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'POL' || cleanSym === 'MATIC') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
+    }
+    
+    // ETH on different chains
+    if (cleanSym === 'ETH') {
+      if (chainId === 'base') {
+        return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#0052FF"/><circle cx="16" cy="16" r="7" stroke="white" stroke-width="3" fill="none"/></svg>`;
+      }
+      if (chainId === 'arbitrum') {
+        return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#12AAFF"/><path d="M16 6l9.5 16.5H6.5L16 6zm0 4L9.8 20.5h12.4L16 10zm0 3.5l3.5 6h-7l3.5-6z" fill="white"/></svg>`;
+      }
+      if (chainId === 'optimism') {
+        return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#FF0420"/><path d="M12.5 11c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5 4.5-2 4.5-4.5-2-4.5-4.5-4.5zm0 7c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5zm10.5-6.5c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 6c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" fill="white"/></svg>`;
+      }
+      // default ethereum mainnet ETH logo
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="white"><path d="M16 4.5l-5.3 8.8L16 16l5.3-2.7z" fill-opacity="0.8"/><path d="M16 4.5V16l5.3-2.7z"/><path d="M16 17.5l-5.3-2.2 5.3 7.7 5.3-7.7z" fill-opacity="0.8"/><path d="M16 17.5V23l5.3-7.7z"/><path d="M16 16l-5.3-2.7L16 17.5z" fill-opacity="0.5"/><path d="M16 16l5.3-2.7L16 17.5z" fill-opacity="0.3"/></g></svg>`;
+    }
+    
+    // Fallback text icon
+    return `<div class="w-full h-full flex items-center justify-center bg-vault-border/50 text-vault-text rounded-full text-xs font-bold font-mono">?</div>`;
+  }
+
+  function getChainLogo(chainId) {
+    if (chainId === 'ethereum') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="white"><path d="M16 4.5l-5.3 8.8L16 16l5.3-2.7z" fill-opacity="0.8"/><path d="M16 4.5V16l5.3-2.7z"/><path d="M16 17.5l-5.3-2.2 5.3 7.7 5.3-7.7z" fill-opacity="0.8"/><path d="M16 17.5V23l5.3-7.7z"/></g></svg>`;
+    }
+    if (chainId === 'base') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#0052FF"/><circle cx="16" cy="16" r="7" stroke="white" stroke-width="3" fill="none"/></svg>`;
+    }
+    if (chainId === 'arbitrum') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#12AAFF"/><path d="M16 6l9.5 16.5H6.5L16 6zm0 4L9.8 20.5h12.4L16 10zm0 3.5l3.5 6h-7l3.5-6z" fill="white"/></svg>`;
+    }
+    if (chainId === 'optimism') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#FF0420"/><path d="M12.5 11c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5 4.5-2 4.5-4.5-2-4.5-4.5-4.5zm0 7c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5z" fill="white"/></svg>`;
+    }
+    if (chainId === 'polygon') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
+    }
+    if (chainId === 'solana-mainnet') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#14F195" fill-opacity="0.1"/><circle cx="16" cy="16" r="15" stroke="url(#solana-gradient)" stroke-width="1.5" fill="none"/><defs><linearGradient id="solana-gradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#9945FF"/><stop offset="100%" stop-color="#14F195"/></linearGradient></defs><g fill="url(#solana-gradient)"><path d="M22.5 8.7h-11.8c-0.3 0-0.5 0.2-0.6 0.4l-1.8 3.1c-0.1 0.2-0.1 0.5 0 0.7 0.1 0.2 0.3 0.4 0.6 0.4h11.8c0.3 0 0.5-0.2 0.6-0.4l1.8-3.1c0.1-0.2 0.1-0.5 0-0.7-0.1-0.2-0.3-0.4-0.6-0.4z"/></g></svg>`;
+    }
+    if (chainId === 'bitcoin') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#F7931A"/><path d="M22.3,14.8c0.4-2.4-1.5-3.7-4-4.6l0.8-3.3l-2-0.5l-0.8,3.2c-0.5-0.1-1.1-0.2-1.6-0.3l0.8-3.2l-2-0.5l-0.8,3.3 c-0.4-0.1-0.9-0.2-1.3-0.3l0-0.1l-2.8-0.7l-0.5,2.2c0,0,1.5,0.3,1.5,0.4c0.8,0.2,1,0.7,0.9,1.2L9.7,16.1c0.1,0,0.1,0.1,0.2,0.1 c-0.1-0.1-0.2-0.2-0.2-0.2l-2.2,8.9c-0.1,0.3-0.4,0.7-1,0.6c0,0-1.5-0.4-1.5-0.4l-1,2.3l2.6,0.7c0.5,0.1,1,0.2,1.5,0.3l-0.8,3.3 l2,0.5l0.8-3.2c0.6,0.2,1.1,0.3,1.6,0.3l-0.8,3.2l2,0.5l0.8-3.3c3.4,0.6,6,0.4,7.1-2.7c0.9-2.5-0.1-3.9-1.9-4.8 C21.4,18.4,22.4,17,22.3,14.8z M18.4,22.9c-0.6,2.5-4.8,1.2-6.2,0.8l1.1-4.4C14.7,19.7,19.1,20.2,18.4,22.9z M19.4,15.1 c-0.6,2.3-4.1,1.1-5.3,0.8l1-4.1C16.3,12.1,20,12.6,19.4,15.1z" fill="white"/></svg>`;
+    }
+    return ``;
   }
 
   $: if ($walletState && step === 'dashboard') {
@@ -1429,9 +1514,26 @@
         </button>
 
         {#if showHoldings}
-          <div class="p-3 space-y-2 bg-vault-black/20 border-t border-vault-border/40 animate-scale-up text-left">
+          <div class="p-3 space-y-3 bg-vault-black/20 border-t border-vault-border/40 animate-scale-up text-left">
+            <!-- Supported Networks & Integrations Row -->
+            <div>
+              <span class="text-[8px] text-vault-text-dim uppercase tracking-wider font-semibold block mb-1.5">Supported Live Networks</span>
+              <div class="flex flex-wrap gap-1.5">
+                {#each AVAILABLE_CHAINS as chain}
+                  <div class="flex items-center gap-1.5 py-1 px-2.5 bg-vault-elevated/60 border border-vault-border/40 rounded-full text-[9px] font-bold text-vault-text select-none">
+                    <span class="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                      {@html getChainLogo(chain.id)}
+                    </span>
+                    <span>{chain.name.replace(' Mainnet', '').replace(' One', '')}</span>
+                    <span class="w-1 h-1 rounded-full bg-vault-accent"></span>
+                  </div>
+                {/each}
+              </div>
+            </div>
+
             <!-- Addresses -->
             <div class="space-y-1.5">
+              <span class="text-[8px] text-vault-text-dim uppercase tracking-wider font-semibold block">Addresses</span>
               <div class="flex items-center justify-between py-1.5 px-2.5 bg-vault-elevated/50 rounded-lg">
                 <div class="flex items-center gap-1.5 min-w-0">
                   <span class="text-[9px] text-vault-text-dim font-semibold shrink-0">EVM</span>
@@ -1476,8 +1578,8 @@
               {#each assets.filter(a => parseFloat(a.balance) > 0) as asset}
                 <div class="flex items-center justify-between px-2.5 py-1.5 bg-vault-elevated/40 border border-vault-border/30 rounded-lg">
                   <div class="flex items-center gap-1.5">
-                    <span class="text-xs w-5 h-5 rounded-md bg-vault-black/30 border border-vault-border/40 flex items-center justify-center {asset.color}">
-                      {asset.icon}
+                    <span class="w-5 h-5 flex items-center justify-center shrink-0">
+                      {@html getCryptoLogo(asset.symbol, asset.chainId)}
                     </span>
                     <div>
                       <span class="text-[10px] font-bold block leading-none text-vault-text">{asset.symbol}</span>
@@ -1490,12 +1592,32 @@
               {#if assets.filter(a => parseFloat(a.balance) > 0).length === 0}
                 <div class="text-[9px] text-vault-text-dim text-center py-2">No balances found — deposit crypto to get started</div>
               {/if}
+              
+              {#if showZeroBalances}
+                <div class="space-y-1 mt-1 border-t border-vault-border/20 pt-1.5 animate-scale-up">
+                  {#each assets.filter(a => parseFloat(a.balance) <= 0) as asset}
+                    <div class="flex items-center justify-between px-2.5 py-1.5 bg-vault-elevated/20 border border-vault-border/20 rounded-lg">
+                      <div class="flex items-center gap-1.5">
+                        <span class="w-5 h-5 flex items-center justify-center shrink-0">
+                          {@html getCryptoLogo(asset.symbol, asset.chainId)}
+                        </span>
+                        <div>
+                          <span class="text-[10px] font-bold block leading-none text-vault-text">{asset.symbol}</span>
+                          <span class="text-[7px] text-vault-text-dim">{asset.network}</span>
+                        </div>
+                      </div>
+                      <span class="text-[10px] font-mono text-vault-text-dim">{asset.balance}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+
               {#if assets.filter(a => parseFloat(a.balance) <= 0).length > 0}
                 <button
-                  on:click={() => {/* toggle showing zero balances inline */}}
-                  class="text-[8px] text-vault-text-dim hover:text-vault-text cursor-pointer bg-transparent border-none pt-0.5"
+                  on:click={() => showZeroBalances = !showZeroBalances}
+                  class="text-[8px] text-vault-accent hover:text-vault-accent-hover font-semibold cursor-pointer bg-transparent border-none pt-1"
                 >
-                  + {assets.filter(a => parseFloat(a.balance) <= 0).length} more tokens with zero balance
+                  {showZeroBalances ? 'Hide zero balance tokens' : `+ ${assets.filter(a => parseFloat(a.balance) <= 0).length} more tokens with zero balance`}
                 </button>
               {/if}
             </div>
@@ -1964,28 +2086,35 @@
 
             <!-- 2. Searchable Asset Input -->
             <div class="relative">
-              <label for="receive-asset-input" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Crypto Asset</label>
+              <label for="receive-asset-btn" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Crypto Asset</label>
               <div class="relative">
-                <input
-                  id="receive-asset-input"
-                  type="text"
-                  bind:value={receiveSearchQuery}
-                  on:focus={() => showReceiveDropdown = true}
-                  placeholder="BTC, ETH, USDC..."
-                  class="input py-2 pr-8 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-3 focus:outline-none"
-                />
                 <button
+                  id="receive-asset-btn"
                   type="button"
-                  on:click|stopPropagation={() => showReceiveDropdown = !showReceiveDropdown}
-                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-vault-text-dim hover:text-vault-text border-none bg-transparent cursor-pointer text-[8px]"
+                  on:click={() => showReceiveDropdown = !showReceiveDropdown}
+                  class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left"
                 >
-                  ▼
+                  <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 flex items-center justify-center shrink-0">
+                      {@html getCryptoLogo(receiveAssetObject?.symbol, receiveAssetObject?.chainId)}
+                    </span>
+                    <span class="font-bold">{receiveAssetObject?.symbol || 'Select'}</span>
+                    <span class="text-[9px] text-vault-text-dim truncate max-w-[40px]">({receiveAssetObject?.name || ''})</span>
+                  </div>
+                  <span class="text-vault-text-dim text-[8px]">▼</span>
                 </button>
               </div>
 
               <!-- Search dropdown list overlay -->
               {#if showReceiveDropdown}
-                <div class="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                <div class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-2 animate-scale-up">
+                  <input
+                    type="text"
+                    bind:value={receiveSearchQuery}
+                    placeholder="Search asset..."
+                    class="w-full mb-2 p-1.5 text-xs bg-vault-black/40 border border-vault-border-subtle text-vault-text rounded-lg focus:outline-none"
+                    on:click|stopPropagation
+                  />
                   {#if displayReceiveAssets.length === 0}
                     <div class="p-2 text-center text-xs text-vault-text-dim">No matching assets</div>
                   {:else}
@@ -1994,13 +2123,15 @@
                         type="button"
                         on:click={() => {
                           receiveAssetObject = asset;
-                          receiveSearchQuery = asset.symbol;
+                          receiveSearchQuery = '';
                           showReceiveDropdown = false;
                         }}
                         class="w-full flex items-center justify-between p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
                       >
                         <div class="flex items-center gap-2">
-                          <span class="text-sm">{asset.icon}</span>
+                          <span class="w-4 h-4 flex items-center justify-center shrink-0">
+                            {@html getCryptoLogo(asset.symbol, asset.chainId)}
+                          </span>
                           <div>
                             <span class="font-bold">{asset.symbol}</span>
                             <span class="text-[9px] text-vault-text-dim block">{asset.name}</span>
@@ -2142,28 +2273,35 @@
 
             <!-- 2. Searchable Asset Input -->
             <div class="relative">
-              <label for="send-asset-input" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Crypto Asset</label>
+              <label for="send-asset-btn" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Crypto Asset</label>
               <div class="relative">
-                <input
-                  id="send-asset-input"
-                  type="text"
-                  bind:value={sendSearchQuery}
-                  on:focus={() => showSendDropdown = true}
-                  placeholder="BTC, ETH, USDC..."
-                  class="input py-2 pr-8 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-3 focus:outline-none"
-                />
                 <button
+                  id="send-asset-btn"
                   type="button"
-                  on:click|stopPropagation={() => showSendDropdown = !showSendDropdown}
-                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-vault-text-dim hover:text-vault-text border-none bg-transparent cursor-pointer text-[8px]"
+                  on:click={() => showSendDropdown = !showSendDropdown}
+                  class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left"
                 >
-                  ▼
+                  <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 flex items-center justify-center shrink-0">
+                      {@html getCryptoLogo(sendAssetObject?.symbol, sendAssetObject?.chainId)}
+                    </span>
+                    <span class="font-bold">{sendAssetObject?.symbol || 'Select'}</span>
+                    <span class="text-[9px] text-vault-text-dim truncate max-w-[40px]">({sendAssetObject?.name || ''})</span>
+                  </div>
+                  <span class="text-vault-text-dim text-[8px]">▼</span>
                 </button>
               </div>
 
               <!-- Search dropdown list overlay -->
               {#if showSendDropdown}
-                <div class="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                <div class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-2 animate-scale-up">
+                  <input
+                    type="text"
+                    bind:value={sendSearchQuery}
+                    placeholder="Search asset..."
+                    class="w-full mb-2 p-1.5 text-xs bg-vault-black/40 border border-vault-border-subtle text-vault-text rounded-lg focus:outline-none"
+                    on:click|stopPropagation
+                  />
                   {#if filteredSendAssets.length === 0}
                     <div class="p-2 text-center text-xs text-vault-text-dim">No matching assets</div>
                   {:else}
@@ -2172,13 +2310,15 @@
                         type="button"
                         on:click={() => {
                           sendAssetObject = asset;
-                          sendSearchQuery = asset.symbol;
+                          sendSearchQuery = '';
                           showSendDropdown = false;
                         }}
                         class="w-full flex items-center justify-between p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
                       >
                         <div class="flex items-center gap-2">
-                          <span class="text-sm">{asset.icon}</span>
+                          <span class="w-4 h-4 flex items-center justify-center shrink-0">
+                            {@html getCryptoLogo(asset.symbol, asset.chainId)}
+                          </span>
                           <div>
                             <span class="font-bold">{asset.symbol}</span>
                             <span class="text-[9px] text-vault-text-dim block">{asset.name}</span>
