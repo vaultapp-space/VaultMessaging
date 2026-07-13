@@ -87,6 +87,11 @@ To eliminate the requirement for users to hold native blockchain gas tokens (lik
 * **Aggregator API**: Fetch swap routes directly from DEX aggregators (like Uniswap/1inch on EVM, or Jupiter on Solana).
 * **Execution**: Sign the swap transaction locally and broadcast it, allowing instant exchange between assets (e.g., ETH to USDC) without leaving Vault.
 
+### E. Hardware Wallet Support (Ledger / Trezor)
+For users who manage high-value portfolios and require maximum physical security:
+* **How it works**: Integrate Ledger’s WebUSB transport or Trezor's Connect API.
+* **Flow**: The private keys remain isolated inside the hardware device. The Vault client reads the public address to display balances, but whenever a payment or token transfer is initiated, the transaction payload is sent to the physical device. The user signs it physically, and the signed transaction is broadcasted back from the browser.
+
 ---
 
 ## 5. Security & Risk Considerations
