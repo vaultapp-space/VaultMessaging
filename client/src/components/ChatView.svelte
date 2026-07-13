@@ -96,6 +96,10 @@
   let remoteCameraOff = false;
   let sentInitialMediaState = false;
 
+  let isScreenShareSupported = typeof navigator !== 'undefined' && 
+                               navigator.mediaDevices && 
+                               typeof navigator.mediaDevices.getDisplayMedia === 'function';
+
   let callWindowSize = 'normal'; // 'normal' | 'large' | 'fullscreen'
   let position = { x: 0, y: 0 };
   let isDragging = false;
@@ -1956,12 +1960,12 @@
             </button>
             <button
               on:click={toggleScreenShare}
-              disabled={$activeCall?.status === 'ringing'}
+              disabled={$activeCall?.status === 'ringing' || !isScreenShareSupported}
               class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
-                {$activeCall?.status === 'ringing' ? 'opacity-40 cursor-not-allowed bg-vault-elevated text-vault-text-dim border-vault-border-subtle' : ''}
-                {!isScreenSharing && $activeCall?.status !== 'ringing' ? 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text' : ''}
+                {$activeCall?.status === 'ringing' || !isScreenShareSupported ? 'opacity-40 cursor-not-allowed bg-vault-elevated text-vault-text-dim border-vault-border-subtle' : ''}
+                {!isScreenSharing && $activeCall?.status !== 'ringing' && isScreenShareSupported ? 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text' : ''}
                 {isScreenSharing ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : ''}"
-              title={$activeCall?.status === 'ringing' ? "Waiting for call to connect..." : (isScreenSharing ? "Stop Sharing Screen" : "Share Screen")}
+              title={!isScreenShareSupported ? "Screen sharing not supported on this device" : ($activeCall?.status === 'ringing' ? "Waiting for call to connect..." : (isScreenSharing ? "Stop Sharing Screen" : "Share Screen"))}
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
