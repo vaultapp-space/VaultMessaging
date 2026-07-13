@@ -1830,9 +1830,11 @@
         aria-label="Video Call Panel"
         on:mousedown={handleMouseDown}
         on:touchstart={handleTouchStart}
-        style={callWindowSize !== 'fullscreen' ? `transform: translate(${position.x}px, ${position.y}px); cursor: ${isDragging ? 'grabbing' : 'grab'};` : ''}
+        style={callWindowSize === 'fullscreen' 
+          ? 'width: 100vw; height: 100dvh; left: 0; top: 0;' 
+          : `transform: translate(${position.x}px, ${position.y}px); cursor: ${isDragging ? 'grabbing' : 'grab'};`}
         class={callWindowSize === 'fullscreen'
-          ? "fixed inset-0 z-40 bg-vault-black flex flex-col justify-between overflow-hidden"
+          ? "fixed z-40 bg-vault-black flex flex-col justify-between overflow-hidden"
           : "absolute top-4 right-4 z-30 flex flex-col gap-2 p-2.5 bg-vault-surface/95 backdrop-blur-md border border-vault-border rounded-2xl shadow-xl transition-all duration-200 select-none " + (callWindowSize === 'large' ? 'w-[308px]' : 'w-48')}
       >
         <!-- Conditionally render top-bar for non-fullscreen -->
@@ -1874,7 +1876,10 @@
           </div>
         {:else}
           <!-- Top bar overlay when fullscreen -->
-          <div class="absolute top-6 left-6 z-20 flex items-center gap-2 bg-vault-surface/80 backdrop-blur-md border border-vault-border px-3.5 py-1.5 rounded-xl shadow-xl select-none">
+          <div 
+            style="top: calc(1.5rem + env(safe-area-inset-top)); left: calc(1.5rem + env(safe-area-inset-left));"
+            class="absolute z-20 flex items-center gap-2 bg-vault-surface/80 backdrop-blur-md border border-vault-border px-3.5 py-1.5 rounded-xl shadow-xl select-none"
+          >
             <span class="w-2 h-2 rounded-full bg-vault-accent animate-pulse"></span>
             <span class="text-xs text-vault-text font-semibold">E2EE Call: {callingPeer}</span>
             <div class="w-px h-4 bg-vault-border mx-1"></div>
@@ -1893,8 +1898,9 @@
 
         <!-- Local Video Container -->
         <div 
+          style={callWindowSize === 'fullscreen' ? "top: calc(1.5rem + env(safe-area-inset-top)); right: calc(1.5rem + env(safe-area-inset-right));" : ""}
           class={callWindowSize === 'fullscreen' 
-            ? "absolute top-6 right-6 w-48 h-36 z-10 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-xl animate-fade-in" 
+            ? "absolute w-48 h-36 z-10 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-xl animate-fade-in" 
             : `relative ${callWindowSize === 'large' ? 'w-[288px] h-[216px]' : 'w-44 h-32'} bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner animate-fade-in`}
         >
           <video bind:this={localVideo} autoplay playsinline muted class="w-full h-full object-cover {isScreenSharing ? '' : 'scale-x-[-1]'}"></video>
@@ -1932,8 +1938,9 @@
 
         <!-- Controls Wrapper -->
         <div 
+          style={callWindowSize === 'fullscreen' ? "bottom: calc(2rem + env(safe-area-inset-bottom));" : ""}
           class={callWindowSize === 'fullscreen' 
-            ? "absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col gap-2.5 p-3 bg-vault-surface/85 backdrop-blur-md border border-vault-border rounded-2xl shadow-2xl w-60" 
+            ? "absolute left-1/2 -translate-x-1/2 z-10 flex flex-col gap-2.5 p-3 bg-vault-surface/85 backdrop-blur-md border border-vault-border rounded-2xl shadow-2xl w-60" 
             : "flex flex-col gap-2 w-full z-10"}
         >
           <div class="flex gap-2 w-full">
