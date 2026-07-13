@@ -1797,6 +1797,43 @@
   let payAsset = 'USDC'; // 'USDC' | 'ETH' | 'SOL' | 'POL'
   let payRecipient = '';
   let payAmount = '';
+  let showPayNetworkDropdown = false;
+
+  function getChainLogo(chainId) {
+    if (chainId === 'ethereum') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="white"><path d="M16 4.5l-5.3 8.8L16 16l5.3-2.7z" fill-opacity="0.8"/><path d="M16 4.5V16l5.3-2.7z"/><path d="M16 17.5l-5.3-2.2 5.3 7.7 5.3-7.7z" fill-opacity="0.8"/><path d="M16 17.5V23l5.3-7.7z"/></g></svg>`;
+    }
+    if (chainId === 'base') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#0052FF"/><circle cx="16" cy="16" r="7" stroke="white" stroke-width="3" fill="none"/></svg>`;
+    }
+    if (chainId === 'arbitrum') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#12AAFF"/><path d="M16 6l9.5 16.5H6.5L16 6zm0 4L9.8 20.5h12.4L16 10zm0 3.5l3.5 6h-7l3.5-6z" fill="white"/></svg>`;
+    }
+    if (chainId === 'optimism') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#FF0420"/><path d="M12.5 11c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5 4.5-2 4.5-4.5-2-4.5-4.5-4.5zm0 7c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5z" fill="white"/></svg>`;
+    }
+    if (chainId === 'polygon') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
+    }
+    if (chainId === 'solana-mainnet') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#14F195" fill-opacity="0.1"/><circle cx="16" cy="16" r="15" stroke="url(#solana-gradient)" stroke-width="1.5" fill="none"/><defs><linearGradient id="solana-gradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#9945FF"/><stop offset="100%" stop-color="#14F195"/></linearGradient></defs><g fill="url(#solana-gradient)"><path d="M22.5 8.7h-11.8c-0.3 0-0.5 0.2-0.6 0.4l-1.8 3.1c-0.1 0.2-0.1 0.5 0 0.7 0.1 0.2 0.3 0.4 0.6 0.4h11.8c0.3 0 0.5-0.2 0.6-0.4l1.8-3.1c0.1-0.2 0.1-0.5 0-0.7-0.1-0.2-0.3-0.4-0.6-0.4z"/></g></svg>`;
+    }
+    return '';
+  }
+
+  function getCryptoLogo(symbol) {
+    const cleanSym = symbol ? symbol.toUpperCase() : '';
+    if (cleanSym === 'SOL') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#14F195" fill-opacity="0.1"/><circle cx="16" cy="16" r="15" stroke="url(#solana-gradient)" stroke-width="1.5" fill="none"/><defs><linearGradient id="solana-gradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#9945FF"/><stop offset="100%" stop-color="#14F195"/></linearGradient></defs><g fill="url(#solana-gradient)"><path d="M22.5 8.7h-11.8c-0.3 0-0.5 0.2-0.6 0.4l-1.8 3.1c-0.1 0.2-0.1 0.5 0 0.7 0.1 0.2 0.3 0.4 0.6 0.4h11.8c0.3 0 0.5-0.2 0.6-0.4l1.8-3.1c0.1-0.2 0.1-0.5 0-0.7-0.1-0.2-0.3-0.4-0.6-0.4z"/></g></svg>`;
+    }
+    if (cleanSym === 'USDC') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path d="M16 6.5C10.75 6.5 6.5 10.75 6.5 16S10.75 25.5 16 25.5 25.5 21.25 25.5 16 21.25 6.5 16 6.5zm0 17.5c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm2-10c0-1.1-.9-2-2-2s-2 .9-2 2 .9 2 2 2c1.1 0 2-.9 2-2zm-2 4c-1.1 0-2 .9-2 2 s.9 2 2 2 2-.9 2-2-.9-2-2-2z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'POL') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
+    }
+    return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="white"><path d="M16 4.5l-5.3 8.8L16 16l5.3-2.7z" fill-opacity="0.8"/><path d="M16 4.5V16l5.3-2.7z"/><path d="M16 17.5l-5.3-2.2 5.3 7.7 5.3-7.7z" fill-opacity="0.8"/><path d="M16 17.5V23l5.3-7.7z"/></g></svg>`;
+  }
   
   // Phase 5 DeFi Drawer Upgrades
   let payMode = 'transfer'; // 'transfer' | 'redpacket' | 'escrow'
@@ -2808,25 +2845,51 @@
               {/if}
 
               <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label for="drawer-network" class="text-[10px] font-bold text-vault-text-dim block uppercase mb-1">Network</label>
-                  <select
-                    id="drawer-network"
-                    bind:value={payNetwork}
-                    on:change={() => {
-                      payAsset = 'USDC';
-                      fetchPayBalance();
-                    }}
-                    class="input py-2 text-[11px] bg-vault-black/40 border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none"
-                    disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
-                  >
-                    <option value="ethereum">Ethereum Mainnet</option>
-                    <option value="base">Base Mainnet</option>
-                    <option value="arbitrum">Arbitrum One</option>
-                    <option value="optimism">Optimism Mainnet</option>
-                    <option value="polygon">Polygon Mainnet</option>
-                    <option value="solana-mainnet">Solana Mainnet</option>
-                  </select>
+                <div class="relative">
+                  <label for="drawer-network-btn" class="text-[10px] font-bold text-vault-text-dim block uppercase mb-1">Network</label>
+                  <div class="relative">
+                    <button
+                      id="drawer-network-btn"
+                      type="button"
+                      on:click={() => showPayNetworkDropdown = !showPayNetworkDropdown}
+                      class="flex items-center justify-between py-2 px-3 text-[11px] bg-vault-black/40 border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left font-semibold"
+                      disabled={payStatus === 'signing' || payStatus === 'broadcasting'}
+                    >
+                      <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                          {@html getChainLogo(payNetwork)}
+                        </span>
+                        <span class="truncate">
+                          {payNetwork === 'solana-mainnet' ? 'Solana' : payNetwork.charAt(0).toUpperCase() + payNetwork.slice(1)}
+                        </span>
+                      </div>
+                      <span class="text-vault-text-dim text-[7px]">▼</span>
+                    </button>
+                  </div>
+
+                  {#if showPayNetworkDropdown}
+                    <!-- Backdrop out-clicks dismisser -->
+                    <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showPayNetworkDropdown = false} aria-label="Dismiss network dropdown"></button>
+                    <div class="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up text-xs">
+                      {#each ['ethereum', 'base', 'arbitrum', 'optimism', 'polygon', 'solana-mainnet'] as chainId}
+                        <button
+                          type="button"
+                          on:click={() => {
+                            payNetwork = chainId;
+                            payAsset = 'USDC';
+                            fetchPayBalance();
+                            showPayNetworkDropdown = false;
+                          }}
+                          class="w-full flex items-center gap-1.5 p-2 rounded-lg text-left text-[11px] text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
+                        >
+                          <span class="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                            {@html getChainLogo(chainId)}
+                          </span>
+                          <span class="font-semibold">{chainId === 'solana-mainnet' ? 'Solana Mainnet' : chainId.charAt(0).toUpperCase() + chainId.slice(1) + ' Mainnet'}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
                 </div>
 
                 <div>

@@ -48,16 +48,26 @@
   // Live balances
   let ethMainnetBalance = '0.00'; // Ethereum Mainnet ETH
   let ethUsdcBalance = '0.00';    // Ethereum Mainnet USDC
+  let ethUsdtBalance = '0.00';    // Ethereum Mainnet USDT
+  let ethLinkBalance = '0.00';    // Ethereum Mainnet LINK
+  let ethUniBalance = '0.00';     // Ethereum Mainnet UNI
   let baseMainnetBalance = '0.00'; // Base Mainnet ETH
   let baseUsdcBalance = '0.00';   // Base Mainnet USDC
+  let baseDegenBalance = '0.00';  // Base Mainnet DEGEN
+  let baseAeroBalance = '0.00';   // Base Mainnet AERO
   let arbMainnetBalance = '0.00';  // Arbitrum ETH
   let arbUsdcBalance = '0.00';    // Arbitrum USDC
+  let arbArbBalance = '0.00';     // Arbitrum ARB
   let opMainnetBalance = '0.00';   // Optimism ETH
   let opUsdcBalance = '0.00';     // Optimism USDC
+  let opOpBalance = '0.00';       // Optimism OP
   let maticBalance = '0.00';       // Polygon MATIC
   let polygonUsdcBalance = '0.00'; // Polygon USDC
+  let polygonQuickBalance = '0.00'; // Polygon QUICK
   let solBalance = '0.00';       // Solana SOL
   let solUsdcBalance = '0.00';   // Solana USDC
+  let solBonkBalance = '0.00';   // Solana BONK
+  let solWifBalance = '0.00';    // Solana WIF
   let btcBalance = '0.00000000'; // Bitcoin BTC
   let isFetchingBalances = false;
   let showZeroBalances = false;
@@ -78,6 +88,7 @@
   let sendChain = 'ethereum';
   let sendSearchQuery = '';
   let showSendDropdown = false;
+  let showSendChainDropdown = false;
   let sendAssetObject = null;
   let sendRecipient = '';
   let sendAmount = '';
@@ -89,6 +100,7 @@
   let receiveChain = 'ethereum';
   let receiveSearchQuery = '';
   let showReceiveDropdown = false;
+  let showReceiveChainDropdown = false;
   let receiveAssetObject = null;
   let receiveCustomContract = '';
   let copiedReceiveAddress = false;
@@ -98,19 +110,29 @@
 
   // Reactive assets array
   $: assets = [
-    { name: 'Ethereum', symbol: 'ETH', balance: ethMainnetBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', icon: 'Ξ', color: 'text-indigo-400' },
-    { name: 'USD Coin', symbol: 'USDC', balance: ethUsdcBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', icon: '💲', color: 'text-blue-400' },
-    { name: 'Bitcoin', symbol: 'BTC', balance: btcBalance, network: 'Bitcoin Mainnet', chainId: 'bitcoin', icon: '₿', color: 'text-amber-500' },
-    { name: 'Solana', symbol: 'SOL', balance: solBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', icon: '◎', color: 'text-teal-400' },
-    { name: 'USD Coin', symbol: 'USDC', balance: solUsdcBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', icon: '💲', color: 'text-blue-400' },
-    { name: 'Ethereum (Base L2)', symbol: 'ETH', balance: baseMainnetBalance, network: 'Base Mainnet', chainId: 'base', icon: 'Ξ', color: 'text-sky-400' },
-    { name: 'USD Coin (Base L2)', symbol: 'USDC', balance: baseUsdcBalance, network: 'Base Mainnet', chainId: 'base', icon: '💲', color: 'text-blue-400' },
-    { name: 'Ethereum (Arbitrum)', symbol: 'ETH', balance: arbMainnetBalance, network: 'Arbitrum One', chainId: 'arbitrum', icon: 'Ξ', color: 'text-blue-500' },
-    { name: 'USD Coin (Arbitrum)', symbol: 'USDC', balance: arbUsdcBalance, network: 'Arbitrum One', chainId: 'arbitrum', icon: '💲', color: 'text-blue-400' },
-    { name: 'Ethereum (Optimism)', symbol: 'ETH', balance: opMainnetBalance, network: 'Optimism Mainnet', chainId: 'optimism', icon: 'Ξ', color: 'text-red-500' },
-    { name: 'USD Coin (Optimism)', symbol: 'USDC', balance: opUsdcBalance, network: 'Optimism Mainnet', chainId: 'optimism', icon: '💲', color: 'text-blue-400' },
-    { name: 'Polygon', symbol: 'POL', balance: maticBalance, network: 'Polygon Mainnet', chainId: 'polygon', icon: '⬡', color: 'text-purple-500' },
-    { name: 'USD Coin (Polygon)', symbol: 'USDC', balance: polygonUsdcBalance, network: 'Polygon Mainnet', chainId: 'polygon', icon: '💲', color: 'text-blue-400' }
+    { name: 'Ethereum', symbol: 'ETH', balance: ethMainnetBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', color: 'text-indigo-400' },
+    { name: 'USD Coin', symbol: 'USDC', balance: ethUsdcBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', color: 'text-blue-400' },
+    { name: 'Tether USD', symbol: 'USDT', balance: ethUsdtBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', color: 'text-teal-500' },
+    { name: 'Chainlink', symbol: 'LINK', balance: ethLinkBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', color: 'text-blue-500' },
+    { name: 'Uniswap', symbol: 'UNI', balance: ethUniBalance, network: 'Ethereum Mainnet', chainId: 'ethereum', color: 'text-pink-500' },
+    { name: 'Bitcoin', symbol: 'BTC', balance: btcBalance, network: 'Bitcoin Mainnet', chainId: 'bitcoin', color: 'text-amber-500' },
+    { name: 'Solana', symbol: 'SOL', balance: solBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', color: 'text-teal-400' },
+    { name: 'USD Coin', symbol: 'USDC', balance: solUsdcBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', color: 'text-blue-400' },
+    { name: 'Bonk', symbol: 'BONK', balance: solBonkBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', color: 'text-orange-400' },
+    { name: 'dogwifhat', symbol: 'WIF', balance: solWifBalance, network: 'Solana Mainnet', chainId: 'solana-mainnet', color: 'text-yellow-600' },
+    { name: 'Ethereum (Base L2)', symbol: 'ETH', balance: baseMainnetBalance, network: 'Base Mainnet', chainId: 'base', color: 'text-sky-400' },
+    { name: 'USD Coin (Base L2)', symbol: 'USDC', balance: baseUsdcBalance, network: 'Base Mainnet', chainId: 'base', color: 'text-blue-400' },
+    { name: 'Degen', symbol: 'DEGEN', balance: baseDegenBalance, network: 'Base Mainnet', chainId: 'base', color: 'text-purple-500' },
+    { name: 'Aerodrome', symbol: 'AERO', balance: baseAeroBalance, network: 'Base Mainnet', chainId: 'base', color: 'text-blue-400' },
+    { name: 'Ethereum (Arbitrum)', symbol: 'ETH', balance: arbMainnetBalance, network: 'Arbitrum One', chainId: 'arbitrum', color: 'text-blue-500' },
+    { name: 'USD Coin (Arbitrum)', symbol: 'USDC', balance: arbUsdcBalance, network: 'Arbitrum One', chainId: 'arbitrum', color: 'text-blue-400' },
+    { name: 'Arbitrum', symbol: 'ARB', balance: arbArbBalance, network: 'Arbitrum One', chainId: 'arbitrum', color: 'text-blue-600' },
+    { name: 'Ethereum (Optimism)', symbol: 'ETH', balance: opMainnetBalance, network: 'Optimism Mainnet', chainId: 'optimism', color: 'text-red-500' },
+    { name: 'USD Coin (Optimism)', symbol: 'USDC', balance: opUsdcBalance, network: 'Optimism Mainnet', chainId: 'optimism', color: 'text-blue-400' },
+    { name: 'Optimism', symbol: 'OP', balance: opOpBalance, network: 'Optimism Mainnet', chainId: 'optimism', color: 'text-red-600' },
+    { name: 'Polygon', symbol: 'POL', balance: maticBalance, network: 'Polygon Mainnet', chainId: 'polygon', color: 'text-purple-500' },
+    { name: 'USD Coin (Polygon)', symbol: 'USDC', balance: polygonUsdcBalance, network: 'Polygon Mainnet', chainId: 'polygon', color: 'text-blue-400' },
+    { name: 'QuickSwap', symbol: 'QUICK', balance: polygonQuickBalance, network: 'Polygon Mainnet', chainId: 'polygon', color: 'text-cyan-400' }
   ];
 
   // Send filters
@@ -146,16 +168,26 @@
   $: totalUSD = (
     (parseFloat(ethMainnetBalance) || 0) * 3120.00 +
     (parseFloat(ethUsdcBalance) || 0) * 1.0 +
+    (parseFloat(ethUsdtBalance) || 0) * 1.0 +
+    (parseFloat(ethLinkBalance) || 0) * 13.50 +
+    (parseFloat(ethUniBalance) || 0) * 7.20 +
     (parseFloat(baseMainnetBalance) || 0) * 3120.00 +
     (parseFloat(baseUsdcBalance) || 0) * 1.0 +
+    (parseFloat(baseDegenBalance) || 0) * 0.015 +
+    (parseFloat(baseAeroBalance) || 0) * 0.55 +
     (parseFloat(arbMainnetBalance) || 0) * 3120.00 +
     (parseFloat(arbUsdcBalance) || 0) * 1.0 +
+    (parseFloat(arbArbBalance) || 0) * 0.78 +
     (parseFloat(opMainnetBalance) || 0) * 3120.00 +
     (parseFloat(opUsdcBalance) || 0) * 1.0 +
+    (parseFloat(opOpBalance) || 0) * 1.82 +
     (parseFloat(maticBalance) || 0) * 0.42 +
     (parseFloat(polygonUsdcBalance) || 0) * 1.0 +
+    (parseFloat(polygonQuickBalance) || 0) * 0.05 +
     (parseFloat(solBalance) || 0) * 145.20 +
     (parseFloat(solUsdcBalance) || 0) * 1.0 +
+    (parseFloat(solBonkBalance) || 0) * 0.000022 +
+    (parseFloat(solWifBalance) || 0) * 2.15 +
     (parseFloat(btcBalance) || 0) * 64250.00
   ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -1047,6 +1079,36 @@
     }
     if (cleanSym === 'USDC') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path d="M16 6.5C10.75 6.5 6.5 10.75 6.5 16S10.75 25.5 16 25.5 25.5 21.25 25.5 16 21.25 6.5 16 6.5zm0 17.5c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm2-10c0-1.1-.9-2-2-2s-2 .9-2 2 .9 2 2 2c1.1 0 2-.9 2-2zm-2 4c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'USDT') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path d="M17.9 12.6v-2.1h4.6V7.6H9.5v2.9h4.6v2.1c-3.1.2-5.4 1-5.4 2.1 0 1 .1 1.8 4 2v5.6h2.6v-5.6c3.9-.2 4-1 4-2 0-1.1-1.7-1.9-4.8-2.1zm0 3.3c-.3.1-.7.1-1.1.1s-.8 0-1.1-.1v-1.1c.3.1.7.1 1.1.1s.8 0 1.1-.1v1.1z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'LINK') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#375BD2"/><path d="M16 6.5l8.2 4.7v9.6L16 25.5l-8.2-4.7v-9.6L16 6.5zm5.5 8.1l-2.1-1.2-3.4 2v1.3l2.1 1.2-2.1 1.2v2.5l5.5-3.2v-3.8zm-5.5-3.1l-2.1 1.2 2.1 1.2 2.1-1.2-2.1-1.2zM10.5 14.6v3.8l5.5 3.2v-2.5l-2.1-1.2v-1.3l3.5-2-2.1-1.2-4.8 2.8z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'UNI') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#FF007A"/><path d="M16 8.5c1.2 1.8 2.4 2.4 4.2 2.4 1 0 2-.3 2.8-.7-.4 1.4-1.2 2.5-2.5 3.2.8.2 1.6.2 2.4-.1-.5 1.2-1.5 2.1-2.8 2.5.5.5.9 1.1 1.2 1.8.3.6.4 1.3.4 2 0 1.7-1.4 3.1-3.1 3.1-1 0-1.9-.5-2.5-1.2-.6.7-1.5 1.2-2.5 1.2-1.7 0-3.1-1.4-3.1-3.1 0-.7.2-1.4.4-2 .3-.7.7-1.3 1.2-1.8-1.3-.4-2.3-1.3-2.8-2.5.8.3 1.6.3 2.4.1-1.3-.7-2.1-1.8-2.5-3.2.8.4 1.8.7 2.8.7 1.8 0 3-0.6 4.2-2.4z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'DEGEN') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8B5CF6"/><path d="M9 22h14v2H9v-2zm1.5-6h11l1 4h-13l1-4zm1-4h9v2h-9v-2zm1.5-4h6v2h-6V8z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'AERO') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#0050B3"/><path d="M7.5 16l6.5-5.5v11L7.5 16zm10 0l-6.5-5.5v11l6.5-5.5zm7 0l-5-4v8l5-4z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'ARB') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#12AAFF"/><path d="M16 6.5l8.5 14.7H7.5L16 6.5zm0 3.7L10.3 19h11.4L16 10.2zm0 3.1l3 5.2h-6l3-5.2z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'OP') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#FF0420"/><path d="M12.5 11c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5 4.5-2 4.5-4.5-2-4.5-4.5-4.5zm0 7c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5zm10.5-6.5c-2.2 0-4 1.8-4 4s1.8 4 4 4 4-1.8 4-4-1.8-4-4-4zm0 6c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'QUICK') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#00D2FF"/><path d="M19 8l-8 9h6l-8 9 12-11h-6l6-7z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'BONK') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#E28743"/><circle cx="11" cy="14" r="2.5" fill="white"/><circle cx="21" cy="14" r="2.5" fill="white"/><circle cx="11" cy="14" r="1" fill="black"/><circle cx="21" cy="14" r="1" fill="black"/><path d="M13 18.5s1.5 2 3 2 3-2 3-2" stroke="white" stroke-width="1.5" fill="none"/></svg>`;
+    }
+    if (cleanSym === 'WIF') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#C4A484"/><path d="M8 20c1-2 3-3 5-3s4 1 5 3" fill="none" stroke="black" stroke-width="1.5"/><ellipse cx="16" cy="14" rx="8" ry="5" fill="#FF8DA1"/><ellipse cx="16" cy="14" rx="6" ry="3.5" fill="#FFC0CB"/></svg>`;
     }
     if (cleanSym === 'POL' || cleanSym === 'MATIC') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
@@ -2071,17 +2133,46 @@
           <!-- Chain and Searchable Asset Selectors -->
           <div class="grid grid-cols-2 gap-3 relative z-50">
             <!-- 1. Chain Selector -->
-            <div>
-              <label for="receive-chain-select" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Network / Chain</label>
-              <select
-                id="receive-chain-select"
-                bind:value={receiveChain}
-                class="select py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none cursor-pointer"
-              >
-                {#each AVAILABLE_CHAINS as chain}
-                  <option value={chain.id}>{chain.icon} {chain.name}</option>
-                {/each}
-              </select>
+            <div class="relative">
+              <label for="receive-chain-btn" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Network / Chain</label>
+              <div class="relative">
+                <button
+                  id="receive-chain-btn"
+                  type="button"
+                  on:click={() => showReceiveChainDropdown = !showReceiveChainDropdown}
+                  class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left font-semibold"
+                >
+                  <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 flex items-center justify-center shrink-0">
+                      {@html getChainLogo(receiveChain)}
+                    </span>
+                    <span class="truncate">{AVAILABLE_CHAINS.find(c => c.id === receiveChain)?.name.replace(' Mainnet', '').replace(' One', '')}</span>
+                  </div>
+                  <span class="text-vault-text-dim text-[8px]">▼</span>
+                </button>
+              </div>
+
+              {#if showReceiveChainDropdown}
+                <!-- Backdrop out-clicks dismisser -->
+                <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showReceiveChainDropdown = false} aria-label="Dismiss chain dropdown"></button>
+                <div class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                  {#each AVAILABLE_CHAINS as chain}
+                    <button
+                      type="button"
+                      on:click={() => {
+                        receiveChain = chain.id;
+                        showReceiveChainDropdown = false;
+                      }}
+                      class="w-full flex items-center gap-2 p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
+                    >
+                      <span class="w-4 h-4 flex items-center justify-center shrink-0">
+                        {@html getChainLogo(chain.id)}
+                      </span>
+                      <span class="font-semibold">{chain.name}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
             </div>
 
             <!-- 2. Searchable Asset Input -->
@@ -2258,17 +2349,46 @@
           <!-- Chain and Searchable Asset Selectors -->
           <div class="grid grid-cols-2 gap-3 relative z-50">
             <!-- 1. Chain Selector -->
-            <div>
-              <label for="send-chain-select" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Network / Chain</label>
-              <select
-                id="send-chain-select"
-                bind:value={sendChain}
-                class="select py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text w-full rounded-xl px-2 focus:outline-none cursor-pointer"
-              >
-                {#each AVAILABLE_CHAINS as chain}
-                  <option value={chain.id}>{chain.icon} {chain.name}</option>
-                {/each}
-              </select>
+            <div class="relative">
+              <label for="send-chain-btn" class="text-[10px] uppercase font-bold text-vault-text-dim block mb-1">Network / Chain</label>
+              <div class="relative">
+                <button
+                  id="send-chain-btn"
+                  type="button"
+                  on:click={() => showSendChainDropdown = !showSendChainDropdown}
+                  class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left font-semibold"
+                >
+                  <div class="flex items-center gap-2">
+                    <span class="w-4 h-4 flex items-center justify-center shrink-0">
+                      {@html getChainLogo(sendChain)}
+                    </span>
+                    <span class="truncate">{AVAILABLE_CHAINS.find(c => c.id === sendChain)?.name.replace(' Mainnet', '').replace(' One', '')}</span>
+                  </div>
+                  <span class="text-vault-text-dim text-[8px]">▼</span>
+                </button>
+              </div>
+
+              {#if showSendChainDropdown}
+                <!-- Backdrop out-clicks dismisser -->
+                <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showSendChainDropdown = false} aria-label="Dismiss chain dropdown"></button>
+                <div class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up">
+                  {#each AVAILABLE_CHAINS as chain}
+                    <button
+                      type="button"
+                      on:click={() => {
+                        sendChain = chain.id;
+                        showSendChainDropdown = false;
+                      }}
+                      class="w-full flex items-center gap-2 p-2 rounded-lg text-left text-xs text-vault-text hover:bg-vault-surface cursor-pointer border-none bg-transparent"
+                    >
+                      <span class="w-4 h-4 flex items-center justify-center shrink-0">
+                        {@html getChainLogo(chain.id)}
+                      </span>
+                      <span class="font-semibold">{chain.name}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
             </div>
 
             <!-- 2. Searchable Asset Input -->
