@@ -77,6 +77,12 @@
 
   let localVideo;
   let remoteVideo;
+  $: if (localVideo && localStream) {
+    if (localVideo.srcObject !== localStream) localVideo.srcObject = localStream;
+  }
+  $: if (remoteVideo && remoteStream) {
+    if (remoteVideo.srcObject !== remoteStream) remoteVideo.srcObject = remoteStream;
+  }
 
   const wsUnsubscribes = [];
   let prekeyRotationTimer;
@@ -936,7 +942,13 @@
 
     peerConnection.ontrack = (event) => {
       remoteStream = event.streams[0];
-      if (remoteVideo) remoteVideo.srcObject = remoteStream;
+      if (callType === 'video') {
+        if (remoteVideo) remoteVideo.srcObject = remoteStream;
+      } else {
+        const audio = new Audio();
+        audio.srcObject = remoteStream;
+        audio.play().catch(e => console.error("Failed to autoplay remote audio:", e));
+      }
     };
 
     peerConnection.onicecandidate = async (event) => {
