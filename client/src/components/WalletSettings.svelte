@@ -135,32 +135,68 @@
     { name: 'QuickSwap', symbol: 'QUICK', balance: polygonQuickBalance, network: 'Polygon Mainnet', chainId: 'polygon', color: 'text-cyan-400' }
   ];
 
+  const MAIN_NATIVE_COINS = {
+    ethereum: 'ETH',
+    base: 'ETH',
+    arbitrum: 'ETH',
+    optimism: 'ETH',
+    polygon: 'POL',
+    'solana-mainnet': 'SOL',
+    bitcoin: 'BTC'
+  };
+
   // Send filters
   $: filteredSendAssets = assets
     .filter(a => a.chainId === sendChain)
-    .filter(a => !sendSearchQuery || a.name.toLowerCase().includes(sendSearchQuery.toLowerCase()) || a.symbol.toLowerCase().includes(sendSearchQuery.toLowerCase()));
+    .filter(a => !sendSearchQuery || a.name.toLowerCase().includes(sendSearchQuery.toLowerCase()) || a.symbol.toLowerCase().includes(sendSearchQuery.toLowerCase()))
+    .sort((a, b) => {
+      const mainSymbol = MAIN_NATIVE_COINS[sendChain];
+      if (a.symbol === mainSymbol) return -1;
+      if (b.symbol === mainSymbol) return 1;
+      return 0;
+    });
 
   // Receive filters
   $: filteredReceiveAssets = assets
     .filter(a => a.chainId === receiveChain)
-    .filter(a => !receiveSearchQuery || a.name.toLowerCase().includes(receiveSearchQuery.toLowerCase()) || a.symbol.toLowerCase().includes(receiveSearchQuery.toLowerCase()));
+    .filter(a => !receiveSearchQuery || a.name.toLowerCase().includes(receiveSearchQuery.toLowerCase()) || a.symbol.toLowerCase().includes(receiveSearchQuery.toLowerCase()))
+    .sort((a, b) => {
+      const mainSymbol = MAIN_NATIVE_COINS[receiveChain];
+      if (a.symbol === mainSymbol) return -1;
+      if (b.symbol === mainSymbol) return 1;
+      return 0;
+    });
 
   $: displayReceiveAssets = (receiveChain !== 'bitcoin') 
     ? [...filteredReceiveAssets, { name: 'Custom Token Contract...', symbol: 'Custom', network: receiveChain, chainId: receiveChain, icon: '🔧', isCustom: true }]
     : filteredReceiveAssets;
 
   $: if (sendChain) {
-    const firstAsset = assets.find(a => a.chainId === sendChain);
-    if (firstAsset) {
-      sendAssetObject = firstAsset;
+    const list = assets
+      .filter(a => a.chainId === sendChain)
+      .sort((a, b) => {
+        const mainSymbol = MAIN_NATIVE_COINS[sendChain];
+        if (a.symbol === mainSymbol) return -1;
+        if (b.symbol === mainSymbol) return 1;
+        return 0;
+      });
+    if (list && list.length > 0) {
+      sendAssetObject = list[0];
       sendSearchQuery = '';
     }
   }
 
   $: if (receiveChain) {
-    const firstAsset = assets.find(a => a.chainId === receiveChain);
-    if (firstAsset) {
-      receiveAssetObject = firstAsset;
+    const list = assets
+      .filter(a => a.chainId === receiveChain)
+      .sort((a, b) => {
+        const mainSymbol = MAIN_NATIVE_COINS[receiveChain];
+        if (a.symbol === mainSymbol) return -1;
+        if (b.symbol === mainSymbol) return 1;
+        return 0;
+      });
+    if (list && list.length > 0) {
+      receiveAssetObject = list[0];
       receiveSearchQuery = '';
     }
   }
@@ -644,6 +680,7 @@
 
   // Swap state
   let showSwapModal = false;
+  let showSwapFromDropdown = false;
   let swapFromAsset = 'USDC-Base'; // 'ETH' | 'USDC-Base' | 'SOL' | 'USDC-Solana'
   let swapToAsset = 'ETH'; // 'USDC-Base' | 'ETH' | 'USDC-Solana' | 'SOL'
   let swapFromAmount = '';
@@ -2566,7 +2603,7 @@
                 </span>
               </div>
             </div>
-            <div class="flex gap-2">
+             <div class="flex gap-2 animate-scale-up">
               <input
                 id="swap-from-amount"
                 type="number"
@@ -2576,23 +2613,60 @@
                 class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle font-mono text-vault-text w-full rounded-xl px-3 focus:outline-none"
                 disabled={swapStatus === 'signing' || swapStatus === 'broadcasting' || swapStatus === 'success'}
               />
-              <select
-                id="swap-from-asset"
-                bind:value={swapFromAsset}
-                on:change={handleSwapFromAssetChange}
-                class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle text-vault-text rounded-xl px-2 focus:outline-none font-sans min-w-[100px]"
-                disabled={swapStatus === 'signing' || swapStatus === 'broadcasting' || swapStatus === 'success'}
-              >
-                <option value="USDC-Base">USDC (Base)</option>
-                <option value="ETH">ETH (Base)</option>
-                <option value="USDC-Solana">USDC (Solana)</option>
-                <option value="SOL">SOL (Solana)</option>
-              </select>
+              
+              <!-- Custom Swap From Selector -->
+              <div class="relative min-w-[125px]">
+                <button
+                  type="button"
+                  on:click={() => showSwapFromDropdown = !showSwapFromDropdown}
+                  class="flex items-center justify-between py-2 px-3 text-xs bg-vault-elevated border border-vault-border-subtle text-vault-text w-full rounded-xl focus:outline-none cursor-pointer text-left font-bold"
+                  disabled={swapStatus === 'signing' || swapStatus === 'broadcasting' || swapStatus === 'success'}
+                >
+                  <div class="flex items-center gap-1.5">
+                    <span class="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                      {@html getCryptoLogo(swapFromAsset.includes('USDC') ? 'USDC' : (swapFromAsset.includes('ETH') ? 'ETH' : swapFromAsset), swapFromAsset.includes('Base') || swapFromAsset === 'ETH' ? 'base' : 'solana-mainnet')}
+                    </span>
+                    <span>{swapFromAsset.replace('-Base', '').replace('-Solana', '')}</span>
+                  </div>
+                  <span class="text-vault-text-dim text-[8px]">▼</span>
+                </button>
+
+                {#if showSwapFromDropdown}
+                  <!-- Backdrop out-clicks dismisser -->
+                  <button type="button" class="fixed inset-0 z-40 bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showSwapFromDropdown = false} aria-label="Dismiss swap from dropdown"></button>
+                  <div class="absolute z-50 right-0 mt-1 w-40 bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up text-xs">
+                    {#each [
+                      { value: 'USDC-Base', label: 'USDC', chain: 'base', name: 'Base L2' },
+                      { value: 'ETH', label: 'ETH', chain: 'base', name: 'Base L2' },
+                      { value: 'USDC-Solana', label: 'USDC', chain: 'solana-mainnet', name: 'Solana' },
+                      { value: 'SOL', label: 'SOL', chain: 'solana-mainnet', name: 'Solana' }
+                    ] as opt}
+                      <button
+                        type="button"
+                        on:click={() => {
+                          swapFromAsset = opt.value;
+                          handleSwapFromAssetChange();
+                          showSwapFromDropdown = false;
+                        }}
+                        class="w-full flex items-center justify-between p-2 rounded-lg text-left hover:bg-vault-surface cursor-pointer border-none bg-transparent"
+                      >
+                        <div class="flex items-center gap-1.5">
+                          <span class="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                            {@html getCryptoLogo(opt.label, opt.chain)}
+                          </span>
+                          <span class="font-bold text-vault-text">{opt.label}</span>
+                        </div>
+                        <span class="text-[7px] text-vault-text-dim font-bold bg-vault-border/40 px-1 py-0.5 rounded">{opt.name}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
             </div>
           </div>
 
           <!-- Flip direction button -->
-          <div class="flex justify-center -my-2 select-none">
+          <div class="flex justify-center -my-2 select-none animate-scale-up">
             <button
               type="button"
               on:click={() => {
@@ -2611,9 +2685,9 @@
           </div>
 
           <!-- You Receive input -->
-          <div>
+          <div class="animate-scale-up">
             <div class="flex items-center justify-between mb-1">
-              <label for="swap-to-asset" class="text-xs font-semibold text-vault-text block">You Receive</label>
+              <label for="swap-to-asset-display" class="text-xs font-semibold text-vault-text block">You Receive</label>
               <span class="text-[10px] text-vault-text-dim font-mono">
                 Balance: {swapToAsset.includes('Base') ? (swapToAsset.includes('USDC') ? baseUsdcBalance : baseMainnetBalance) : (swapToAsset.includes('USDC') ? solUsdcBalance : solBalance)}
               </span>
@@ -2626,17 +2700,16 @@
                 readonly
                 class="input py-2 text-xs bg-vault-elevated/40 border-vault-border-subtle font-mono text-vault-text-dim w-full rounded-xl px-3 focus:outline-none"
               />
-              <select
-                id="swap-to-asset"
-                value={swapToAsset}
-                disabled
-                class="input py-2 text-xs bg-vault-elevated/30 border-vault-border-subtle text-vault-text-dim rounded-xl px-2 focus:outline-none font-sans min-w-[100px] opacity-70"
-              >
-                <option value="USDC-Base">USDC (Base)</option>
-                <option value="ETH">ETH (Base)</option>
-                <option value="USDC-Solana">USDC (Solana)</option>
-                <option value="SOL">SOL (Solana)</option>
-              </select>
+              
+              <!-- Visual Swap To Display -->
+              <div class="min-w-[125px]">
+                <div id="swap-to-asset-display" class="flex items-center gap-1.5 py-2 px-3 text-xs bg-vault-elevated/40 border border-vault-border-subtle/50 text-vault-text-dim w-full rounded-xl select-none font-bold">
+                  <span class="w-3.5 h-3.5 flex items-center justify-center shrink-0 opacity-70">
+                    {@html getCryptoLogo(swapToAsset.includes('USDC') ? 'USDC' : (swapToAsset.includes('ETH') ? 'ETH' : swapToAsset), swapToAsset.includes('Base') || swapToAsset === 'ETH' ? 'base' : 'solana-mainnet')}
+                  </span>
+                  <span>{swapToAsset.replace('-Base', '').replace('-Solana', '')}</span>
+                </div>
+              </div>
             </div>
           </div>
 
