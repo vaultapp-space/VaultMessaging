@@ -31,7 +31,7 @@ export function onWsEvent(type, handler) {
  * Auth happens via HTTP-only cookie during the upgrade request.
  */
 export function connectWebSocket() {
-  if (socket && socket.readyState === WebSocket.OPEN) return;
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -166,7 +166,7 @@ export function disconnectWebSocket() {
 // Reconnect instantly when browser network goes back online
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    if (!socket || (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CONNECTING)) {
       reconnectAttempts = 0;
       connectWebSocket();
     }
