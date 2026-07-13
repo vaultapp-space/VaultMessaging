@@ -13,6 +13,11 @@
   let loading = false;
   let showPassword = false;
 
+  if ($currentUser) {
+    username = $currentUser.username;
+    mode = 'login';
+  }
+
   async function handleRegister() {
     if (username.length < 3) { error = 'Username must be at least 3 characters'; return; }
     if (username.length > 20) { error = 'Username must be at most 20 characters'; return; }

@@ -44,7 +44,12 @@ export const recentCalls = writable([]);   // call logs
 
 export function setUser(user) {
   currentUser.set(user);
-  activeView.set(user ? 'chat' : 'landing');
+  const ikp = get(identityKeyPair);
+  if (user && !ikp) {
+    activeView.set('auth');
+  } else {
+    activeView.set(user ? 'chat' : 'landing');
+  }
   isLoading.set(false);
 }
 
