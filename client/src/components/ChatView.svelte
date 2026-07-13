@@ -1048,6 +1048,24 @@
   async function startCall(type) {
     if (!$activePeer) return;
 
+    // Generate static call key
+    const rawKeyBytes = crypto.getRandomValues(new Uint8Array(32));
+    const staticCallKeyBase64 = toBase64(rawKeyBytes);
+    currentCallKey = await importStaticKey(rawKeyBytes);
+
+    const callId = crypto.randomUUID();
+    
+    // Set activeCall first to prevent reactive resetCallState from clearing localStream!
+    activeCall.set({
+      id: callId,
+      status: 'ringing',
+      peerId: $activePeer.id,
+      peerUsername: $activePeer.username,
+      type: type,
+      direction: 'outgoing',
+      currentCallKey: currentCallKey
+    });
+
     const audioConstraints = {
       echoCancellation: true,
       noiseSuppression: true,
@@ -1070,48 +1088,45 @@
     } catch (err) {
       console.error('Failed to get media devices:', err);
       alert('Could not access microphone/camera');
+      activeCall.set(null);
+      currentCallKey = null;
       return;
     }
 
-    // Generate static call key
-    const rawKeyBytes = crypto.getRandomValues(new Uint8Array(32));
-    const staticCallKeyBase64 = toBase64(rawKeyBytes);
-    currentCallKey = await importStaticKey(rawKeyBytes);
+    try {
+      // Encrypt static key using Double Ratchet E2EE
+      const encryptedKey = await encryptSignalingPayload($activePeer.id, { key: staticCallKeyBase64 });
 
-    // Encrypt static key using Double Ratchet E2EE
-    const encryptedKey = await encryptSignalingPayload($activePeer.id, { key: staticCallKeyBase64 });
+      recentCalls.update(calls => [
+        {
+          id: callId,
+          peerId: $activePeer.id,
+          peerUsername: $activePeer.username,
+          type: type,
+          direction: 'outgoing',
+          status: 'ringing',
+          timestamp: new Date().toISOString()
+        },
+        ...calls
+      ]);
 
-    const callId = crypto.randomUUID();
-    activeCall.set({
-      id: callId,
-      status: 'ringing',
-      peerId: $activePeer.id,
-      peerUsername: $activePeer.username,
-      type: type,
-      direction: 'outgoing',
-      currentCallKey: currentCallKey
-    });
-
-    recentCalls.update(calls => [
-      {
-        id: callId,
-        peerId: $activePeer.id,
-        peerUsername: $activePeer.username,
-        type: type,
-        direction: 'outgoing',
-        status: 'ringing',
-        timestamp: new Date().toISOString()
-      },
-      ...calls
-    ]);
-
-    wsSend({
-      type: 'call_invite',
-      recipientId: $activePeer.id,
-      callType: type,
-      senderUsername: $currentUser.username,
-      encryptedKey
-    });
+      wsSend({
+        type: 'call_invite',
+        recipientId: $activePeer.id,
+        callType: type,
+        senderUsername: $currentUser.username,
+        encryptedKey
+      });
+    } catch (err) {
+      console.error('Failed to complete call initialization:', err);
+      alert('Failed to establish encrypted call session.');
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      activeCall.set(null);
+      currentCallKey = null;
+    }
   }
 
   function initializePeerConnection(peerId) {
