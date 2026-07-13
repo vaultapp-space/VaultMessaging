@@ -711,7 +711,7 @@ export async function importStaticKey(rawBytes) {
     'raw',
     rawBytes,
     { name: 'AES-GCM' },
-    false,
+    true,
     ['encrypt', 'decrypt']
   );
 }
