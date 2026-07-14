@@ -1,5 +1,5 @@
 <script>
-  import { currentUser, setUser, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { currentUser, setUser, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys, isDecoySession } from '../lib/stores/session.js';
   import { register, login, updateKeys, fetchSalt, saveEncryptedVault } from '../lib/api/http.js';
   import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, encryptIdentityVault, decryptIdentityVault } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
@@ -117,6 +117,7 @@
 
       const user = await login(username, password);
       loginPassword.set(password);
+      isDecoySession.set(user.isDecoy || false);
 
       let ikp_ecdh, ikp_ecdsa, spk;
       let isRestored = false;

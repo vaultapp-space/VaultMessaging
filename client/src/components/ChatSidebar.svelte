@@ -24,6 +24,61 @@
   let syncQrUrl = '';
   let syncLink = '';
 
+  async function setupDecoyVault() {
+    const decoyPassword = prompt('Enter a decoy password to unlock your decoy vault (must be different from your main password):');
+    if (!decoyPassword) return;
+    if (decoyPassword === $loginPassword) {
+      alert('Decoy password cannot be the same as your main password.');
+      return;
+    }
+    
+    try {
+      const ikp_ecdh = await crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        ['deriveBits', 'deriveKey']
+      );
+      const ikp_ecdsa = await crypto.subtle.generateKey(
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        true,
+        ['sign', 'verify']
+      );
+      const spk = await crypto.subtle.generateKey(
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        ['deriveBits', 'deriveKey']
+      );
+      
+      const decoyVault = await encryptIdentityVault({
+        identityKeyPair: {
+          ecdh: ikp_ecdh,
+          ecdsa: ikp_ecdsa
+        },
+        signedPrekeyPair: spk,
+        localBackupKeyBase64: null,
+        localBackupPassphrase: '',
+        ratchetSessions: {},
+        groupSenderKeys: {}
+      }, decoyPassword);
+      
+      const res = await fetch('/api/auth/decoy-vault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decoyPassword, decoyEncryptedVault: decoyVault })
+      });
+      
+      if (res.ok) {
+        alert('Decoy Vault configured successfully! If you log in with this decoy password, a clean decoy profile will load.');
+      } else {
+        const error = await res.json().catch(() => ({ error: 'Registration failed' }));
+        alert(error.error || 'Failed to register Decoy Vault');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to construct and encrypt Decoy Vault');
+    }
+  }
+
   async function initiateQrSync() {
     try {
       const syncId = crypto.randomUUID();
@@ -872,6 +927,17 @@
             class="py-1.5 px-3 text-[10px] bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none"
           >
             Generate Sync QR
+          </button>
+        </div>
+
+        <div class="border-t border-vault-border pt-4 space-y-3">
+          <span class="text-xs font-semibold text-vault-text block">Duress Settings (Decoy Vault)</span>
+          <span class="text-[10px] text-vault-text-dim block">Set up a secondary decoy password. Entering it at login displays a blank decoy profile.</span>
+          <button
+            on:click={setupDecoyVault}
+            class="py-1.5 px-3 text-[10px] bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none"
+          >
+            Configure Decoy Vault
           </button>
         </div>
       </div>

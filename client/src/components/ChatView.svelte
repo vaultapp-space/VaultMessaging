@@ -2244,6 +2244,17 @@
     <!-- Header Actions -->
     <div class="flex items-center gap-1">
       <button
+        on:click={() => showTtlSelector = !showTtlSelector}
+        class="p-2 rounded-lg {showTtlSelector ? 'text-vault-warning bg-vault-elevated' : 'text-vault-text-dim'} hover:text-vault-warning hover:bg-vault-elevated transition-all focus:outline-none"
+        title="Custom Message Expiration (Self-Destruct)"
+      >
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+      </button>
+
+      <button
         on:click={() => { searchActive = !searchActive; if (!searchActive) searchQuery = ''; }}
         class="p-2 rounded-lg {searchActive ? 'text-vault-accent bg-vault-elevated' : 'text-vault-text-dim'} hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
         title="Search Messages"

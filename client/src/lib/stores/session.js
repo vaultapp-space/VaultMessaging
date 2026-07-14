@@ -23,6 +23,7 @@ export const localBackupKey = writable(null);          // Cached PBKDF2 CryptoKe
 export const localBackupEnabled = writable(false);
 export const localBackupPassphrase = writable('');
 export const loginPassword = writable('');          // Volatile login password for cloud vault syncs
+export const isDecoySession = writable(false);     // Tracks if logged in to decoy vault
 
 // ─── Active Ratchet Sessions ────────────────────────────────
 // Map<peerId, RatchetSession>
@@ -65,6 +66,7 @@ export function clearSession() {
   historyKey.set(null);
   localBackupKey.set(null);
   loginPassword.set('');
+  isDecoySession.set(false);
   walletState.set(null);
   activePaymentDetails.set(null);
   walletBioEnabled.set(false);

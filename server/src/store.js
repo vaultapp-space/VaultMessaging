@@ -137,7 +137,15 @@ class DataStore {
 
     // Initialize Schema
     this.pool.query(initSchemaSQL)
-      .then(() => console.log('[DB] Schema initialized successfully'))
+      .then(async () => {
+        console.log('[DB] Schema initialized successfully');
+        try {
+          await this.pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS decoy_password_hash TEXT;`);
+          await this.pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS decoy_encrypted_vault TEXT;`);
+        } catch (alterErr) {
+          console.error('[DB] Alter table columns failed:', alterErr);
+        }
+      })
       .catch((err) => console.error('[DB] Schema initialization failed:', err));
   }
 
@@ -199,7 +207,7 @@ class DataStore {
 
   async getUserByUsername(username) {
     const res = await this.pool.query(
-      `SELECT id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault FROM users
+      `SELECT id, username, password_hash, decoy_password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault, decoy_encrypted_vault FROM users
        WHERE LOWER(username) = LOWER($1)`,
       [username]
     );
@@ -208,9 +216,29 @@ class DataStore {
 
   async getUserById(id) {
     const res = await this.pool.query(
-      `SELECT id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault FROM users
+      `SELECT id, username, password_hash, decoy_password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault, decoy_encrypted_vault FROM users
        WHERE id = $1`,
       [id]
+    );
+    return res.rows[0] || null;
+  }
+
+  async setDecoyVault(id, decoyPasswordHash, decoyEncryptedVault) {
+    const res = await this.pool.query(
+      `UPDATE users SET decoy_password_hash = $1, decoy_encrypted_vault = $2
+       WHERE id = $3
+       RETURNING id`,
+      [decoyPasswordHash, decoyEncryptedVault, id]
+    );
+    return res.rows[0] || null;
+  }
+
+  async setDecoyVaultOnly(id, decoyEncryptedVault) {
+    const res = await this.pool.query(
+      `UPDATE users SET decoy_encrypted_vault = $1
+       WHERE id = $2
+       RETURNING id`,
+      [decoyEncryptedVault, id]
     );
     return res.rows[0] || null;
   }

@@ -5,10 +5,10 @@
 
 const API_BASE = '/api';
 
-async function request(method, path, body = null) {
+async function request(method, path, body = null, extraHeaders = {}) {
   const options = {
     method,
-    headers: {},
+    headers: { ...extraHeaders },
     credentials: 'include', // Send HTTP-only cookies
   };
 
@@ -131,8 +131,9 @@ export async function fetchAttachmentChunk(id, index) {
   return request('GET', `/attachments/chunk/download/${id}/${index}`);
 }
 
-export async function saveEncryptedVault(encryptedVault) {
-  return request('POST', '/auth/vault', { encryptedVault });
+export async function saveEncryptedVault(encryptedVault, isDecoy = false) {
+  const extraHeaders = isDecoy ? { 'x-vault-decoy': 'true' } : {};
+  return request('POST', '/auth/vault', { encryptedVault }, extraHeaders);
 }
 
 export async function joinGroup(joinKey) {

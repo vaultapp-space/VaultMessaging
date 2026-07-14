@@ -119,7 +119,13 @@ async function authRoutes(fastify) {
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
 
-    const valid = await verifyPassword(user.password_hash, password);
+    let valid = await verifyPassword(user.password_hash, password);
+    let isDecoy = false;
+    if (!valid && user.decoy_password_hash) {
+      valid = await verifyPassword(user.decoy_password_hash, password);
+      isDecoy = true;
+    }
+
     if (!valid) {
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
@@ -143,8 +149,9 @@ async function authRoutes(fastify) {
       .send({
         id: user.id,
         username: user.username,
-        encryptedVault: user.encrypted_vault || null,
-        salt: user.salt
+        encryptedVault: isDecoy ? (user.decoy_encrypted_vault || null) : (user.encrypted_vault || null),
+        salt: user.salt,
+        isDecoy
       });
   });
 
@@ -161,7 +168,33 @@ async function authRoutes(fastify) {
       }
     }
   }, async (request, reply) => {
-    await fastify.store.setEncryptedVault(request.user.id, request.body.encryptedVault);
+    const isDecoy = request.headers['x-vault-decoy'] === 'true';
+    if (isDecoy) {
+      await fastify.store.setDecoyVaultOnly(request.user.id, request.body.encryptedVault);
+    } else {
+      await fastify.store.setEncryptedVault(request.user.id, request.body.encryptedVault);
+    }
+    return reply.send({ success: true });
+  });
+
+  // ─── REGISTER DECOY VAULT ──────────────────────────────────
+  fastify.post('/api/auth/decoy-vault', {
+    preValidation: [fastify.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['decoyPassword', 'decoyEncryptedVault'],
+        properties: {
+          decoyPassword: { type: 'string', minLength: 8 },
+          decoyEncryptedVault: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { decoyPassword, decoyEncryptedVault } = request.body;
+    const decoyPasswordHash = await hashPassword(decoyPassword);
+    
+    await fastify.store.setDecoyVault(request.user.id, decoyPasswordHash, decoyEncryptedVault);
     return reply.send({ success: true });
   });
 
