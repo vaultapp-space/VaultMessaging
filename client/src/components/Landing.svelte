@@ -10,9 +10,33 @@
   let timerInterval;
   let isDestructing = false;
 
+  // Live Network Stats State
+  let liveConnections = 1;
+  let liveLatency = 24;
+  let liveRelays = 4;
+  let statsInterval = null;
+
+  async function fetchNetworkStats() {
+    try {
+      const res = await fetch('/api/network/stats');
+      if (res.ok) {
+        const data = await res.json();
+        liveConnections = data.activeConnections || 1;
+        liveLatency = data.latency || 24;
+        liveRelays = data.relays || 4;
+      }
+    } catch (err) {
+      console.error('Failed to fetch live network stats', err);
+    }
+  }
+
   onMount(() => {
     // Force dark mode
     document.documentElement.classList.remove('light');
+
+    // Retrieve initial stats and start polling every 10 seconds
+    fetchNetworkStats();
+    statsInterval = setInterval(fetchNetworkStats, 10000);
 
     // Ticking 24h decay timer
     timerInterval = setInterval(() => {
@@ -34,6 +58,7 @@
 
     return () => {
       clearInterval(timerInterval);
+      if (statsInterval) clearInterval(statsInterval);
     };
   });
 
@@ -552,9 +577,9 @@
         <span class="text-vault-text font-bold">Network:</span>
         <span class="text-vault-accent">Operational</span>
       </div>
-      <div>Active Relays: <span class="text-vault-text font-bold">14</span></div>
-      <div class="hidden sm:inline">24h Volume: <span class="text-vault-text font-bold">1,842,912 msgs</span></div>
-      <div>P2P Latency: <span class="text-vault-text font-bold">24ms</span></div>
+      <div>Seed Relays: <span class="text-vault-text font-bold">{liveRelays}</span></div>
+      <div>Active Sockets: <span class="text-vault-text font-bold">{liveConnections}</span></div>
+      <div>P2P Latency: <span class="text-vault-text font-bold">{liveLatency}ms</span></div>
       <div class="hidden md:inline">Shielded ZK Rail: <span class="text-vault-accent font-bold">Active</span></div>
     </div>
   </div>
