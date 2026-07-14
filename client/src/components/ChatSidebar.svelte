@@ -424,8 +424,8 @@
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 border-b border-vault-border">
     <div class="flex items-center gap-2.5">
-      <div class="w-8 h-8 rounded-xl bg-vault-accent/10 flex items-center justify-center">
-        <svg class="w-4 h-4 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <div class="w-8 h-8 rounded-xl bg-vault-surface border border-vault-border/50 flex items-center justify-center">
+        <svg class="w-4 h-4 text-vault-text hover:text-vault-accent transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z" />
           <path d="M12 22V12" stroke-dasharray="3 3" />
         </svg>

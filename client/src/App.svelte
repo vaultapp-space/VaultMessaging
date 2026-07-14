@@ -174,7 +174,7 @@
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black">
       <div class="flex flex-col items-center gap-4 animate-fade-in">
         <div class="relative">
-          <svg class="w-12 h-12 text-vault-accent animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <svg class="w-12 h-12 text-vault-text animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z" />
             <path d="M12 22V12" stroke-dasharray="3 3" />
           </svg>
