@@ -91,10 +91,14 @@ await fastify.register(turnRoutes);
 
 // ─── Reaper Worker (24h hard deletion) ──────────────────────
 
-const reaperInterval = setInterval(() => {
-  const reaped = store.reap();
-  if (reaped > 0) {
-    fastify.log.info(`Reaper: purged ${reaped} expired items`);
+const reaperInterval = setInterval(async () => {
+  try {
+    const reaped = await store.reap();
+    if (reaped > 0) {
+      fastify.log.info(`Reaper: purged ${reaped} expired items`);
+    }
+  } catch (err) {
+    fastify.log.error(err, 'Reaper task failed');
   }
 }, config.reaperIntervalMs);
 

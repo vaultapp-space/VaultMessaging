@@ -1116,7 +1116,11 @@
     try {
       // Cryptographically verify authorization key
       if (biometricActive && bioKey) {
-        await decryptWallet(encryptedWalletData, bioKey);
+        const bioWalletData = await loadEncryptedBioWallet($currentUser.id);
+        if (!bioWalletData) {
+          throw new Error('Biometric credentials data missing locally.');
+        }
+        await decryptWalletWithBioKey(bioWalletData, bioKey);
       } else {
         await decryptWallet(encryptedWalletData, password);
       }

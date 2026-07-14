@@ -167,6 +167,7 @@
   function setupDataChannel(channel) {
     if (!channel) return;
     channel.binaryType = 'arraybuffer';
+    channel.bufferedAmountLowThreshold = 65536; // 64KB threshold
     
     channel.onopen = () => {
       console.log('[P2P] DataChannel opened');
@@ -174,6 +175,11 @@
     
     channel.onclose = () => {
       console.log('[P2P] DataChannel closed');
+      if (p2pFileTransferState.status === 'sending' || p2pFileTransferState.status === 'receiving') {
+        p2pFileTransferState.status = 'failed';
+        p2pFileTransferState.error = 'Connection closed';
+        p2pFileTransferState = { ...p2pFileTransferState };
+      }
     };
     
     channel.onerror = (err) => {
@@ -258,41 +264,25 @@
       size: file.size
     }));
     
-    // 2. Read and send in chunks
+    // 2. Read and send in chunks with WebRTC backpressure support
     const chunkSize = 16384; // 16KB
     let offset = 0;
     const fileReader = new FileReader();
     
-    const readSlice = (o) => {
-      const slice = file.slice(o, o + chunkSize);
-      fileReader.readAsArrayBuffer(slice);
-    };
-    
-    fileReader.onload = (event) => {
-      const buffer = event.target.result;
+    const sendChunk = () => {
+      if (fileDataChannel.readyState !== 'open') return;
       
-      // Buffer backpressure check
-      if (fileDataChannel.bufferedAmount > 8 * 1024 * 1024) { // 8MB high watermark
-        setTimeout(() => {
-          if (fileDataChannel && fileDataChannel.readyState === 'open') {
-            fileDataChannel.send(buffer);
-            offset += buffer.byteLength;
-            updateSenderProgress();
-          }
-        }, 100);
-      } else {
-        fileDataChannel.send(buffer);
-        offset += buffer.byteLength;
-        updateSenderProgress();
+      if (fileDataChannel.bufferedAmount > 65536) {
+        fileDataChannel.onbufferedamountlow = () => {
+          fileDataChannel.onbufferedamountlow = null;
+          sendChunk();
+        };
+        return;
       }
-    };
-    
-    const updateSenderProgress = () => {
-      p2pFileTransferState.progress = Math.round((offset / file.size) * 100);
-      p2pFileTransferState = { ...p2pFileTransferState };
       
       if (offset < file.size) {
-        readSlice(offset);
+        const slice = file.slice(offset, offset + chunkSize);
+        fileReader.readAsArrayBuffer(slice);
       } else {
         // Send end metadata
         fileDataChannel.send(JSON.stringify({ type: 'end' }));
@@ -307,7 +297,18 @@
       }
     };
     
-    readSlice(0);
+    fileReader.onload = (event) => {
+      const buffer = event.target.result;
+      if (fileDataChannel && fileDataChannel.readyState === 'open') {
+        fileDataChannel.send(buffer);
+        offset += buffer.byteLength;
+        p2pFileTransferState.progress = Math.round((offset / file.size) * 100);
+        p2pFileTransferState = { ...p2pFileTransferState };
+        sendChunk();
+      }
+    };
+    
+    sendChunk();
   }
 
   let callWindowSize = 'normal'; // 'normal' | 'large' | 'fullscreen'
@@ -488,6 +489,7 @@
       addMessages($activePeer.id, data.messages.map(msg => ({
         id: msg.id,
         senderId: msg.sender_id,
+        senderUsername: msg.sender_username,
         text: msg.ciphertext,
         encrypted: true,
         iv: msg.iv,
@@ -496,6 +498,8 @@
         previousChain: msg.previous_chain,
         sentAt: msg.sent_at,
         expiresAt: msg.expires_at,
+        groupId: msg.group_id,
+        attachmentId: msg.attachment_id,
       })));
     }
     return data;
@@ -941,6 +945,7 @@
         addMessages($activePeer.id, data.messages.map(msg => ({
           id: msg.id,
           senderId: msg.sender_id,
+          senderUsername: msg.sender_username,
           text: msg.ciphertext,
           encrypted: true,
           iv: msg.iv,
@@ -949,6 +954,8 @@
           previousChain: msg.previous_chain,
           sentAt: msg.sent_at,
           expiresAt: msg.expires_at,
+          groupId: msg.group_id,
+          attachmentId: msg.attachment_id,
         })));
         
         hasMore = data.hasMore;

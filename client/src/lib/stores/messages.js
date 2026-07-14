@@ -259,11 +259,14 @@ if (typeof window !== 'undefined') {
             const savedList = list.map(m => ({
               id: m.id,
               senderId: m.senderId,
+              senderUsername: m.senderUsername,
               text: m.text,
               encrypted: m.encrypted,
               decryptionError: m.decryptionError,
               sentAt: m.sentAt,
-              expiresAt: m.expiresAt
+              expiresAt: m.expiresAt,
+              groupId: m.groupId,
+              attachmentId: m.attachmentId
             }));
             plainData.push({ peerId, messages: savedList });
           }

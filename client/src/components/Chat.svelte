@@ -94,6 +94,7 @@
         byThread.get(threadId).push({
           id: msg.id,
           senderId: msg.sender_id,
+          senderUsername: msg.sender_username,
           text: msg.ciphertext,
           encrypted: true,
           iv: msg.iv,
@@ -102,7 +103,8 @@
           previousChain: msg.previous_chain,
           sentAt: msg.sent_at,
           expiresAt: msg.expires_at,
-          groupId: msg.group_id
+          groupId: msg.group_id,
+          attachmentId: msg.attachment_id
         });
       }
 

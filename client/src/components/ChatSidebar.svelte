@@ -261,13 +261,15 @@
       const restored = await importIdentityBackup(text, passphrase);
       
       identityKeyPair.set({
-        publicKey: restored.dh.publicKey,
-        privateKey: restored.dh.privateKey,
+        ecdh: restored.dh,
         ecdsa: restored.ecdsa
       });
+      
+      // Save/backup the restored identity keys to the cloud vault
+      await syncCloudVault();
+      
       alert('Identity keys imported successfully! Safety numbers restored.');
       showBackupModal = false;
-      window.location.reload();
     } catch (err) {
       console.error('Failed to import keys:', err);
       alert('Incorrect password or invalid identity file');
