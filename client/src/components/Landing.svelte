@@ -2,27 +2,59 @@
   import { activeView } from '../lib/stores/session.js';
   import { onMount } from 'svelte';
 
-  // Theme Management
-  let theme = 'dark';
+  // Force dark mode on landing page and initialize cipher background canvas
+  let canvasEl;
   onMount(() => {
-    theme = localStorage.getItem('vault_theme') || 'dark';
-    if (theme === 'light') {
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
-    }
-  });
+    // Force dark mode
+    document.documentElement.classList.remove('light');
 
-  function toggleTheme() {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
-    theme = newTheme;
-    localStorage.setItem('vault_theme', newTheme);
-    if (newTheme === 'light') {
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
+    const ctx = canvasEl.getContext('2d');
+    let width = canvasEl.width = window.innerWidth;
+    let height = canvasEl.height = window.innerHeight;
+
+    const handleResize = () => {
+      width = canvasEl.width = window.innerWidth;
+      height = canvasEl.height = window.innerHeight;
+    };
+    window.addEventListener('resize', handleResize);
+
+    const columns = Math.floor(width / 30);
+    const yPositions = Array(columns).fill(0).map(() => Math.random() * -height);
+
+    const characters = '0123456789ABCDEFabcdefx';
+    let animationFrame;
+
+    function draw() {
+      ctx.fillStyle = 'rgba(9, 9, 11, 0.08)'; // transparent black overlay to create trail
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.03)'; // extremely faint green for matrix effect
+      ctx.font = '9px monospace';
+
+      for (let i = 0; i < yPositions.length; i++) {
+        const char = characters.charAt(Math.floor(Math.random() * characters.length));
+        const x = i * 30;
+        const y = yPositions[i];
+
+        ctx.fillText(char, x, y);
+
+        if (y > height + 50) {
+          yPositions[i] = -50;
+        } else {
+          yPositions[i] += 1.2;
+        }
+      }
+
+      animationFrame = requestAnimationFrame(draw);
     }
-  }
+
+    draw();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationFrame);
+    };
+  });
 
   // Unified Simulator Tab Switcher
   let simTab = 'chat'; // 'chat' | 'wallet'
@@ -48,7 +80,7 @@
     const msgText = text.trim();
     simInput = '';
 
-    // Append raw/pending message from Alice
+    // Append Alice's message
     const newMsg = { sender: 'Alice', text: msgText, status: 'encrypting', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
     simMessages = [...simMessages, newMsg];
 
@@ -83,7 +115,7 @@
         ];
 
         setTimeout(() => {
-          // Step 4: Bob receives, performs matching KDF & decrypts
+          // Step 4: Bob receives, KDF & decrypts
           activeRatchetStep = 'decrypt';
           bobChainKey = aliceChainKey;
           newMsg.status = 'decrypted';
@@ -94,7 +126,6 @@
           ];
 
           setTimeout(() => {
-            // Back to idle
             activeRatchetStep = 'idle';
             dhStepCount++;
             
@@ -105,6 +136,73 @@
               const chatBox = document.getElementById('sim-chatbox');
               if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
             }, 50);
+
+            // Auto reply from Bob
+            setTimeout(() => {
+              runBobReply();
+            }, 1800);
+
+          }, 800);
+        }, 800);
+      }, 800);
+    }, 800);
+  }
+
+  function runBobReply() {
+    if (activeRatchetStep !== 'idle' || simTab !== 'chat') return;
+    
+    activeRatchetStep = 'dh';
+    ratchetLogs = [
+      ...ratchetLogs,
+      `[Step ${dhStepCount}] Bob initiates auto-reply. Generates ephemeral key (B_ratchet_${dhStepCount}). performs DH.`
+    ];
+
+    setTimeout(() => {
+      activeRatchetStep = 'kdf';
+      const randomHex = (len) => Array.from({ length: len }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      bobChainKey = '0x' + randomHex(16) + '...';
+      derivedMessageKey = '0x' + randomHex(32);
+      
+      ratchetLogs = [
+        ...ratchetLogs,
+        `[Step ${dhStepCount}] KDF Step: Bob derives new Chain Key: ${bobChainKey.substring(0, 10)}...`,
+        `[Step ${dhStepCount}] Bob derives Message Key: ${derivedMessageKey.substring(0, 10)}...`
+      ];
+
+      setTimeout(() => {
+        activeRatchetStep = 'encrypt';
+        const bobMsg = { sender: 'Bob', text: 'Secure packet verified. Ratchet epoch incremented.', status: 'encrypting', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+        simMessages = [...simMessages, bobMsg];
+        ratchetLogs = [
+          ...ratchetLogs,
+          `[Step ${dhStepCount}] Bob encrypts response under derived Message Key.`
+        ];
+
+        setTimeout(() => {
+          bobMsg.status = 'sending';
+          simMessages = [...simMessages];
+          
+          setTimeout(() => {
+            activeRatchetStep = 'decrypt';
+            aliceChainKey = bobChainKey;
+            bobMsg.status = 'decrypted';
+            simMessages = [...simMessages];
+            ratchetLogs = [
+              ...ratchetLogs,
+              `[Step ${dhStepCount}] Alice receives response, performs matching DH, derives Message Key, decrypts Bob's message.`
+            ];
+
+            setTimeout(() => {
+              activeRatchetStep = 'idle';
+              dhStepCount++;
+              
+              setTimeout(() => {
+                const term = document.getElementById('sim-terminal');
+                if (term) term.scrollTop = term.scrollHeight;
+                const chatBox = document.getElementById('sim-chatbox');
+                if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+              }, 50);
+            }, 800);
           }, 800);
         }, 800);
       }, 800);
@@ -126,6 +224,10 @@
   let sendAmount = '20';
   let txHash = '';
 
+  // WebAuthn Lock/Unlock state
+  let walletLocked = false;
+  let isBiometricScanning = false;
+
   let solBalance = '12.45';
   let solSecondary = '150.00 USDC';
   let ethBalance = '0.84';
@@ -135,7 +237,7 @@
   let btcBalance = '0.045';
 
   function simulateWalletAction() {
-    if (walletStatus !== 'idle') return;
+    if (walletStatus !== 'idle' || walletLocked) return;
     walletLogs = [];
     txHash = '';
 
@@ -158,7 +260,6 @@
             txHash = '0x' + randomHash.substring(0, 16) + '...';
             walletLogs = [...walletLogs, `[Success] Cross-chain exchange complete. Tx: ${txHash}`];
             
-            // Adjust balances mock
             if (selectedChain === 'solana') {
               solBalance = '15.22';
               solSecondary = '100.00 USDC';
@@ -208,8 +309,26 @@
     }
   }
 
+  function simulateBiometricUnlock() {
+    if (!walletLocked || isBiometricScanning) return;
+    isBiometricScanning = true;
+    walletLogs = [...walletLogs, `[WebAuthn] Initializing credentials request via FaceID/TouchID...`];
+
+    setTimeout(() => {
+      walletLogs = [...walletLogs, `[WebAuthn] User successfully verified. PRF extension returned secret bits.`];
+      
+      setTimeout(() => {
+        walletLogs = [...walletLogs, `[WebAuthn] Decrypted local database key. Session restored.`];
+        isBiometricScanning = false;
+        walletLocked = false;
+      }, 800);
+    }, 1200);
+  }
+
   function resetWalletDemo() {
     walletStatus = 'idle';
+    walletLocked = false;
+    isBiometricScanning = false;
     walletLogs = ['[Reset] Simulator reset. Non-custodial balances restored.'];
     txHash = '';
     solBalance = '12.45';
@@ -340,15 +459,19 @@
 </script>
 
 <div class="h-screen overflow-y-auto flex flex-col justify-between relative bg-vault-black text-vault-text font-sans selection:bg-vault-accent/20 selection:text-vault-accent">
+  
+  <!-- Canvas for cryptographic hexadecimal streams background -->
+  <canvas bind:this={canvasEl} class="pointer-events-none fixed inset-0 z-0"></canvas>
+
   <!-- Minimalist background overlay -->
   <div class="pointer-events-none fixed inset-0 z-0">
-    <div class="absolute top-[-30%] left-[-10%] w-[600px] h-[600px] rounded-full bg-vault-accent/[0.02] blur-[150px]"></div>
-    <div class="absolute bottom-[-30%] right-[-10%] w-[500px] h-[500px] rounded-full bg-vault-accent/[0.01] blur-[130px]"></div>
+    <div class="absolute top-[-30%] left-[-10%] w-[600px] h-[600px] rounded-full bg-vault-accent/[0.015] blur-[150px]"></div>
+    <div class="absolute bottom-[-30%] right-[-10%] w-[500px] h-[500px] rounded-full bg-vault-accent/[0.008] blur-[130px]"></div>
     <!-- Clean, micro-grid pattern -->
-    <div class="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.005)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.005)_1px,transparent_1px)] bg-[size:48px_48px]"></div>
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.003)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.003)_1px,transparent_1px)] bg-[size:48px_48px]"></div>
   </div>
 
-  <!-- Nav Bar -->
+  <!-- Nav Bar (Always Dark, Toggle Switch Removed) -->
   <header class="w-full max-w-5xl mx-auto px-6 py-6 flex justify-between items-center z-10">
     <div class="flex items-center gap-2 select-none">
       <svg class="w-7 h-7 text-vault-text hover:text-vault-accent transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
@@ -359,30 +482,10 @@
       <span class="text-[8px] bg-vault-border/50 text-vault-text-secondary border border-vault-border px-1.5 py-0.5 rounded font-mono">BETA</span>
     </div>
 
-    <!-- Consolidated Navigation Header Pill -->
-    <div class="flex items-center gap-1.5 p-1 bg-vault-surface/40 border border-vault-border/30 rounded-2xl glass">
-      <!-- Toggle Theme Button -->
-      <button 
-        on:click={toggleTheme} 
-        class="p-2 rounded-xl text-vault-text-secondary hover:text-vault-text hover:bg-vault-elevated/50 transition-all cursor-pointer focus:outline-none flex items-center justify-center"
-        aria-label="Toggle Theme"
-      >
-        {#if theme === 'dark'}
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-          </svg>
-        {:else}
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-          </svg>
-        {/if}
-      </button>
-      
-      <div class="w-px h-4 bg-vault-border/40"></div>
-
+    <div>
       <button 
         on:click={() => activeView.set('auth')} 
-        class="py-1.5 px-3.5 text-[10px] bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer"
+        class="py-2 px-5 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md"
       >
         Launch Web App
       </button>
@@ -391,6 +494,16 @@
 
   <!-- Hero Section -->
   <section class="max-w-3xl mx-auto px-6 pt-16 pb-12 text-center flex flex-col items-center gap-5.5 z-10">
+    
+    <!-- Minimalist Protocol Ticker Badges -->
+    <div class="flex flex-wrap justify-center gap-1.5 mb-1.5 select-none animate-fade-in text-[9px] font-mono font-bold tracking-wider uppercase">
+      <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">E2EE: Double Ratchet</span>
+      <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">Handshake: X3DH</span>
+      <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">Proofs: zk-SNARK UTXO</span>
+      <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">WebRTC: DTLS-SRTP</span>
+      <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">Keys: WebAuthn PRF</span>
+    </div>
+
     <h1 class="text-4xl sm:text-5xl font-black tracking-tight leading-[1.08] max-w-2xl bg-gradient-to-b from-vault-text to-vault-text-secondary bg-clip-text text-transparent">
       Confidential Chat.<br/>Shielded Web3.
     </h1>
@@ -505,7 +618,8 @@
             <!-- Chain Select Dropdown -->
             <select 
               bind:value={selectedChain}
-              class="bg-vault-black border border-vault-border/30 rounded px-1.5 py-0.5 text-[9px] font-mono text-vault-text focus:outline-none focus:border-vault-accent cursor-pointer"
+              disabled={walletLocked}
+              class="bg-vault-black border border-vault-border/30 rounded px-1.5 py-0.5 text-[9px] font-mono text-vault-text focus:outline-none focus:border-vault-accent cursor-pointer disabled:opacity-50"
             >
               <option value="solana">Solana (SPL)</option>
               <option value="ethereum">Ethereum (ERC20)</option>
@@ -514,7 +628,36 @@
             </select>
           </div>
 
-          <div class="flex-1 p-4 flex flex-col justify-between overflow-y-auto z-10">
+          <div class="flex-1 p-4 flex flex-col justify-between overflow-y-auto z-10 relative">
+            
+            <!-- Sleek WebAuthn Lock/Unlock Overlay inside Card -->
+            {#if walletLocked}
+              <div class="absolute inset-0 bg-vault-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4 z-20 animate-fade-in text-center">
+                {#if isBiometricScanning}
+                  <!-- Biometric Scan radar animation -->
+                  <div class="relative w-16 h-16 mb-4 flex items-center justify-center">
+                    <div class="absolute inset-0 rounded-full border border-vault-accent/35 animate-ping opacity-75"></div>
+                    <div class="absolute inset-1 rounded-full border-2 border-vault-accent border-t-transparent animate-spin"></div>
+                    <svg class="w-8 h-8 text-vault-accent animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A4 4 0 0111 3h2a4 4 0 013.136 1.243l2.764 2.764A4 4 0 0120 10v2a4 4 0 01-1.243 2.864l-2.764 2.764A4 4 0 0113 19h-2a4 4 0 01-3.136-1.243L5.092 15A4 4 0 014 12v-2a4 4 0 011.243-2.864l2.764-2.764z" />
+                    </svg>
+                  </div>
+                  <div class="text-[10px] font-mono text-vault-accent animate-pulse">Scanning biometric credentials (FaceID/TouchID)...</div>
+                {:else}
+                  <svg class="w-10 h-10 text-vault-text-dim mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                  <p class="text-[10px] text-vault-text-secondary leading-relaxed mb-3">Keychain encrypted locally in browser IndexedDB.</p>
+                  <button 
+                    on:click={simulateBiometricUnlock}
+                    class="py-2 px-4 text-[10px] bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl transition-all cursor-pointer shadow-md focus:outline-none"
+                  >
+                    Unlock via Biometrics
+                  </button>
+                {/if}
+              </div>
+            {/if}
+
             <!-- Balance display Card -->
             <div class="p-3 bg-vault-elevated/70 border transition-all duration-300 rounded-xl flex flex-col gap-0.5 relative overflow-hidden {isShieldedRails ? 'border-vault-accent/40 shadow-[0_0_10px_rgba(16,185,129,0.05)]' : 'border-vault-border/20'}">
               <div class="flex items-center justify-between text-[9px] font-mono text-vault-text-dim">
@@ -564,19 +707,28 @@
 
             <!-- Forms tabs -->
             <div class="mt-3 flex-1 flex flex-col justify-end">
-              <!-- Tabs selection -->
-              <div class="flex border-b border-vault-border/20 mb-2.5 text-[10px] font-bold font-mono">
+              
+              <!-- Tab operations and Lock selector -->
+              <div class="flex items-center justify-between border-b border-vault-border/20 mb-2.5">
+                <div class="flex text-[10px] font-bold font-mono">
+                  <button 
+                    on:click={() => walletTab = 'send'}
+                    class="pb-1.5 px-2 border-b-2 {walletTab === 'send' ? 'border-vault-text text-vault-text' : 'border-transparent text-vault-text-dim'} cursor-pointer focus:outline-none"
+                  >
+                    Send Assets
+                  </button>
+                  <button 
+                    on:click={() => walletTab = 'swap'}
+                    class="pb-1.5 px-2 border-b-2 {walletTab === 'swap' ? 'border-vault-text text-vault-text' : 'border-transparent text-vault-text-dim'} cursor-pointer focus:outline-none"
+                  >
+                    DEX Swap
+                  </button>
+                </div>
                 <button 
-                  on:click={() => walletTab = 'send'}
-                  class="pb-1.5 px-2 border-b-2 {walletTab === 'send' ? 'border-vault-text text-vault-text' : 'border-transparent text-vault-text-dim'} cursor-pointer focus:outline-none"
+                  on:click={() => { walletLocked = true; walletLogs = [...walletLogs, '[Lock] Vault credentials locked. Decryption keys cleared from memory.']; }}
+                  class="pb-1 text-[8px] font-mono text-vault-text-dim hover:text-vault-text cursor-pointer focus:outline-none flex items-center gap-1"
                 >
-                  Send Assets
-                </button>
-                <button 
-                  on:click={() => walletTab = 'swap'}
-                  class="pb-1.5 px-2 border-b-2 {walletTab === 'swap' ? 'border-vault-text text-vault-text' : 'border-transparent text-vault-text-dim'} cursor-pointer focus:outline-none"
-                >
-                  DEX Swap
+                  🔒 Lock Card
                 </button>
               </div>
 
@@ -859,7 +1011,7 @@
     </div>
   </section>
 
-  <!-- FAQ Accordion Section -->
+  <!-- Collapsible FAQ Accordion Section -->
   <section class="w-full max-w-3xl mx-auto px-6 py-12 z-10 border-t border-vault-border/20">
     <div class="text-center mb-8">
       <h2 class="text-lg font-bold tracking-tight text-vault-text">Frequently Asked Questions</h2>
