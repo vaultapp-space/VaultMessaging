@@ -369,6 +369,15 @@
     }
   }
 
+  let activeFeatureIndex = null;
+  function toggleFeature(index) {
+    if (activeFeatureIndex === index) {
+      activeFeatureIndex = null;
+    } else {
+      activeFeatureIndex = index;
+    }
+  }
+
   // Security & DeFi features list (Updated with 3 new features)
   const features = [
     {
@@ -1176,12 +1185,16 @@
   <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10 border-t border-vault-border/20">
     <div class="text-center mb-8">
       <h2 class="text-lg font-bold tracking-tight text-vault-text">Protocol Suite</h2>
-      <p class="text-[10px] text-vault-text-dim mt-0.5">Hover on any capability card to inspect its cryptographic implementation details.</p>
+      <p class="text-[10px] text-vault-text-dim mt-0.5">Hover or tap on any capability card to inspect its cryptographic implementation details.</p>
     </div>
     
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {#each features as feature}
-        <div class="group flex flex-col gap-2 p-5 bg-vault-surface/20 border border-vault-border/15 rounded-2xl hover:border-vault-accent/20 transition-all hover:bg-vault-surface/40 hover:-translate-y-0.5 duration-200 shadow-sm glass relative overflow-hidden">
+      {#each features as feature, idx}
+        <button
+          type="button"
+          on:click={() => toggleFeature(idx)}
+          class="group flex flex-col gap-2 p-5 bg-vault-surface/20 border border-vault-border/15 rounded-2xl hover:border-vault-accent/20 transition-all hover:bg-vault-surface/40 hover:-translate-y-0.5 duration-200 shadow-sm glass relative overflow-hidden cursor-pointer text-left w-full block"
+        >
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg bg-vault-surface border border-vault-border/50 flex items-center justify-center text-vault-text-secondary group-hover:text-vault-accent group-hover:border-vault-accent/30 transition-all shadow-inner">
               {@html feature.icon}
@@ -1190,12 +1203,12 @@
           </div>
           
           <!-- Smooth expansion container using CSS Grid Transition -->
-          <div class="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-300 ease-in-out">
-            <p class="text-[10px] text-vault-text-secondary leading-relaxed font-normal overflow-hidden opacity-0 group-hover:opacity-100 transition-opacity duration-200 pt-1.5">
+          <div class="grid transition-all duration-300 ease-in-out {activeFeatureIndex === idx ? 'grid-rows-[1fr]' : 'grid-rows-[0fr] md:group-hover:grid-rows-[1fr]'}">
+            <p class="text-[10px] text-vault-text-secondary leading-relaxed font-normal overflow-hidden transition-opacity duration-200 pt-1.5 {activeFeatureIndex === idx ? 'opacity-100' : 'opacity-0 md:group-hover:opacity-100'}">
               {feature.desc}
             </p>
           </div>
-        </div>
+        </button>
       {/each}
     </div>
   </section>
