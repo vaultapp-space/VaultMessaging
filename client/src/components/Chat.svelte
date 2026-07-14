@@ -384,7 +384,7 @@
         <div class="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-vault-elevated border border-vault-border mb-6">
           <svg class="w-10 h-10 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
             <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z" />
-            <circle cx="12" cy="12" r="2" fill="currentColor" />
+            <path d="M12 22V12" stroke-dasharray="3 3" />
           </svg>
         </div>
         <h2 class="text-lg font-medium text-vault-text-secondary mb-2">Select a conversation</h2>

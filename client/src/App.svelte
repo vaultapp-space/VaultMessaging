@@ -176,7 +176,7 @@
         <div class="relative">
           <svg class="w-12 h-12 text-vault-accent animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z" />
-            <path d="M9.5 12l2 2 3.5-3.5" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M12 22V12" stroke-dasharray="3 3" />
           </svg>
         </div>
         <div class="text-vault-text-dim text-sm tracking-wider uppercase">Establishing secure connection...</div>
