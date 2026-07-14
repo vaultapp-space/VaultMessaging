@@ -2,57 +2,38 @@
   import { activeView } from '../lib/stores/session.js';
   import { onMount } from 'svelte';
 
-  // Force dark mode on landing page and initialize cipher background canvas
-  let canvasEl;
+  // Force dark mode on landing page and initialize countdown timer
+  let ttlTimer = '23:59:59';
+  let ttlHours = 23;
+  let ttlMinutes = 59;
+  let ttlSeconds = 59;
+  let timerInterval;
+  let isDestructing = false;
+
   onMount(() => {
     // Force dark mode
     document.documentElement.classList.remove('light');
 
-    const ctx = canvasEl.getContext('2d');
-    let width = canvasEl.width = window.innerWidth;
-    let height = canvasEl.height = window.innerHeight;
-
-    const handleResize = () => {
-      width = canvasEl.width = window.innerWidth;
-      height = canvasEl.height = window.innerHeight;
-    };
-    window.addEventListener('resize', handleResize);
-
-    const columns = Math.floor(width / 30);
-    const yPositions = Array(columns).fill(0).map(() => Math.random() * -height);
-
-    const characters = '0123456789ABCDEFabcdefx';
-    let animationFrame;
-
-    function draw() {
-      ctx.fillStyle = 'rgba(9, 9, 11, 0.08)'; // transparent black overlay to create trail
-      ctx.fillRect(0, 0, width, height);
-
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.03)'; // extremely faint green for matrix effect
-      ctx.font = '9px monospace';
-
-      for (let i = 0; i < yPositions.length; i++) {
-        const char = characters.charAt(Math.floor(Math.random() * characters.length));
-        const x = i * 30;
-        const y = yPositions[i];
-
-        ctx.fillText(char, x, y);
-
-        if (y > height + 50) {
-          yPositions[i] = -50;
-        } else {
-          yPositions[i] += 1.2;
+    // Ticking 24h decay timer
+    timerInterval = setInterval(() => {
+      ttlSeconds--;
+      if (ttlSeconds < 0) {
+        ttlSeconds = 59;
+        ttlMinutes--;
+        if (ttlMinutes < 0) {
+          ttlMinutes = 59;
+          ttlHours--;
+          if (ttlHours < 0) {
+            ttlHours = 23;
+          }
         }
       }
-
-      animationFrame = requestAnimationFrame(draw);
-    }
-
-    draw();
+      const pad = (num) => String(num).padStart(2, '0');
+      ttlTimer = `${pad(ttlHours)}:${pad(ttlMinutes)}:${pad(ttlSeconds)}`;
+    }, 1000);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animationFrame);
+      clearInterval(timerInterval);
     };
   });
 
@@ -76,7 +57,7 @@
   let dhStepCount = 1;
 
   function runRatchetStep(text) {
-    if (!text || activeRatchetStep !== 'idle') return;
+    if (!text || activeRatchetStep !== 'idle' || isDestructing) return;
     const msgText = text.trim();
     simInput = '';
 
@@ -149,7 +130,7 @@
   }
 
   function runBobReply() {
-    if (activeRatchetStep !== 'idle' || simTab !== 'chat') return;
+    if (activeRatchetStep !== 'idle' || simTab !== 'chat' || simMessages.length === 0 || isDestructing) return;
     
     activeRatchetStep = 'dh';
     ratchetLogs = [
@@ -206,6 +187,18 @@
           }, 800);
         }, 800);
       }, 800);
+    }, 800);
+  }
+
+  function triggerAutoDestruct() {
+    if (isDestructing || simMessages.length === 0) return;
+    isDestructing = true;
+    ratchetLogs = [...ratchetLogs, `[Destruct] Wiping in-memory log frames...`];
+
+    setTimeout(() => {
+      simMessages = [];
+      isDestructing = false;
+      ratchetLogs = [...ratchetLogs, `[Destruct] Wiped successfully. Zero persistent traces remaining.`];
     }, 800);
   }
 
@@ -460,9 +453,6 @@
 
 <div class="h-screen overflow-y-auto flex flex-col justify-between relative bg-vault-black text-vault-text font-sans selection:bg-vault-accent/20 selection:text-vault-accent">
   
-  <!-- Canvas for cryptographic hexadecimal streams background -->
-  <canvas bind:this={canvasEl} class="pointer-events-none fixed inset-0 z-0"></canvas>
-
   <!-- Minimalist background overlay -->
   <div class="pointer-events-none fixed inset-0 z-0">
     <div class="absolute top-[-30%] left-[-10%] w-[600px] h-[600px] rounded-full bg-vault-accent/[0.015] blur-[150px]"></div>
@@ -471,7 +461,7 @@
     <div class="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.003)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.003)_1px,transparent_1px)] bg-[size:48px_48px]"></div>
   </div>
 
-  <!-- Nav Bar (Always Dark, Toggle Switch Removed) -->
+  <!-- Nav Bar (Always Dark) -->
   <header class="w-full max-w-5xl mx-auto px-6 py-6 flex justify-between items-center z-10">
     <div class="flex items-center gap-2 select-none">
       <svg class="w-7 h-7 text-vault-text hover:text-vault-accent transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
@@ -562,43 +552,61 @@
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-vault-accent opacity-75"></span>
                 <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-vault-accent"></span>
               </span>
-              <span class="text-[10px] font-bold font-mono tracking-wide uppercase text-vault-text">sec-tunnel-alpha</span>
+              <!-- Ticking countdown timer showing 24h decay -->
+              <span class="text-[9px] font-bold font-mono tracking-wide uppercase text-vault-text">TTL: {ttlTimer}</span>
             </div>
-            <span class="text-[9px] text-vault-text-dim font-mono bg-vault-border/50 px-1.5 py-0.5 rounded">RATCHET ENABLED</span>
+            
+            <div class="flex items-center gap-2">
+              <button 
+                on:click={triggerAutoDestruct} 
+                disabled={simMessages.length === 0 || isDestructing}
+                class="text-[8px] font-mono text-vault-danger border border-vault-danger/30 bg-vault-danger/10 px-2 py-0.5 rounded cursor-pointer hover:bg-vault-danger/20 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                💥 Destruct Logs
+              </button>
+              <span class="text-[8px] text-vault-text-dim font-mono bg-vault-border/50 px-1.5 py-0.5 rounded uppercase">Ratchet active</span>
+            </div>
           </div>
 
-          <div id="sim-chatbox" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 scroll-smooth">
-            {#each simMessages as msg}
-              <div class="flex flex-col {msg.sender === 'Alice' ? 'items-end' : 'items-start'}">
-                <div class="flex items-center gap-1.5 mb-0.5">
-                  <span class="text-[9px] font-bold text-vault-text-secondary">{msg.sender}</span>
-                  <span class="text-[8px] text-vault-text-dim">{msg.time}</span>
+          {#if simMessages.length === 0}
+            <div class="flex-1 flex flex-col items-center justify-center text-center p-6 text-vault-text-dim select-none animate-fade-in">
+              <span class="text-xl mb-1">🔒</span>
+              <span class="text-[10px] font-mono">Secure channel cleared. Type a message to establish session keys.</span>
+            </div>
+          {:else}
+            <div id="sim-chatbox" class="flex-grow overflow-y-auto p-4 flex flex-col gap-3 scroll-smooth">
+              {#each simMessages as msg}
+                <div class="flex flex-col {msg.sender === 'Alice' ? 'items-end' : 'items-start'} {isDestructing ? 'destruct-puff' : ''}">
+                  <div class="flex items-center gap-1.5 mb-0.5">
+                    <span class="text-[9px] font-bold text-vault-text-secondary">{msg.sender}</span>
+                    <span class="text-[8px] text-vault-text-dim">{msg.time}</span>
+                  </div>
+                  <div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl text-[11px] leading-relaxed transition-all duration-300 {msg.sender === 'Alice' ? 'bg-vault-text text-vault-black rounded-tr-none' : 'bg-vault-elevated/80 border border-vault-border/25 text-vault-text rounded-tl-none'}">
+                    {msg.text}
+                    {#if msg.status === 'encrypting'}
+                      <div class="text-[8px] text-vault-black/50 font-mono mt-0.5 animate-pulse">🔒 Encrypting cipher...</div>
+                    {:else if msg.status === 'sending'}
+                      <div class="text-[8px] text-vault-black/50 font-mono mt-0.5 animate-pulse">📡 Dispatching to Bob...</div>
+                    {:else if msg.sender === 'Alice'}
+                      <div class="text-[8px] text-vault-black/40 font-mono mt-0.5">✓ Decrypted & Verified by Bob</div>
+                    {/if}
+                  </div>
                 </div>
-                <div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl text-[11px] leading-relaxed transition-all duration-300 {msg.sender === 'Alice' ? 'bg-vault-text text-vault-black rounded-tr-none' : 'bg-vault-elevated/80 border border-vault-border/25 text-vault-text rounded-tl-none'}">
-                  {msg.text}
-                  {#if msg.status === 'encrypting'}
-                    <div class="text-[8px] text-vault-black/50 font-mono mt-0.5 animate-pulse">🔒 Encrypting cipher...</div>
-                  {:else if msg.status === 'sending'}
-                    <div class="text-[8px] text-vault-black/50 font-mono mt-0.5 animate-pulse">📡 Dispatching to Bob...</div>
-                  {:else if msg.sender === 'Alice'}
-                    <div class="text-[8px] text-vault-black/40 font-mono mt-0.5">✓ Decrypted & Verified by Bob</div>
-                  {/if}
-                </div>
-              </div>
-            {/each}
-          </div>
+              {/each}
+            </div>
+          {/if}
 
           <form on:submit|preventDefault={() => runRatchetStep(simInput)} class="p-2.5 bg-vault-surface/30 border-t border-vault-border/20 flex gap-2">
             <input 
               type="text" 
               bind:value={simInput}
-              placeholder={activeRatchetStep !== 'idle' ? 'Processing ratchet step...' : 'Type message as Alice...'} 
-              disabled={activeRatchetStep !== 'idle'}
+              placeholder={activeRatchetStep !== 'idle' || isDestructing ? 'Processing ratchet step...' : 'Type message as Alice...'} 
+              disabled={activeRatchetStep !== 'idle' || isDestructing}
               class="input flex-grow bg-vault-black text-[11px] h-8.5 rounded-xl border border-vault-border/30 focus:border-vault-accent"
             />
             <button 
               type="submit"
-              disabled={!simInput.trim() || activeRatchetStep !== 'idle'}
+              disabled={!simInput.trim() || activeRatchetStep !== 'idle' || isDestructing}
               class="px-3 text-[10px] font-bold bg-vault-text text-vault-black hover:bg-vault-text-secondary disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all cursor-pointer flex items-center justify-center"
             >
               Send
@@ -659,7 +667,7 @@
             {/if}
 
             <!-- Balance display Card -->
-            <div class="p-3 bg-vault-elevated/70 border transition-all duration-300 rounded-xl flex flex-col gap-0.5 relative overflow-hidden {isShieldedRails ? 'border-vault-accent/40 shadow-[0_0_10px_rgba(16,185,129,0.05)]' : 'border-vault-border/20'}">
+            <div class="p-3 bg-vault-elevated/70 border transition-all duration-300 rounded-xl flex flex-col gap-0.5 relative overflow-hidden {isShieldedRails ? 'border-vault-accent/40 shadow-[0_0_10px_rgba(16,185,129,0.05)]' : 'border-vault-border/20'} text-left">
               <div class="flex items-center justify-between text-[9px] font-mono text-vault-text-dim">
                 <span>LOCAL KEYPAIR</span>
                 <span class="text-vault-accent/80 font-bold">{selectedChain === 'solana' ? '9xQd...3zPq' : selectedChain === 'ethereum' ? '0x71C...a1B2' : selectedChain === 'base' ? '0x94f...c123' : 'bc1q...5xyz'}</span>
@@ -726,7 +734,7 @@
                 </div>
                 <button 
                   on:click={() => { walletLocked = true; walletLogs = [...walletLogs, '[Lock] Vault credentials locked. Decryption keys cleared from memory.']; }}
-                  class="pb-1 text-[8px] font-mono text-vault-text-dim hover:text-vault-text cursor-pointer focus:outline-none flex items-center gap-1"
+                  class="pb-1 text-[8px] font-mono text-vault-text-dim hover:text-vault-text cursor-pointer focus:outline-none flex items-center gap-1 bg-transparent border-none"
                 >
                   🔒 Lock Card
                 </button>
@@ -734,7 +742,7 @@
 
               <!-- Tab content: Send -->
               {#if walletTab === 'send'}
-                <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-2 text-left">
                   <div class="flex gap-2">
                     <div class="flex-grow">
                       <label for="send-recipient" class="text-[8px] font-bold text-vault-text-dim uppercase tracking-wider block mb-0.5">To Address</label>
@@ -770,7 +778,7 @@
                 </div>
               {:else}
                 <!-- Tab content: Swap -->
-                <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-2 text-left">
                   <div class="grid grid-cols-3 gap-2">
                     <div>
                       <label for="from-token" class="text-[8px] font-bold text-vault-text-dim uppercase tracking-wider block mb-0.5">From</label>
@@ -809,10 +817,10 @@
       </div>
 
       <!-- Right Column: Unified Protocol Inspector (7 cols) -->
-      <div class="lg:col-span-7 glass border border-vault-border/20 rounded-2xl p-5 flex flex-col justify-between shadow-lg min-h-[420px]">
+      <div class="lg:col-span-7 glass border border-vault-border/20 rounded-2xl p-5 flex flex-col justify-between shadow-lg min-h-[420px] text-left">
         <div>
           <!-- Title & Controls -->
-          <div class="flex items-center justify-between border-b border-vault-border/20 pb-3 mb-4">
+          <div class="flex items-center justify-between border-b border-vault-border/20 pb-3 mb-4 text-left">
             <h3 class="text-xs font-bold text-vault-text tracking-wider uppercase flex items-center gap-1.5 font-mono">
               <span>⚡</span> {simTab === 'chat' ? 'Double Ratchet state' : 'Node RPC & zk-SNARK Prover'}
             </h3>
@@ -1027,7 +1035,7 @@
           >
             <span class="text-xs font-bold text-vault-text">{faq.q}</span>
             <span class="text-vault-accent/80 transition-transform duration-200 {activeFaqIndex === index ? 'rotate-180' : ''}">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
               </svg>
             </span>
@@ -1087,5 +1095,23 @@
   /* Local smooth animations */
   .grid > div {
     animation: fadeIn 0.4s ease-out;
+  }
+
+  /* Puff out disappear animation for auto-destruct */
+  :global(.destruct-puff) {
+    animation: puffOut 0.75s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  }
+
+  @keyframes puffOut {
+    0% {
+      opacity: 1;
+      transform: scale(1);
+      filter: blur(0px);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.1);
+      filter: blur(8px);
+    }
   }
 </style>
