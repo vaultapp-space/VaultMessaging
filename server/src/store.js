@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username));
+
 CREATE TABLE IF NOT EXISTS one_time_prekeys (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -460,6 +462,20 @@ class DataStore {
     await this.redis.expire(`session:${jwtId}`, 24 * 60 * 60);
   }
 
+  // ─── Sync Sessions (Redis) ────────────────────────────────
+
+  async createSyncSession(syncId, payload) {
+    await this.redis.set(`sync:${syncId}`, payload, 'EX', 120); // Expires in 2 minutes
+  }
+
+  async getSyncSession(syncId) {
+    return await this.redis.get(`sync:${syncId}`);
+  }
+
+  async deleteSyncSession(syncId) {
+    await this.redis.del(`sync:${syncId}`);
+  }
+
   // ─── User Search ──────────────────────────────────────────
 
   async searchUsers(query, excludeUserId) {
@@ -542,6 +558,32 @@ class DataStore {
     );
   }
 
+  async revokeAttachmentUser(attachmentId, userId) {
+    await this.pool.query(
+      `DELETE FROM attachment_allowed_users
+       WHERE attachment_id = $1 AND user_id = $2`,
+      [attachmentId, userId]
+    );
+  }
+
+  async countRemainingRecipients(attachmentId, ownerId) {
+    if (ownerId) {
+      const res = await this.pool.query(
+        `SELECT COUNT(*) as count FROM attachment_allowed_users
+         WHERE attachment_id = $1 AND user_id <> $2`,
+        [attachmentId, ownerId]
+      );
+      return parseInt(res.rows[0].count, 10);
+    } else {
+      const res = await this.pool.query(
+        `SELECT COUNT(*) as count FROM attachment_allowed_users
+         WHERE attachment_id = $1`,
+        [attachmentId]
+      );
+      return parseInt(res.rows[0].count, 10);
+    }
+  }
+
   async saveChunk(id, index, ciphertext) {
     const filePath = path.join(UPLOADS_DIR, `${id}_${index}.txt`);
     await fs.promises.writeFile(filePath, ciphertext, 'utf8');
@@ -584,14 +626,13 @@ class DataStore {
   async createGroup(name, memberIds) {
     const id = uuidv4();
     const joinKey = uuidv4();
-    await this.pool.query(
-      `INSERT INTO groups (id, name, join_key) VALUES ($1, $2, $3)`,
-      [id, name, joinKey]
-    );
-
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO groups (id, name, join_key) VALUES ($1, $2, $3)`,
+        [id, name, joinKey]
+      );
       for (const mId of memberIds) {
         await client.query(
           `INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)`,

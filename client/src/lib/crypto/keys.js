@@ -318,12 +318,20 @@ export async function decryptFile(ciphertextBase64, keyBase64, ivBase64) {
   return decrypted;
 }
 
+let dbSalt = null;
+
 /**
  * Encrypt data string using a password-derived key (PBKDF2 + AES-GCM) or a cached key.
  */
 export async function encryptLocalDB(plaintext, passphrase, cachedKey = null) {
   const encoder = new TextEncoder();
-  const salt = crypto.getRandomValues(new Uint8Array(16));
+  let salt;
+  if (cachedKey && dbSalt) {
+    salt = dbSalt;
+  } else {
+    salt = crypto.getRandomValues(new Uint8Array(16));
+    dbSalt = salt;
+  }
   const iv = crypto.getRandomValues(new Uint8Array(12));
 
   let key = cachedKey;
@@ -375,6 +383,9 @@ export async function decryptLocalDB(encryptedJson, passphrase, cachedKey = null
 
   let key = cachedKey;
   if (!key) {
+    const parsedSalt = fromBase64(salt);
+    dbSalt = parsedSalt;
+
     const passwordKey = await crypto.subtle.importKey(
       'raw',
       encoder.encode(passphrase),
@@ -386,7 +397,7 @@ export async function decryptLocalDB(encryptedJson, passphrase, cachedKey = null
     key = await crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt: fromBase64(salt),
+        salt: parsedSalt,
         iterations: 100000,
         hash: 'SHA-256'
       },
@@ -395,6 +406,8 @@ export async function decryptLocalDB(encryptedJson, passphrase, cachedKey = null
       true, // keep extractable/cacheable in memory
       ['encrypt', 'decrypt']
     );
+  } else {
+    dbSalt = fromBase64(salt);
   }
 
   const decrypted = await crypto.subtle.decrypt(

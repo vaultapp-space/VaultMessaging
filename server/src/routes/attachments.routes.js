@@ -72,9 +72,13 @@ async function attachmentRoutes(fastify) {
       ciphertext: ciphertext
     };
 
-    if (attachment.burn_on_read) {
-      await fastify.store.deleteAttachment(id);
-      fastify.log.info({ attachmentId: id }, 'Burn-on-read: purged attachment from disk and DB');
+    if (attachment.burn_on_read && request.user.id !== attachment.owner_id) {
+      await fastify.store.revokeAttachmentUser(id, request.user.id);
+      const remainingRecipients = await fastify.store.countRemainingRecipients(id, attachment.owner_id);
+      if (remainingRecipients === 0) {
+        await fastify.store.deleteAttachment(id);
+        fastify.log.info({ attachmentId: id }, 'Burn-on-read: all recipients have read. Purged attachment from disk and DB');
+      }
     }
     
     return reply.send(payload);

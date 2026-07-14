@@ -42,6 +42,7 @@
   let currentCallKey = null;
   let verificationWords = '';
   let showTtlSelector = false;
+  const initLocks = new Map();
 
   // Optimistic & Scroll helpers
   let lastMessageCount = 0;
@@ -610,41 +611,54 @@
       }
 
       if (!ratchet) {
-        const ikp = get(identityKeyPair);
-        const spk = get(signedPrekeyPair);
-        const otps = get(oneTimePrekeyPairs);
+        if (initLocks.has(senderId)) {
+          ratchet = await initLocks.get(senderId);
+        } else {
+          const initPromise = (async () => {
+            const ikp = get(identityKeyPair);
+            const spk = get(signedPrekeyPair);
+            const otps = get(oneTimePrekeyPairs);
 
-        if (!ikp || !spk) {
-          throw new Error('Identity or signed prekey not loaded');
-        }
+            if (!ikp || !spk) {
+              throw new Error('Identity or signed prekey not loaded');
+            }
 
-        let otpPair = null;
-        if (ephData.opk) {
-          const found = otps.find(kp => kp.pubKeyBase64 === ephData.opk);
-          if (found) {
-            otpPair = found.keyPair;
+            let otpPair = null;
+            if (ephData.opk) {
+              const found = otps.find(kp => kp.pubKeyBase64 === ephData.opk);
+              if (found) {
+                otpPair = found.keyPair;
+              }
+            }
+
+            const { sharedSecret } = await x3dhRespond(
+              ikp,
+              spk,
+              otpPair,
+              ephData.ik,
+              ephData.ek
+            );
+
+            const { rootKey, chainKey } = await deriveInitialKeys(sharedSecret);
+
+            const newRatchet = new RatchetSession();
+            await newRatchet.initAsReceiver(rootKey, chainKey, spk, ephData.ik);
+
+            ratchetSessions.update(map => {
+              map.set(senderId, newRatchet);
+              return new Map(map);
+            });
+
+            return newRatchet;
+          })();
+
+          initLocks.set(senderId, initPromise);
+          try {
+            ratchet = await initPromise;
+          } finally {
+            initLocks.delete(senderId);
           }
         }
-
-        const { sharedSecret } = await x3dhRespond(
-          ikp,
-          spk,
-          otpPair,
-          ephData.ik,
-          ephData.ek
-        );
-
-        const { rootKey, chainKey } = await deriveInitialKeys(sharedSecret);
-
-        const newRatchet = new RatchetSession();
-        await newRatchet.initAsReceiver(rootKey, chainKey, spk, ephData.ik);
-
-        ratchetSessions.update(map => {
-          map.set(senderId, newRatchet);
-          return new Map(map);
-        });
-
-        ratchet = newRatchet;
       }
 
       const jsonStr = atob(data.ciphertext);

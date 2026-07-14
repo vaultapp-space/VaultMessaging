@@ -3,27 +3,24 @@
 // Handles subscription storage and push notification relays.
 // ============================================================
 
-import crypto from 'crypto';
+import webpush from 'web-push';
 import fp from 'fastify-plugin';
 
 // VAPID keys generated dynamically on startup in volatile memory (Section 0)
-const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', {
-  namedCurve: 'prime256v1'
-});
+const vapidKeys = webpush.generateVAPIDKeys();
 
-const vapidPublicKeyDer = publicKey.export({ type: 'spki', format: 'der' });
-// VAPID public key in base64url format for the browser pushManager
-const VAPID_PUBLIC_KEY_BASE64URL = vapidPublicKeyDer.toString('base64')
-  .replace(/\+/g, '-')
-  .replace(/\//g, '_')
-  .replace(/=+$/, '');
+webpush.setVapidDetails(
+  'mailto:support@vaultapp.space',
+  vapidKeys.publicKey,
+  vapidKeys.privateKey
+);
 
 async function pushRoutes(fastify) {
 
 
   // ─── GET VAPID PUBLIC KEY ────────────────────────────────
   fastify.get('/api/push/public-key', async (request, reply) => {
-    return reply.send({ publicKey: VAPID_PUBLIC_KEY_BASE64URL });
+    return reply.send({ publicKey: vapidKeys.publicKey });
   });
 
   // ─── SUBSCRIBE TO PUSH ──────────────────────────────────
@@ -72,23 +69,20 @@ async function pushRoutes(fastify) {
     for (const subStr of subscriptions) {
       const sub = JSON.parse(subStr);
       try {
-        // Log push event
         fastify.log.info({ endpoint: sub.endpoint }, 'Dispatching E2EE push notification...');
         
-        // Mock push dispatch (if network push triggers fail, this fails gracefully)
-        // Since Google FCM / Mozilla Autopush endpoints are in secure external domains,
-        // local server attempts to trigger them might be blocked or require real VAPID setup.
-        // We trigger a real fetch, catching any failures gracefully.
-        await fetch(sub.endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/octet-stream',
-            'TTL': '2419200'
-          },
-          body: payload
-        }).catch(() => {});
+        await webpush.sendNotification(sub, payload);
       } catch (err) {
-        fastify.log.error(err, 'Failed to dispatch push notification payload');
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          // Remove expired or unsubscribed subscription
+          await fastify.store.pool.query(
+            `DELETE FROM push_subscriptions WHERE subscription = $1`,
+            [subStr]
+          );
+          fastify.log.info({ endpoint: sub.endpoint }, 'Removed expired push subscription');
+        } else {
+          fastify.log.error(err, 'Failed to dispatch push notification payload');
+        }
       }
     }
   });

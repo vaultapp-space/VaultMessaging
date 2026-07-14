@@ -220,28 +220,54 @@ async function authRoutes(fastify) {
   });
 
   // ─── TRANSIENT SYNC RELAY (QR Code Multi-device sync) ──────
-  const syncSessions = new Map();
-
-  fastify.post('/api/auth/sync/initiate', async (request, reply) => {
+  fastify.post('/api/auth/sync/initiate', {
+    preValidation: [fastify.authenticate],
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: '1 minute',
+      },
+    },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['syncId', 'payload'],
+        properties: {
+          syncId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' },
+          payload: { type: 'string', maxLength: 100000 }
+        }
+      }
+    }
+  }, async (request, reply) => {
     const { syncId, payload } = request.body;
-    syncSessions.set(syncId, { payload, createdAt: Date.now() });
-    
-    // Auto-delete after 2 minutes
-    setTimeout(() => {
-      syncSessions.delete(syncId);
-    }, 120000);
-    
+    await fastify.store.createSyncSession(syncId, payload);
     return { success: true };
   });
 
-  fastify.get('/api/auth/sync/retrieve/:syncId', async (request, reply) => {
+  fastify.get('/api/auth/sync/retrieve/:syncId', {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: '1 minute',
+      },
+    },
+    schema: {
+      params: {
+        type: 'object',
+        required: ['syncId'],
+        properties: {
+          syncId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' }
+        }
+      }
+    }
+  }, async (request, reply) => {
     const { syncId } = request.params;
-    const session = syncSessions.get(syncId);
-    if (!session) {
+    const payload = await fastify.store.getSyncSession(syncId);
+    if (!payload) {
       return reply.code(404).send({ error: 'Sync session not found or expired' });
     }
-    syncSessions.delete(syncId);
-    return { payload: session.payload };
+    await fastify.store.deleteSyncSession(syncId);
+    return { payload };
   });
 }
 

@@ -12,10 +12,8 @@ import config from '../config.js';
  * Extracted to avoid code duplication between cookie and message auth paths.
  */
 async function flushPendingMessages(fastify, userId, socket) {
-  const pendingIds = await fastify.store.dequeuePending(userId);
-  if (pendingIds.length === 0) return;
-
   const messages = await fastify.store.getUndeliveredMessages(userId);
+  if (messages.length === 0) return;
 
   // Batch user lookups — collect unique sender IDs first
   const senderIds = new Set(messages.map(m => m.sender_id));
@@ -38,26 +36,32 @@ async function flushPendingMessages(fastify, userId, socket) {
       }
     }
 
-    socket.send(JSON.stringify({
-      type: 'message',
-      data: {
-        id: msg.id,
-        senderId: msg.sender_id,
-        senderUsername: senderMap.get(msg.sender_id),
-        ciphertext: msg.ciphertext,
-        ephemeralKey: msg.ephemeral_key,
-        iv: msg.iv,
-        messageNumber: msg.message_number,
-        previousChain: msg.previous_chain,
-        sentAt: msg.sent_at,
-        expiresAt: msg.expires_at,
-        groupId: msg.group_id,
-        groupName,
-        groupMembers,
-        groupJoinKey
-      },
-    }));
-    await fastify.store.markDelivered(msg.id);
+    try {
+      socket.send(JSON.stringify({
+        type: 'message',
+        data: {
+          id: msg.id,
+          senderId: msg.sender_id,
+          senderUsername: senderMap.get(msg.sender_id),
+          ciphertext: msg.ciphertext,
+          ephemeralKey: msg.ephemeral_key,
+          iv: msg.iv,
+          messageNumber: msg.message_number,
+          previousChain: msg.previous_chain,
+          sentAt: msg.sent_at,
+          expiresAt: msg.expires_at,
+          groupId: msg.group_id,
+          groupName,
+          groupMembers,
+          groupJoinKey
+        },
+      }));
+      await fastify.store.markDelivered(msg.id);
+      await fastify.store.removePending(userId, msg.id);
+    } catch (err) {
+      fastify.log.error({ err, userId, messageId: msg.id }, 'Failed to deliver pending message over WebSocket, aborting flush');
+      break;
+    }
   }
 }
 

@@ -145,7 +145,7 @@ export class RatchetSession {
     const aesKey = await deriveAESKey(msgKey, undefined, 'vault-msg-encrypt');
     const plaintext = await decrypt(aesKey, iv, ciphertext);
 
-    this.recvCount++;
+    this.recvCount = header.messageNumber + 1;
     return plaintext;
   }
 

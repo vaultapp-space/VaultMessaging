@@ -116,13 +116,17 @@ async function chunkRoutes(fastify) {
     }
 
     // Burn-on-Read chunk cleanup
-    if (attachment.burn_on_read) {
-      // If it is the last chunk, clear the whole attachment after dispatching
+    if (attachment.burn_on_read && request.user.id !== attachment.owner_id) {
+      // If it is the last chunk, clear the user and see if we should delete
       if (index === attachment.totalChunks - 1) {
         // Schedule cleanup after sending response
         setImmediate(async () => {
-          await fastify.store.deleteAttachment(id);
-          fastify.log.info({ attachmentId: id }, 'Burn-on-read: purged entire chunked attachment from disk and DB');
+          await fastify.store.revokeAttachmentUser(id, request.user.id);
+          const remainingRecipients = await fastify.store.countRemainingRecipients(id, attachment.owner_id);
+          if (remainingRecipients === 0) {
+            await fastify.store.deleteAttachment(id);
+            fastify.log.info({ attachmentId: id }, 'Burn-on-read: all recipients have read. Purged entire chunked attachment from disk and DB');
+          }
         });
       }
     }
