@@ -1248,6 +1248,25 @@
   <footer class="w-full border-t border-vault-border/20 bg-vault-surface/40 py-8 z-10">
     <div class="max-w-5xl mx-auto px-6 flex flex-col items-center gap-5">
       
+      <!-- Community Channels -->
+      <div class="flex flex-col items-center gap-2.5 p-4 bg-vault-elevated/80 border border-vault-border/10 rounded-2xl max-w-sm w-full text-center animate-fade-in glass">
+        <div class="flex items-center gap-1.5 text-[10px] font-bold text-vault-text-secondary font-mono">
+          JOIN THE COMMUNITY
+        </div>
+        <p class="text-[9px] text-vault-text-dim leading-relaxed font-medium">Connect, critique, and contribute to Vault's decentralization journey:</p>
+        <div class="flex justify-center gap-5 mt-1">
+          <a href="https://discord.gg/VZyvTsJcFQ" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 text-[10px] text-vault-text hover:text-vault-accent transition-colors font-bold no-underline focus:outline-none">
+            👾 Discord
+          </a>
+          <a href="https://t.me/Vault_Space" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 text-[10px] text-vault-text hover:text-vault-accent transition-colors font-bold no-underline focus:outline-none">
+            ✈️ Telegram
+          </a>
+          <a href="https://x.com/VaultMessenger" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 text-[10px] text-vault-text hover:text-vault-accent transition-colors font-bold no-underline focus:outline-none">
+            ✖️ Twitter
+          </a>
+        </div>
+      </div>
+
       <!-- Support Us Section -->
       <div class="flex flex-col items-center gap-2 p-4 bg-vault-elevated/80 border border-vault-border/10 rounded-2xl max-w-sm w-full text-center animate-fade-in glass">
         <div class="flex items-center gap-1.5 text-[10px] font-bold text-vault-text-secondary font-mono">
