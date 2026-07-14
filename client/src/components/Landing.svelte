@@ -475,7 +475,7 @@
     <div>
       <button 
         on:click={() => activeView.set('auth')} 
-        class="py-2 px-5 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md"
+        class="py-2 px-5 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md btn-glow"
       >
         Launch Web App
       </button>
@@ -505,7 +505,7 @@
     <div class="mt-2 flex flex-col sm:flex-row gap-3">
       <button 
         on:click={() => activeView.set('auth')} 
-        class="py-3 px-6 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md"
+        class="py-3 px-6 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md btn-glow"
       >
         Start secure session
       </button>
@@ -607,7 +607,7 @@
             <button 
               type="submit"
               disabled={!simInput.trim() || activeRatchetStep !== 'idle' || isDestructing}
-              class="px-3 text-[10px] font-bold bg-vault-text text-vault-black hover:bg-vault-text-secondary disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all cursor-pointer flex items-center justify-center"
+              class="px-3 text-[10px] font-bold bg-vault-text text-vault-black hover:bg-vault-text-secondary disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all cursor-pointer flex items-center justify-center btn-glow"
             >
               Send
             </button>
@@ -767,7 +767,7 @@
                   <button 
                     on:click={simulateWalletAction}
                     disabled={walletStatus !== 'idle'}
-                    class="w-full py-2 text-[10px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 focus:outline-none {isShieldedRails ? 'bg-vault-accent text-vault-black hover:bg-vault-accent-hover shadow-[0_0_10px_rgba(16,185,129,0.15)]' : 'bg-vault-text text-vault-black hover:bg-vault-text-secondary'}"
+                    class="w-full py-2 text-[10px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 focus:outline-none {isShieldedRails ? 'bg-vault-accent text-vault-black hover:bg-vault-accent-hover btn-glow-accent' : 'bg-vault-text text-vault-black hover:bg-vault-text-secondary btn-glow'}"
                   >
                     {#if isShieldedRails}
                       🛡️ Send Shielded UTXO
@@ -804,7 +804,7 @@
                   <button 
                     on:click={simulateWalletAction}
                     disabled={walletStatus !== 'idle'}
-                    class="w-full py-2 text-[10px] font-bold bg-vault-text text-vault-black hover:bg-vault-text-secondary rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 focus:outline-none"
+                    class="w-full py-2 text-[10px] font-bold bg-vault-text text-vault-black hover:bg-vault-text-secondary rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 focus:outline-none btn-glow"
                   >
                     🔄 Execute Bridge Swap
                   </button>
@@ -915,17 +915,41 @@
 
             <!-- State variables grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-[10px] font-mono select-all">
-              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5">
-                <span class="text-vault-text-dim text-[8px] font-semibold">SENDER CHAIN KEY</span>
-                <span class="text-vault-text-secondary truncate">{aliceChainKey}</span>
+              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/key">
+                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                  SENDER CHAIN KEY
+                  <button 
+                    on:click={() => { navigator.clipboard.writeText(aliceChainKey); alert('Sender Chain Key copied to clipboard!'); }}
+                    class="text-[7px] text-vault-text-dim group-hover/key:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                  >
+                    Copy
+                  </button>
+                </span>
+                <span class="text-vault-text-secondary truncate pr-6">{aliceChainKey}</span>
               </div>
-              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5">
-                <span class="text-vault-text-dim text-[8px] font-semibold">RECEIVER CHAIN KEY</span>
-                <span class="text-vault-text-secondary truncate">{bobChainKey}</span>
+              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/key2">
+                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                  RECEIVER CHAIN KEY
+                  <button 
+                    on:click={() => { navigator.clipboard.writeText(bobChainKey); alert('Receiver Chain Key copied to clipboard!'); }}
+                    class="text-[7px] text-vault-text-dim group-hover/key2:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                  >
+                    Copy
+                  </button>
+                </span>
+                <span class="text-vault-text-secondary truncate pr-6">{bobChainKey}</span>
               </div>
-              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 md:col-span-2">
-                <span class="text-vault-text-dim text-[8px] font-semibold">EPHEMERAL MESSAGE DECRYPTION KEY</span>
-                <span class="text-vault-text font-bold truncate transition-colors duration-300 {activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'text-vault-accent text-glow-accent' : ''}">{derivedMessageKey}</span>
+              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 md:col-span-2 relative group/key3">
+                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                  EPHEMERAL MESSAGE DECRYPTION KEY
+                  <button 
+                    on:click={() => { navigator.clipboard.writeText(derivedMessageKey); alert('Decryption Message Key copied to clipboard!'); }}
+                    class="text-[7px] text-vault-text-dim group-hover/key3:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                  >
+                    Copy
+                  </button>
+                </span>
+                <span class="text-vault-text font-bold truncate pr-6 transition-colors duration-300 {activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'text-vault-accent text-glow-accent' : ''}">{derivedMessageKey}</span>
               </div>
             </div>
 
@@ -1113,5 +1137,21 @@
       transform: scale(1.1);
       filter: blur(8px);
     }
+  }
+
+  /* Premium glow hover buttons */
+  .btn-glow {
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-glow:hover:not(:disabled) {
+    box-shadow: 0 0 16px rgba(250, 250, 250, 0.12);
+    transform: translateY(-0.5px);
+  }
+  .btn-glow-accent {
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-glow-accent:hover:not(:disabled) {
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+    transform: translateY(-0.5px);
   }
 </style>

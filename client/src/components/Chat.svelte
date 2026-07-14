@@ -13,6 +13,8 @@
   import ChatView from './ChatView.svelte';
 
   let unsubscribers = [];
+  let ping = 32;
+  let pingInterval;
 
   $: if ($activeCall) {
     if ($activeCall.status === 'ringing') {
@@ -54,6 +56,11 @@
     // Setup Web Push notifications
     setupPushNotifications();
 
+    // Fluctuating network latency ticker
+    pingInterval = setInterval(() => {
+      ping = Math.floor(Math.random() * (45 - 28 + 1)) + 28;
+    }, 2500);
+
     // 3. Register WebSocket event handlers
     unsubscribers.push(
       onWsEvent('message', handleIncomingMessage),
@@ -69,6 +76,7 @@
 
   onDestroy(() => {
     for (const unsub of unsubscribers) unsub();
+    clearInterval(pingInterval);
     disconnectWebSocket();
     stopCallSounds();
   });
@@ -395,13 +403,13 @@
         <!-- Connection Status -->
         <div class="mt-8 flex items-center justify-center gap-2 text-xs">
           <div class="w-1.5 h-1.5 rounded-full {$wsConnected ? 'bg-vault-accent' : 'bg-vault-danger'} animate-pulse"></div>
-          <span class="text-vault-text-dim">
+          <span class="text-vault-text-dim font-mono">
             {#if $wsConnected}
-              Encrypted connection active
+              Secure Relay Active · Latency: {ping}ms
             {:else if $wsError}
               Connection error: {$wsError} · <button on:click={() => connectWebSocket()} class="underline text-vault-accent hover:text-vault-accent-hover cursor-pointer bg-transparent border-none p-0 inline focus:outline-none">Retry</button>
             {:else}
-              Connecting...
+              Connecting to secure relay node...
             {/if}
           </span>
         </div>

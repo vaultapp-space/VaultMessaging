@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, loginPassword, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
   import { getMe } from './lib/api/http.js';
   import { decryptSyncPayload } from './lib/crypto/keys.js';
@@ -171,7 +172,7 @@
 
   {#if $isLoading}
     <!-- Loading screen -->
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black" out:fade={{ duration: 250 }}>
       <div class="flex flex-col items-center gap-4 animate-fade-in">
         <div class="relative">
           <svg class="w-12 h-12 text-vault-text animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -182,11 +183,21 @@
         <div class="text-vault-text-dim text-sm tracking-wider uppercase">Establishing secure connection...</div>
       </div>
     </div>
-  {:else if $activeView === 'landing'}
-    <Landing />
-  {:else if $activeView === 'auth'}
-    <Auth />
   {:else}
-    <Chat />
+    <div class="absolute inset-0">
+      {#if $activeView === 'landing'}
+        <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
+          <Landing />
+        </div>
+      {:else if $activeView === 'auth'}
+        <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
+          <Auth />
+        </div>
+      {:else}
+        <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
+          <Chat />
+        </div>
+      {/if}
+    </div>
   {/if}
 </main>
