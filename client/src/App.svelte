@@ -1,9 +1,11 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, loginPassword } from './lib/stores/session.js';
+  import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, loginPassword, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
   import { getMe } from './lib/api/http.js';
   import { decryptSyncPayload } from './lib/crypto/keys.js';
   import { fromBase64 } from './lib/crypto/utils.js';
+  import { RatchetSession } from './lib/crypto/ratchet.js';
+  import { SenderKeySession } from './lib/crypto/senderkeys.js';
   import Auth from './components/Auth.svelte';
   import Chat from './components/Chat.svelte';
   import Landing from './components/Landing.svelte';
@@ -103,6 +105,32 @@
           });
           signedPrekeyPair.set({ privateKey: spkPrivate, publicKey: spkPublic });
           loginPassword.set(decrypted.loginPassword);
+
+          if (decrypted.localBackupKeyBase64) {
+            const rawBackupKey = new Uint8Array(atob(decrypted.localBackupKeyBase64).split('').map(c => c.charCodeAt(0)));
+            const dbKey = await crypto.subtle.importKey('raw', rawBackupKey, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+            localBackupKey.set(dbKey);
+            localBackupPassphrase.set(decrypted.localBackupPassphrase);
+            localBackupEnabled.set(true);
+          }
+
+          // Restore Double Ratchet Sessions
+          if (decrypted.ratchetSessions) {
+            const sessionsMap = new Map();
+            for (const [peerId, sessionData] of Object.entries(decrypted.ratchetSessions)) {
+              sessionsMap.set(peerId, await RatchetSession.deserialize(sessionData));
+            }
+            ratchetSessions.set(sessionsMap);
+          }
+
+          // Restore Group Sender Keys
+          if (decrypted.groupSenderKeys) {
+            const groupKeysMap = new Map();
+            for (const [key, sessionData] of Object.entries(decrypted.groupSenderKeys)) {
+              groupKeysMap.set(key, await SenderKeySession.deserialize(sessionData));
+            }
+            groupSenderKeys.set(groupKeysMap);
+          }
 
           // Clear query params from URL
           window.history.replaceState({}, document.title, window.location.pathname);

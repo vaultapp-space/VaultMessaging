@@ -1,6 +1,6 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
-  import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, loginPassword, identityKeyPair, signedPrekeyPair, activeCall, recentCalls } from '../lib/stores/session.js';
+  import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, loginPassword, identityKeyPair, signedPrekeyPair, activeCall, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, joinGroup } from '../lib/api/http.js';
   import { wsConnected } from '../lib/api/ws.js';
@@ -30,6 +30,22 @@
       const aesKeyBytes = crypto.getRandomValues(new Uint8Array(32));
       const keyBase64 = toBase64(aesKeyBytes);
       
+      const serializedRatchets = {};
+      for (const [peerId, session] of $ratchetSessions.entries()) {
+        serializedRatchets[peerId] = await session.serialize();
+      }
+
+      const serializedGroupKeys = {};
+      for (const [key, session] of $groupSenderKeys.entries()) {
+        serializedGroupKeys[key] = await session.serialize();
+      }
+
+      let localBackupKeyBase64 = null;
+      if ($localBackupKey) {
+        const raw = await crypto.subtle.exportKey('raw', $localBackupKey);
+        localBackupKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(raw)));
+      }
+
       const syncPayload = {
         identityKeyPair: {
           ecdh: {
@@ -46,7 +62,11 @@
           privateKey: await crypto.subtle.exportKey('jwk', $signedPrekeyPair.privateKey)
         },
         loginPassword: $loginPassword,
-        currentUser: $currentUser
+        currentUser: $currentUser,
+        localBackupKeyBase64,
+        localBackupPassphrase: $localBackupPassphrase,
+        ratchetSessions: serializedRatchets,
+        groupSenderKeys: serializedGroupKeys
       };
 
       const encryptedPayload = await encryptSyncPayload(syncPayload, aesKeyBytes);
