@@ -108,6 +108,145 @@
     }, 800);
   }
 
+  // DeFi Wallet Simulator state
+  let selectedChain = 'solana';
+  let isShieldedRails = false;
+  let walletStatus = 'idle'; // 'idle' | 'routing' | 'signing' | 'broadcasting' | 'success'
+  let walletLogs = [
+    '[Init] Non-custodial keychain loaded. Seed phrase encrypted under local WebAuthn key.'
+  ];
+  let walletTab = 'send'; // 'send' | 'swap'
+  let fromToken = 'USDC';
+  let toToken = 'SOL';
+  let swapAmount = '50';
+  let sendRecipient = 'alice.vault';
+  let sendAmount = '20';
+  let txHash = '';
+
+  // Use a reactive block or local variable structure for wallet chain info
+  let solBalance = '12.45';
+  let solSecondary = '150.00 USDC';
+  let ethBalance = '0.84';
+  let ethSecondary = '1,200.00 USDT';
+  let baseBalance = '2.31';
+  let baseSecondary = '480.00 USDC';
+  let btcBalance = '0.045';
+
+  function simulateWalletAction() {
+    if (walletStatus !== 'idle') return;
+    walletLogs = [];
+    txHash = '';
+
+    if (walletTab === 'swap') {
+      walletStatus = 'routing';
+      walletLogs = [...walletLogs, `[Routing] Querying cross-chain liquidity paths for ${swapAmount} ${fromToken}...`];
+      
+      setTimeout(() => {
+        walletLogs = [...walletLogs, `[Routing] Best route found: Swap ${fromToken} ➔ Bridge (Li.Fi) ➔ ${toToken} (Est. fee: $0.12)`];
+        walletStatus = 'signing';
+        walletLogs = [...walletLogs, `[Signing] Local transaction request prompted. Waiting for signature...`];
+
+        setTimeout(() => {
+          walletStatus = 'broadcasting';
+          walletLogs = [...walletLogs, `[Broadcasting] Transaction signed using local private keys. Broadcasting payload...`];
+
+          setTimeout(() => {
+            walletStatus = 'success';
+            const randomHash = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+            txHash = '0x' + randomHash.substring(0, 16) + '...';
+            walletLogs = [...walletLogs, `[Success] Cross-chain exchange complete. Tx: ${txHash}`];
+            
+            // Adjust balances mock
+            if (selectedChain === 'solana') {
+              solBalance = '15.22';
+              solSecondary = '100.00 USDC';
+            } else if (selectedChain === 'ethereum') {
+              ethBalance = '1.02';
+              ethSecondary = '1,150.00 USDT';
+            }
+          }, 1000);
+        }, 1000);
+      }, 1000);
+    } else if (walletTab === 'send') {
+      walletStatus = 'signing';
+      if (isShieldedRails) {
+        walletLogs = [...walletLogs, `[zk-SNARK] Initiating parameters for client-side confidential UTXO spend...`];
+        
+        setTimeout(() => {
+          walletLogs = [...walletLogs, `[zk-SNARK] Generating zero-knowledge input parameters...`];
+          
+          setTimeout(() => {
+            walletLogs = [...walletLogs, `[zk-SNARK] Computing zk proof values (proving key)...`];
+            
+            setTimeout(() => {
+              walletLogs = [...walletLogs, `[zk-SNARK] Secret inputs generated. Hiding sender and recipient addresses.`];
+              walletStatus = 'broadcasting';
+              walletLogs = [...walletLogs, `[Broadcasting] Dispatching shielded proof payload to RPC provider...`];
+
+              setTimeout(() => {
+                walletStatus = 'success';
+                txHash = '0xzk' + Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+                walletLogs = [...walletLogs, `[Success] Zero-knowledge confidential transfer broadcasted. Tx: ${txHash}`];
+              }, 1000);
+            }, 800);
+          }, 800);
+        }, 800);
+      } else {
+        walletLogs = [...walletLogs, `[Signing] Requesting biometric confirmation for public address send...`];
+        setTimeout(() => {
+          walletStatus = 'broadcasting';
+          walletLogs = [...walletLogs, `[Broadcasting] Sending signed payload to JSON-RPC node provider...`];
+          setTimeout(() => {
+            walletStatus = 'success';
+            txHash = '0x' + Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+            walletLogs = [...walletLogs, `[Success] Public transfer confirmed. Tx: ${txHash}`];
+          }, 1000);
+        }, 1000);
+      }
+    }
+  }
+
+  function resetWalletDemo() {
+    walletStatus = 'idle';
+    walletLogs = ['[Reset] Simulator reset. Non-custodial balances restored.'];
+    txHash = '';
+    solBalance = '12.45';
+    solSecondary = '150.00 USDC';
+    ethBalance = '0.84';
+    ethSecondary = '1,200.00 USDT';
+    baseBalance = '2.31';
+    baseSecondary = '480.00 USDC';
+  }
+
+  // FAQ Accordion State
+  let activeFaqIndex = null;
+  const faqs = [
+    {
+      q: 'Is Vault truly non-custodial? How is my wallet secured?',
+      a: 'Yes. All mnemonic seed phrases and private keys are generated entirely client-side in browser memory and are never sent to our servers. They are stored locally in IndexedDB encrypted using AES-GCM-256 with a key derived from your master password or a secure WebAuthn PRF credential (biometrics). The server is completely zero-knowledge regarding your assets.'
+    },
+    {
+      q: 'What is the Double Ratchet protocol, and why does it matter?',
+      a: 'Double Ratchet is a protocol used to negotiate keys for every single message. It combines a DH ratchet (generating fresh secrets dynamically) and a KDF symmetric ratchet (generating single-use message keys). This ensures perfect forward secrecy: if an attacker compromises a single message key, they cannot read past messages or future messages.'
+    },
+    {
+      q: 'How does the zk-SNARK private payment system work?',
+      a: 'Standard blockchain transactions expose sender, recipient, and amount publicly. When you toggle private rails in Vault, the app generates a zero-knowledge proof client-side to shield the transaction details on-chain. The zero-knowledge proof verifies the validity of the transaction (inputs match outputs) without revealing the addresses or value on the public ledger.'
+    },
+    {
+      q: 'What happens to my keys when I close the browser tab?',
+      a: 'Your active decrypted keys live exclusively in volatile JS memory. Closing the tab immediately destroys these keys. When you return, you must re-authenticate (via master password or WebAuthn biometrics) to decrypt your local IndexDB database and resume messaging.'
+    }
+  ];
+
+  function toggleFaq(index) {
+    if (activeFaqIndex === index) {
+      activeFaqIndex = null;
+    } else {
+      activeFaqIndex = index;
+    }
+  }
+
   // Security & DeFi features list (Updated with 3 new features)
   const features = [
     {
@@ -199,6 +338,14 @@
 </script>
 
 <div class="h-screen overflow-y-auto flex flex-col justify-between relative bg-vault-black text-vault-text font-sans">
+  <!-- Ambient background glow pattern -->
+  <div class="pointer-events-none fixed inset-0 z-0">
+    <div class="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-vault-accent/[0.03] blur-[120px]"></div>
+    <div class="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-vault-accent/[0.02] blur-[100px]"></div>
+    <!-- Mesh overlay -->
+    <div class="absolute inset-0 bg-[linear-gradient(to_right,rgba(16,185,129,0.01)_1px,transparent_1px),linear-gradient(to_bottom,rgba(16,185,129,0.01)_1px,transparent_1px)] bg-[size:32px_32px]"></div>
+  </div>
+
   <!-- Nav Bar -->
   <header class="w-full max-w-6xl mx-auto px-6 py-6 flex justify-between items-center z-10">
     <div class="flex items-center gap-2">
@@ -258,7 +405,7 @@
   </section>
 
   <!-- Double Ratchet Protocol Simulator Section -->
-  <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10">
+  <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10 border-t border-vault-border/50">
     <div class="text-center mb-8">
       <h2 class="text-2xl font-extrabold tracking-tight">Interactive Protocol Playground</h2>
       <p class="text-xs text-vault-text-dim mt-1.5">Experience dynamic cryptographic self-healing. Type a message to witness the Double Ratchet key rotation live.</p>
@@ -266,7 +413,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
       <!-- Chat box simulator (5 cols) -->
-      <div class="lg:col-span-5 glass-strong border border-vault-border rounded-2xl flex flex-col overflow-hidden h-[400px] shadow-lg">
+      <div class="lg:col-span-5 glass-strong border border-vault-border rounded-2xl flex flex-col overflow-hidden h-[450px] shadow-lg">
         <div class="px-4 py-3 border-b border-vault-border bg-vault-surface/60 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <span class="relative flex h-2 w-2">
@@ -317,8 +464,8 @@
         </form>
       </div>
 
-      <!-- Protocol Inspector (7 cols) -->
-      <div class="lg:col-span-7 glass border border-vault-border rounded-2xl p-5 flex flex-col justify-between shadow-lg min-h-[400px]">
+      <!-- Protocol Inspector + Schematic (7 cols) -->
+      <div class="lg:col-span-7 glass border border-vault-border rounded-2xl p-5 flex flex-col justify-between shadow-lg min-h-[450px]">
         <div>
           <div class="flex items-center justify-between border-b border-vault-border pb-3 mb-4">
             <h3 class="text-sm font-bold text-vault-text tracking-wide uppercase flex items-center gap-1.5">
@@ -328,7 +475,7 @@
           </div>
 
           <!-- Step Progress Visualizer -->
-          <div class="grid grid-cols-4 gap-2 text-center text-[10px] font-bold font-mono mb-5">
+          <div class="grid grid-cols-4 gap-2 text-center text-[10px] font-bold font-mono mb-4">
             <div class="p-2 rounded-lg border {activeRatchetStep === 'dh' ? 'bg-vault-accent/15 border-vault-accent text-vault-accent animate-pulse' : 'bg-vault-surface/40 border-vault-border text-vault-text-dim'}">
               1. DH RATChET
             </div>
@@ -343,15 +490,77 @@
             </div>
           </div>
 
+          <!-- SVG Double Ratchet Schematic Diagram -->
+          <div class="mb-4 p-2 bg-vault-surface/40 border border-vault-border rounded-xl flex justify-center items-center relative overflow-hidden">
+            <div class="absolute top-2 left-2 text-[9px] font-bold font-mono text-vault-text-dim uppercase">Protocol Topology</div>
+            <svg class="w-full max-w-[450px] h-[120px]" viewBox="0 0 450 120">
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-border)" />
+                </marker>
+                <marker id="arrow-active" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-accent)" />
+                </marker>
+              </defs>
+
+              <!-- Node 1: DH Secret -->
+              <g transform="translate(60, 60)">
+                <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'dh' ? 'fill-vault-accent/25 stroke-vault-accent stroke-[2.5px] animate-pulse' : 'fill-vault-surface stroke-vault-border'}" />
+                <text x="0" y="4" class="text-[9px] font-mono font-bold {activeRatchetStep === 'dh' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">DH Sec</text>
+              </g>
+
+              <!-- Connection DH -> KDF -->
+              <line x1="82" y1="60" x2="155" y2="60" class="transition-all duration-300 stroke-[1.5px]" stroke={activeRatchetStep === 'dh' || activeRatchetStep === 'kdf' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
+
+              <!-- Node 2: KDF Node -->
+              <g transform="translate(190, 60)">
+                <circle cx="0" cy="0" r="24" class="transition-all duration-300 {activeRatchetStep === 'kdf' ? 'fill-vault-accent/25 stroke-vault-accent stroke-[2.5px] animate-pulse' : 'fill-vault-surface stroke-vault-border'}" />
+                <text x="0" y="4" class="text-[10px] font-mono font-bold {activeRatchetStep === 'kdf' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">KDF</text>
+              </g>
+
+              <!-- Connection KDF -> Chain Key (UP) -->
+              <line x1="190" y1="36" x2="190" y2="20" class="transition-all duration-300 stroke-[1.5px]" stroke={activeRatchetStep === 'kdf' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
+              <!-- Node 3: Chain Key -->
+              <g transform="translate(190, 16)">
+                <circle cx="0" cy="0" r="6" class="transition-all duration-300 {activeRatchetStep === 'kdf' ? 'fill-vault-accent' : 'fill-vault-text-dim'}" />
+                <text x="12" y="3" class="text-[8px] font-mono {activeRatchetStep === 'kdf' ? 'fill-vault-accent font-bold' : 'fill-vault-text-dim'}">Chain Key</text>
+              </g>
+
+              <!-- Connection KDF -> Message Key -->
+              <line x1="214" y1="60" x2="280" y2="60" class="transition-all duration-300 stroke-[1.5px]" stroke={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
+
+              <!-- Node 4: Message Key -->
+              <g transform="translate(315, 60)">
+                <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'encrypt' ? 'fill-vault-accent/25 stroke-vault-accent stroke-[2.5px] animate-pulse' : 'fill-vault-surface stroke-vault-border'}" />
+                <text x="0" y="4" class="text-[9px] font-mono font-bold {activeRatchetStep === 'encrypt' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">Msg Key</text>
+              </g>
+
+              <!-- Connection Message Key -> Cipher -->
+              <line x1="337" y1="60" x2="375" y2="60" class="transition-all duration-300 stroke-[1.5px]" stroke-dasharray="3 3" stroke={activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
+              <!-- Node 5: Cipher Envelope -->
+              <g transform="translate(395, 60)">
+                <text x="0" y="5" class="text-base select-none transition-transform duration-300 {activeRatchetStep === 'decrypt' ? 'scale-125' : ''}" text-anchor="middle">
+                  {#if activeRatchetStep === 'decrypt'}
+                    🔓
+                  {:else if activeRatchetStep === 'encrypt'}
+                    🔒
+                  {:else}
+                    ✉️
+                  {/if}
+                </text>
+              </g>
+            </svg>
+          </div>
+
           <!-- State variables grid -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-[11px] font-mono">
             <div class="p-3 bg-vault-surface/80 border border-vault-border rounded-xl flex flex-col gap-1">
               <span class="text-vault-text-dim text-[10px] font-semibold">ALICE SENDER CHAIN KEY:</span>
-              <span class="text-vault-accent break-all font-semibold">{aliceChainKey}</span>
+              <span class="text-vault-accent truncate font-semibold">{aliceChainKey}</span>
             </div>
             <div class="p-3 bg-vault-surface/80 border border-vault-border rounded-xl flex flex-col gap-1">
               <span class="text-vault-text-dim text-[10px] font-semibold">BOB RECEIVER CHAIN KEY:</span>
-              <span class="text-vault-accent break-all font-semibold">{bobChainKey}</span>
+              <span class="text-vault-accent truncate font-semibold">{bobChainKey}</span>
             </div>
             <div class="p-3 bg-vault-surface/80 border border-vault-border rounded-xl flex flex-col gap-1 md:col-span-2">
               <span class="text-vault-text-dim text-[10px] font-semibold">DERIVED SINGLE-USE MESSAGE KEY:</span>
@@ -361,9 +570,9 @@
         </div>
 
         <!-- Terminal Logs -->
-        <div class="flex-1 flex flex-col">
+        <div class="flex-grow flex flex-col">
           <span class="text-[10px] text-vault-text-dim font-bold font-mono tracking-wide uppercase mb-1.5 block">Protocol step execution log:</span>
-          <div id="sim-terminal" class="bg-vault-black border border-vault-border rounded-xl p-3 h-28 overflow-y-auto font-mono text-[10px] text-vault-text-secondary leading-relaxed scroll-smooth flex flex-col gap-1">
+          <div id="sim-terminal" class="bg-vault-black border border-vault-border rounded-xl p-3 h-24 overflow-y-auto font-mono text-[10px] text-vault-text-secondary leading-relaxed scroll-smooth flex flex-col gap-1">
             {#each ratchetLogs as log}
               <div class="flex items-start gap-1">
                 <span class="text-vault-accent">▶</span>
@@ -376,8 +585,244 @@
     </div>
   </section>
 
+  <!-- Interactive Web3/DeFi Wallet Demo Section -->
+  <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10 border-t border-vault-border/50">
+    <div class="text-center mb-8">
+      <h2 class="text-2xl font-extrabold tracking-tight">Non-Custodial Multi-Chain Wallet Simulator</h2>
+      <p class="text-xs text-vault-text-dim mt-1.5">Witness how Vault resolves balances, swaps assets, and shields transactions directly via client-side keys and RPC nodes.</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+      <!-- Left Column: Mock Wallet Dashboard (5 cols) -->
+      <div class="lg:col-span-5 glass-strong border border-vault-border rounded-2xl flex flex-col overflow-hidden h-[450px] shadow-lg relative">
+        
+        <!-- Glowing zk-SNARK overlay when shielded rails are active -->
+        {#if isShieldedRails}
+          <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.06)_0%,transparent_70%)] pointer-events-none z-0"></div>
+        {/if}
+
+        <div class="px-4 py-3 border-b border-vault-border bg-vault-surface/60 flex items-center justify-between z-10">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold font-mono uppercase tracking-wider text-vault-text">Vault Wallet</span>
+          </div>
+          <!-- Chain Select Dropdown -->
+          <select 
+            bind:value={selectedChain}
+            class="bg-vault-black border border-vault-border rounded px-2 py-0.5 text-[10px] font-mono text-vault-text focus:outline-none focus:border-vault-accent cursor-pointer"
+          >
+            <option value="solana">Solana (SPL)</option>
+            <option value="ethereum">Ethereum (ERC20)</option>
+            <option value="base">Base L2</option>
+            <option value="bitcoin">Bitcoin Native</option>
+          </select>
+        </div>
+
+        <div class="flex-1 p-4 flex flex-col justify-between overflow-y-auto z-10">
+          <!-- Balance display Card -->
+          <div class="p-4 bg-vault-elevated/80 border transition-all duration-300 rounded-xl flex flex-col gap-1 relative overflow-hidden {isShieldedRails ? 'border-vault-accent shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'border-vault-border'}">
+            <div class="flex items-center justify-between text-[10px] font-mono text-vault-text-dim">
+              <span>ACTIVE ASSET BALANCE</span>
+              <span class="text-vault-accent">{selectedChain === 'solana' ? '9xQd...3zPq' : selectedChain === 'ethereum' ? '0x71C...a1B2' : selectedChain === 'base' ? '0x94f...c123' : 'bc1q...5xyz'}</span>
+            </div>
+            
+            <div class="flex items-baseline gap-2 mt-1">
+              {#if selectedChain === 'solana'}
+                <span class="text-2xl font-black text-vault-text">{solBalance}</span>
+                <span class="text-xs font-bold text-vault-text-secondary">SOL</span>
+              {:else if selectedChain === 'ethereum'}
+                <span class="text-2xl font-black text-vault-text">{ethBalance}</span>
+                <span class="text-xs font-bold text-vault-text-secondary">ETH</span>
+              {:else if selectedChain === 'base'}
+                <span class="text-2xl font-black text-vault-text">{baseBalance}</span>
+                <span class="text-xs font-bold text-vault-text-secondary">ETH</span>
+              {:else if selectedChain === 'bitcoin'}
+                <span class="text-2xl font-black text-vault-text">{btcBalance}</span>
+                <span class="text-xs font-bold text-vault-text-secondary">BTC</span>
+              {/if}
+            </div>
+
+            <!-- Secondary token balances -->
+            {#if selectedChain === 'solana'}
+              <div class="text-[10px] text-vault-text-secondary mt-1 font-mono">Secondary: {solSecondary}</div>
+            {:else if selectedChain === 'ethereum'}
+              <div class="text-[10px] text-vault-text-secondary mt-1 font-mono">Secondary: {ethSecondary}</div>
+            {:else if selectedChain === 'base'}
+              <div class="text-[10px] text-vault-text-secondary mt-1 font-mono">Secondary: {baseSecondary}</div>
+            {/if}
+
+            <!-- zk-SNARK rails toggle button -->
+            <div class="mt-4 pt-3 border-t border-vault-border/50 flex items-center justify-between">
+              <span class="text-[10px] font-mono font-bold text-vault-text-secondary flex items-center gap-1">
+                🛡️ Private zk-SNARK Rails
+              </span>
+              <button 
+                on:click={() => isShieldedRails = !isShieldedRails}
+                class="w-10 h-5 rounded-full p-0.5 transition-colors cursor-pointer {isShieldedRails ? 'bg-vault-accent' : 'bg-vault-border'}"
+                aria-label="Toggle Shielded Rails"
+              >
+                <div class="w-4 h-4 bg-vault-black rounded-full shadow transition-transform {isShieldedRails ? 'translate-x-5' : ''}"></div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Forms tabs -->
+          <div class="mt-4 flex-1 flex flex-col justify-end">
+            <!-- Tabs selection -->
+            <div class="flex border-b border-vault-border mb-3 text-xs font-bold">
+              <button 
+                on:click={() => walletTab = 'send'}
+                class="pb-2 px-3 border-b-2 {walletTab === 'send' ? 'border-vault-accent text-vault-text' : 'border-transparent text-vault-text-dim'} cursor-pointer focus:outline-none"
+              >
+                Send Transfer
+              </button>
+              <button 
+                on:click={() => walletTab = 'swap'}
+                class="pb-2 px-3 border-b-2 {walletTab === 'swap' ? 'border-vault-accent text-vault-text' : 'border-transparent text-vault-text-dim'} cursor-pointer focus:outline-none"
+              >
+                Cross-Chain Swap
+              </button>
+            </div>
+
+            <!-- Tab content: Send -->
+            {#if walletTab === 'send'}
+              <div class="flex flex-col gap-2.5">
+                <div class="flex gap-2">
+                  <div class="flex-1">
+                    <label for="send-recipient" class="text-[9px] font-bold text-vault-text-dim uppercase tracking-wider block mb-1">Recipient</label>
+                    <input 
+                      id="send-recipient"
+                      type="text" 
+                      bind:value={sendRecipient} 
+                      placeholder="e.g. user.vault or address"
+                      class="input bg-vault-black text-xs h-9 rounded-xl border border-vault-border focus:border-vault-accent"
+                    />
+                  </div>
+                  <div class="w-24">
+                    <label for="send-amount" class="text-[9px] font-bold text-vault-text-dim uppercase tracking-wider block mb-1">Amount</label>
+                    <input 
+                      id="send-amount"
+                      type="number" 
+                      bind:value={sendAmount} 
+                      class="input bg-vault-black text-xs h-9 rounded-xl border border-vault-border focus:border-vault-accent"
+                    />
+                  </div>
+                </div>
+                <button 
+                  on:click={simulateWalletAction}
+                  disabled={walletStatus !== 'idle'}
+                  class="w-full py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none {isShieldedRails ? 'bg-vault-accent text-vault-black hover:bg-vault-accent-hover shadow-[0_0_15px_rgba(16,185,129,0.2)]' : 'btn-ghost'}"
+                >
+                  {#if isShieldedRails}
+                    🛡️ Send Shielded Transfer
+                  {:else}
+                    Send Public Transfer
+                  {/if}
+                </button>
+              </div>
+            {:else}
+              <!-- Tab content: Swap -->
+              <div class="flex flex-col gap-2.5">
+                <div class="grid grid-cols-3 gap-2">
+                  <div>
+                    <label for="from-token" class="text-[9px] font-bold text-vault-text-dim uppercase tracking-wider block mb-1">From Token</label>
+                    <select id="from-token" bind:value={fromToken} class="input bg-vault-black text-xs h-9 rounded-xl border border-vault-border focus:border-vault-accent cursor-pointer">
+                      <option>USDC</option>
+                      <option>SOL</option>
+                      <option>ETH</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="to-token" class="text-[9px] font-bold text-vault-text-dim uppercase tracking-wider block mb-1">To Token</label>
+                    <select id="to-token" bind:value={toToken} class="input bg-vault-black text-xs h-9 rounded-xl border border-vault-border focus:border-vault-accent cursor-pointer">
+                      <option>SOL</option>
+                      <option>USDC</option>
+                      <option>ETH</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="swap-amount" class="text-[9px] font-bold text-vault-text-dim uppercase tracking-wider block mb-1">Amount</label>
+                    <input id="swap-amount" type="number" bind:value={swapAmount} class="input bg-vault-black text-xs h-9 rounded-xl border border-vault-border focus:border-vault-accent"/>
+                  </div>
+                </div>
+                <button 
+                  on:click={simulateWalletAction}
+                  disabled={walletStatus !== 'idle'}
+                  class="w-full py-2.5 text-xs font-bold bg-vault-accent text-vault-black hover:bg-vault-accent-hover rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 focus:outline-none"
+                >
+                  🔄 Execute Cross-Chain Swap
+                </button>
+              </div>
+            {/if}
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Right Column: Node Log / Explorer (7 cols) -->
+      <div class="lg:col-span-7 glass border border-vault-border rounded-2xl p-5 flex flex-col justify-between shadow-lg min-h-[450px]">
+        <div>
+          <div class="flex items-center justify-between border-b border-vault-border pb-3 mb-4">
+            <h3 class="text-sm font-bold text-vault-text tracking-wide uppercase flex items-center gap-1.5">
+              <span>📡</span> Node RPC & Ledger Explorer
+            </h3>
+            <button 
+              on:click={resetWalletDemo}
+              class="text-[9px] font-mono text-vault-accent border border-vault-accent/30 bg-vault-accent/10 px-2 py-0.5 rounded cursor-pointer hover:bg-vault-accent/20 focus:outline-none"
+            >
+              Reset simulator
+            </button>
+          </div>
+
+          <!-- Explanatory notes -->
+          <div class="text-[11px] text-vault-text-secondary leading-relaxed mb-4 flex flex-col gap-2">
+            <p>
+              When operations are triggered, the client queries node providers (e.g. Alchemy, Helius) directly. In case of **zk-SNARK** transactions, inputs are parameterized locally and run through a zero-knowledge proving library before being submitted.
+            </p>
+            <div class="grid grid-cols-2 gap-2 text-[10px] font-mono mt-1">
+              <div class="p-2 border border-vault-border rounded-lg bg-vault-surface/40">
+                <span class="text-vault-text-dim block uppercase font-bold">Swap Protocol:</span>
+                <span>Li.Fi SDK / Jupiter API</span>
+              </div>
+              <div class="p-2 border border-vault-border rounded-lg bg-vault-surface/40">
+                <span class="text-vault-text-dim block uppercase font-bold">Prover Stack:</span>
+                <span>snarkjs / Groth16 Wasm</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Terminal logs -->
+        <div class="flex-grow flex flex-col">
+          <span class="text-[10px] text-vault-text-dim font-bold font-mono tracking-wide uppercase mb-1.5 block">Node transaction payload logs:</span>
+          <div class="bg-vault-black border border-vault-border rounded-xl p-3 h-32 overflow-y-auto font-mono text-[10px] text-vault-text-secondary leading-relaxed flex flex-col gap-1">
+            {#each walletLogs as log}
+              <div class="flex items-start gap-1">
+                <span class="text-vault-accent">▶</span>
+                <span class="break-all">{log}</span>
+              </div>
+            {/each}
+            {#if walletStatus === 'routing'}
+              <div class="text-vault-accent animate-pulse font-bold mt-1">● Searching routes...</div>
+            {:else if walletStatus === 'signing'}
+              <div class="text-vault-accent animate-pulse font-bold mt-1">● Generating signature...</div>
+            {:else if walletStatus === 'broadcasting'}
+              <div class="text-vault-accent animate-pulse font-bold mt-1">● Broadcasting payload...</div>
+            {/if}
+          </div>
+        </div>
+
+        {#if txHash}
+          <div class="mt-4 p-3 bg-vault-accent/10 border border-vault-accent/25 text-vault-accent rounded-xl flex items-center justify-between text-xs font-mono">
+            <span>TX Confirmed: {txHash}</span>
+            <span class="text-[9px] bg-vault-accent text-vault-black px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Mined</span>
+          </div>
+        {/if}
+      </div>
+    </div>
+  </section>
+
   <!-- Cryptographic Details Grid -->
-  <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10">
+  <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10 border-t border-vault-border/50">
     <div class="text-center mb-10">
       <h2 class="text-2xl font-extrabold tracking-tight">Security Features</h2>
       <p class="text-xs text-vault-text-dim mt-1.5">How Vault safeguards your identity and logs at the protocol level.</p>
@@ -393,6 +838,38 @@
             <h4 class="text-sm font-bold text-vault-text mb-1">{feature.title}</h4>
             <p class="text-xs text-vault-text-secondary leading-relaxed font-normal">{feature.desc}</p>
           </div>
+        </div>
+      {/each}
+    </div>
+  </section>
+
+  <!-- Collapsible FAQ Accordion Section -->
+  <section class="w-full max-w-4xl mx-auto px-6 py-12 z-10 border-t border-vault-border/50">
+    <div class="text-center mb-8">
+      <h2 class="text-2xl font-extrabold tracking-tight">Frequently Asked Questions</h2>
+      <p class="text-xs text-vault-text-dim mt-1.5">Deep-dive technical details about Vault's security model.</p>
+    </div>
+
+    <div class="flex flex-col gap-4">
+      {#each faqs as faq, index}
+        <div class="glass-strong border border-vault-border rounded-2xl overflow-hidden shadow-sm transition-all duration-200">
+          <button 
+            on:click={() => toggleFaq(index)}
+            class="w-full px-5 py-4 flex items-center justify-between text-left focus:outline-none cursor-pointer bg-vault-surface/20 hover:bg-vault-surface/60 transition-colors"
+          >
+            <span class="text-xs sm:text-sm font-bold text-vault-text">{faq.q}</span>
+            <span class="text-vault-accent transition-transform duration-200 {activeFaqIndex === index ? 'rotate-180' : ''}">
+              <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+              </svg>
+            </span>
+          </button>
+          
+          {#if activeFaqIndex === index}
+            <div class="px-5 pb-5 pt-1 text-xs text-vault-text-secondary leading-relaxed font-normal border-t border-vault-border/20 bg-vault-surface/10">
+              {faq.a}
+            </div>
+          {/if}
         </div>
       {/each}
     </div>
@@ -444,4 +921,3 @@
     animation: fadeIn 0.4s ease-out;
   }
 </style>
-
