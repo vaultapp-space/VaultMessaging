@@ -1,7 +1,114 @@
 <script>
   import { activeView } from '../lib/stores/session.js';
+  import { onMount } from 'svelte';
 
-  // Security & DeFi features list
+  // Theme Management
+  let theme = 'dark';
+  onMount(() => {
+    theme = localStorage.getItem('vault_theme') || 'dark';
+    if (theme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+  });
+
+  function toggleTheme() {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    theme = newTheme;
+    localStorage.setItem('vault_theme', newTheme);
+    if (newTheme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+  }
+
+  // Double Ratchet Simulator state
+  let simMessages = [
+    { sender: 'Bob', text: 'Hey Alice! Is this connection secure?', status: 'decrypted', time: '10:42 AM' },
+    { sender: 'Alice', text: 'Yes, establishing the X3DH handshake now...', status: 'decrypted', time: '10:42 AM' }
+  ];
+  let simInput = '';
+  let activeRatchetStep = 'idle'; // 'idle' | 'dh' | 'kdf' | 'encrypt' | 'decrypt'
+  let ratchetLogs = [
+    '[Init] Extended Triple Diffie-Hellman (X3DH) complete. Shared secret established.',
+    '[Init] Root key and initial Chain Keys derived. Ready for messaging.'
+  ];
+  let aliceChainKey = '0x8f2d7e9a2b5c4f...';
+  let bobChainKey = '0x8f2d7e9a2b5c4f...';
+  let derivedMessageKey = 'None';
+  let dhStepCount = 1;
+
+  function runRatchetStep(text) {
+    if (!text || activeRatchetStep !== 'idle') return;
+    const msgText = text.trim();
+    simInput = '';
+
+    // Append raw/pending message from Alice
+    const newMsg = { sender: 'Alice', text: msgText, status: 'encrypting', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+    simMessages = [...simMessages, newMsg];
+
+    // Step 1: DH Ephemeral Step
+    activeRatchetStep = 'dh';
+    ratchetLogs = [
+      ...ratchetLogs,
+      `[Step ${dhStepCount}] Alice generates ephemeral key pair (A_ratchet_${dhStepCount}). Performs DH key exchange.`
+    ];
+
+    setTimeout(() => {
+      // Step 2: KDF Derive Keys
+      activeRatchetStep = 'kdf';
+      const randomHex = (len) => Array.from({ length: len }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      aliceChainKey = '0x' + randomHex(16) + '...';
+      derivedMessageKey = '0x' + randomHex(32);
+      
+      ratchetLogs = [
+        ...ratchetLogs,
+        `[Step ${dhStepCount}] KDF Step: Ratchet Chain Key derived: ${aliceChainKey.substring(0, 10)}...`,
+        `[Step ${dhStepCount}] Message Key derived: ${derivedMessageKey.substring(0, 10)}...`
+      ];
+
+      setTimeout(() => {
+        // Step 3: Encrypt under derived message key
+        activeRatchetStep = 'encrypt';
+        newMsg.status = 'sending';
+        simMessages = [...simMessages];
+        ratchetLogs = [
+          ...ratchetLogs,
+          `[Step ${dhStepCount}] Payload encrypted using AES-256-GCM under Message Key.`
+        ];
+
+        setTimeout(() => {
+          // Step 4: Bob receives, performs matching KDF & decrypts
+          activeRatchetStep = 'decrypt';
+          bobChainKey = aliceChainKey;
+          newMsg.status = 'decrypted';
+          simMessages = [...simMessages];
+          ratchetLogs = [
+            ...ratchetLogs,
+            `[Step ${dhStepCount}] Bob receives payload. Advances his receiving chain, derives Message Key, decrypts successfully.`
+          ];
+
+          setTimeout(() => {
+            // Back to idle
+            activeRatchetStep = 'idle';
+            dhStepCount++;
+            
+            // Auto scroll simulator terminal & chatbox
+            setTimeout(() => {
+              const term = document.getElementById('sim-terminal');
+              if (term) term.scrollTop = term.scrollHeight;
+              const chatBox = document.getElementById('sim-chatbox');
+              if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+            }, 50);
+          }, 800);
+        }, 800);
+      }, 800);
+    }, 800);
+  }
+
+  // Security & DeFi features list (Updated with 3 new features)
   const features = [
     {
       icon: `<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -20,6 +127,13 @@
     },
     {
       icon: `<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21.75c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94-3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+      </svg>`,
+      title: 'E2EE Group Messaging',
+      desc: 'Leverages the Signal Sender Keys Protocol to scale secure, encrypted group chat. Optimizes communication complexity from O(N) to O(1) client overhead.'
+    },
+    {
+      icon: `<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
       </svg>`,
       title: 'WalletConnect dApp Gateway',
@@ -34,6 +148,13 @@
     },
     {
       icon: `<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+      </svg>`,
+      title: 'P2P Encrypted File Share',
+      desc: 'Send media and raw files directly to peers using WebRTC Data Channels. High-performance streaming with custom chunking, backpressure, and Double Ratchet security.'
+    },
+    {
+      icon: `<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
       </svg>`,
       title: 'Double Ratchet Protocol',
@@ -45,6 +166,13 @@
       </svg>`,
       title: 'X3DH Offline Handshake',
       desc: 'Establishes secure forward-secret sessions using Extended Triple Diffie-Hellman, even when the recipient is offline.'
+    },
+    {
+      icon: `<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.5v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.5v-4.5zM13.5 19.125c0-.621.504-1.125 1.125-1.125h1.5a1.125 1.125 0 011.125 1.125v.75c0 .621-.504 1.125-1.125 1.125h-1.5a1.125 1.125 0 01-1.125-1.125v-.75zM19.125 13.5c.621 0 1.125.504 1.125 1.125v1.5a1.125 1.125 0 01-1.125 1.125h-.75a1.125 1.125 0 01-1.125-1.125v-1.5c0-.621.504-1.125 1.125-1.125h.75zM17.25 18h1.5a.75.75 0 01.75.75v.75a.75.75 0 01-.75.75h-1.5a.75.75 0 01-.75-.75v-.75a.75.75 0 01.75-.75zM15 15h.75a.75.75 0 01.75.75V18a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75v-2.25A.75.75 0 0115 15z" />
+      </svg>`,
+      title: 'Secure QR Session Sync',
+      desc: 'Seamlessly migrate or synchronize active sessions, identity keys, prekeys, and local backup configs between devices using secure, client-encrypted QR code payloads.'
     },
     {
       icon: `<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -81,7 +209,25 @@
       <span class="text-lg font-bold tracking-tight uppercase">Vault</span>
       <span class="text-[9px] bg-vault-accent/10 text-vault-accent border border-vault-accent/25 px-1.5 py-0.5 rounded font-mono">BETA</span>
     </div>
-    <div>
+    <div class="flex items-center gap-3">
+      <!-- Dark/Light Theme Toggle -->
+      <button 
+        on:click={toggleTheme} 
+        class="p-2.5 rounded-xl border border-vault-border bg-vault-surface hover:bg-vault-elevated text-vault-text-secondary hover:text-vault-text transition-all cursor-pointer focus:outline-none flex items-center justify-center"
+        aria-label="Toggle Theme"
+      >
+        {#if theme === 'dark'}
+          <!-- Moon Icon -->
+          <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          </svg>
+        {:else}
+          <!-- Sun Icon -->
+          <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+          </svg>
+        {/if}
+      </button>
       <button 
         on:click={() => activeView.set('auth')} 
         class="btn-primary py-2 px-5 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl focus:outline-none transition-all cursor-pointer"
@@ -92,9 +238,7 @@
   </header>
 
   <!-- Hero Section -->
-  <section class="max-w-4xl mx-auto px-6 pt-12 pb-16 text-center flex flex-col items-center gap-6 z-10">
-
-    
+  <section class="max-w-4xl mx-auto px-6 pt-12 pb-12 text-center flex flex-col items-center gap-6 z-10">
     <h1 class="text-4xl sm:text-6xl font-black tracking-tight leading-[1.1] max-w-3xl bg-gradient-to-b from-vault-text to-vault-text-secondary bg-clip-text text-transparent">
       Confidential Chat.<br/>Shielded Web3.
     </h1>
@@ -113,6 +257,125 @@
     </div>
   </section>
 
+  <!-- Double Ratchet Protocol Simulator Section -->
+  <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10">
+    <div class="text-center mb-8">
+      <h2 class="text-2xl font-extrabold tracking-tight">Interactive Protocol Playground</h2>
+      <p class="text-xs text-vault-text-dim mt-1.5">Experience dynamic cryptographic self-healing. Type a message to witness the Double Ratchet key rotation live.</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+      <!-- Chat box simulator (5 cols) -->
+      <div class="lg:col-span-5 glass-strong border border-vault-border rounded-2xl flex flex-col overflow-hidden h-[400px] shadow-lg">
+        <div class="px-4 py-3 border-b border-vault-border bg-vault-surface/60 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-vault-accent opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-vault-accent"></span>
+            </span>
+            <span class="text-xs font-bold font-mono tracking-wide uppercase text-vault-text">sec-tunnel-alpha</span>
+          </div>
+          <span class="text-[10px] text-vault-accent font-mono bg-vault-accent/10 px-2 py-0.5 rounded border border-vault-accent/20">Double Ratchet ACTIVE</span>
+        </div>
+
+        <div id="sim-chatbox" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 scroll-smooth">
+          {#each simMessages as msg}
+            <div class="flex flex-col {msg.sender === 'Alice' ? 'items-end' : 'items-start'}">
+              <div class="flex items-center gap-1.5 mb-1">
+                <span class="text-[10px] font-bold text-vault-text-secondary">{msg.sender}</span>
+                <span class="text-[9px] text-vault-text-dim">{msg.time}</span>
+              </div>
+              <div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed {msg.sender === 'Alice' ? 'bg-vault-accent text-vault-black rounded-tr-none' : 'bg-vault-elevated border border-vault-border text-vault-text rounded-tl-none'}">
+                {msg.text}
+                {#if msg.status === 'encrypting'}
+                  <div class="text-[9px] text-vault-black/60 font-mono mt-1 animate-pulse">🔒 Encrypting payload...</div>
+                {:else if msg.status === 'sending'}
+                  <div class="text-[9px] text-vault-black/60 font-mono mt-1 animate-pulse">📡 Dispatching cipher...</div>
+                {:else if msg.sender === 'Alice'}
+                  <div class="text-[9px] text-vault-black/60 font-mono mt-1">✓ Decrypted & Verified by Bob</div>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <form on:submit|preventDefault={() => runRatchetStep(simInput)} class="p-3 bg-vault-surface/40 border-t border-vault-border flex gap-2">
+          <input 
+            type="text" 
+            bind:value={simInput}
+            placeholder={activeRatchetStep !== 'idle' ? 'Processing ratchet step...' : 'Type message as Alice...'} 
+            disabled={activeRatchetStep !== 'idle'}
+            class="input flex-grow bg-vault-black text-xs h-9 rounded-xl px-3 border border-vault-border focus:border-vault-accent"
+          />
+          <button 
+            type="submit"
+            disabled={!simInput.trim() || activeRatchetStep !== 'idle'}
+            class="px-4 text-xs font-semibold bg-vault-accent text-vault-black hover:bg-vault-accent-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all cursor-pointer flex items-center justify-center"
+          >
+            Send
+          </button>
+        </form>
+      </div>
+
+      <!-- Protocol Inspector (7 cols) -->
+      <div class="lg:col-span-7 glass border border-vault-border rounded-2xl p-5 flex flex-col justify-between shadow-lg min-h-[400px]">
+        <div>
+          <div class="flex items-center justify-between border-b border-vault-border pb-3 mb-4">
+            <h3 class="text-sm font-bold text-vault-text tracking-wide uppercase flex items-center gap-1.5">
+              <span>⚡</span> Cryptographic State Inspector
+            </h3>
+            <span class="text-[10px] font-mono text-vault-text-dim">Epoch: {dhStepCount}</span>
+          </div>
+
+          <!-- Step Progress Visualizer -->
+          <div class="grid grid-cols-4 gap-2 text-center text-[10px] font-bold font-mono mb-5">
+            <div class="p-2 rounded-lg border {activeRatchetStep === 'dh' ? 'bg-vault-accent/15 border-vault-accent text-vault-accent animate-pulse' : 'bg-vault-surface/40 border-vault-border text-vault-text-dim'}">
+              1. DH RATChET
+            </div>
+            <div class="p-2 rounded-lg border {activeRatchetStep === 'kdf' ? 'bg-vault-accent/15 border-vault-accent text-vault-accent animate-pulse' : 'bg-vault-surface/40 border-vault-border text-vault-text-dim'}">
+              2. KDF CHAIN
+            </div>
+            <div class="p-2 rounded-lg border {activeRatchetStep === 'encrypt' ? 'bg-vault-accent/15 border-vault-accent text-vault-accent animate-pulse' : 'bg-vault-surface/40 border-vault-border text-vault-text-dim'}">
+              3. AES-GCM
+            </div>
+            <div class="p-2 rounded-lg border {activeRatchetStep === 'decrypt' ? 'bg-vault-accent/15 border-vault-accent text-vault-accent animate-pulse' : 'bg-vault-surface/40 border-vault-border text-vault-text-dim'}">
+              4. DECRYPTION
+            </div>
+          </div>
+
+          <!-- State variables grid -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-[11px] font-mono">
+            <div class="p-3 bg-vault-surface/80 border border-vault-border rounded-xl flex flex-col gap-1">
+              <span class="text-vault-text-dim text-[10px] font-semibold">ALICE SENDER CHAIN KEY:</span>
+              <span class="text-vault-accent break-all font-semibold">{aliceChainKey}</span>
+            </div>
+            <div class="p-3 bg-vault-surface/80 border border-vault-border rounded-xl flex flex-col gap-1">
+              <span class="text-vault-text-dim text-[10px] font-semibold">BOB RECEIVER CHAIN KEY:</span>
+              <span class="text-vault-accent break-all font-semibold">{bobChainKey}</span>
+            </div>
+            <div class="p-3 bg-vault-surface/80 border border-vault-border rounded-xl flex flex-col gap-1 md:col-span-2">
+              <span class="text-vault-text-dim text-[10px] font-semibold">DERIVED SINGLE-USE MESSAGE KEY:</span>
+              <span class="text-vault-text truncate font-bold text-glow-accent">{derivedMessageKey}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Terminal Logs -->
+        <div class="flex-1 flex flex-col">
+          <span class="text-[10px] text-vault-text-dim font-bold font-mono tracking-wide uppercase mb-1.5 block">Protocol step execution log:</span>
+          <div id="sim-terminal" class="bg-vault-black border border-vault-border rounded-xl p-3 h-28 overflow-y-auto font-mono text-[10px] text-vault-text-secondary leading-relaxed scroll-smooth flex flex-col gap-1">
+            {#each ratchetLogs as log}
+              <div class="flex items-start gap-1">
+                <span class="text-vault-accent">▶</span>
+                <span class="break-all">{log}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Cryptographic Details Grid -->
   <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10">
     <div class="text-center mb-10">
@@ -122,8 +385,8 @@
     
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {#each features as feature}
-        <div class="flex flex-col gap-3 p-5 bg-vault-surface border border-vault-border rounded-2xl hover:border-vault-accent/30 transition-all shadow-sm">
-          <div class="w-10 h-10 rounded-xl bg-vault-accent/10 border border-vault-accent/20 flex items-center justify-center text-vault-accent">
+        <div class="flex flex-col gap-3 p-5 bg-vault-surface/40 border border-vault-border rounded-2xl hover:border-vault-accent/40 transition-all hover:bg-vault-surface/60 hover:-translate-y-0.5 duration-200 shadow-sm glass">
+          <div class="w-10 h-10 rounded-xl bg-vault-accent/10 border border-vault-accent/20 flex items-center justify-center text-vault-accent shadow-inner">
             {@html feature.icon}
           </div>
           <div>
@@ -139,7 +402,7 @@
     <div class="max-w-6xl mx-auto px-6 flex flex-col items-center gap-6">
       
       <!-- Support Us Section -->
-      <div class="flex flex-col items-center gap-2 p-4 bg-vault-elevated border border-vault-border rounded-2xl max-w-md w-full text-center animate-fade-in">
+      <div class="flex flex-col items-center gap-2 p-4 bg-vault-elevated border border-vault-border rounded-2xl max-w-md w-full text-center animate-fade-in glass">
         <div class="flex items-center gap-2 text-xs font-bold text-vault-accent">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -181,3 +444,4 @@
     animation: fadeIn 0.4s ease-out;
   }
 </style>
+
