@@ -519,13 +519,43 @@
       A zero-knowledge communications hub pairing end-to-end double-ratcheted messaging, private WebRTC streams, and local biometric-encrypted DeFi payment rails.
     </p>
     
-    <div class="mt-2 flex flex-col sm:flex-row gap-3">
-      <button 
-        on:click={() => activeView.set('auth')} 
-        class="py-3 px-6 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md btn-glow"
-      >
-        Start secure session
-      </button>
+    <div class="mt-2 flex flex-col items-center gap-4">
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button 
+          on:click={() => activeView.set('auth')} 
+          class="py-3 px-6 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md btn-glow"
+        >
+          Start secure session
+        </button>
+      </div>
+
+      <!-- Prominent Hero Social Links -->
+      <div class="flex flex-wrap justify-center items-center gap-3 mt-1.5 select-none animate-fade-in text-[10px] font-mono font-bold uppercase">
+        <a 
+          href="https://discord.gg/VZyvTsJcFQ" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline"
+        >
+          👾 Discord
+        </a>
+        <a 
+          href="https://t.me/Vault_Space" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline"
+        >
+          ✈️ Telegram
+        </a>
+        <a 
+          href="https://x.com/VaultMessenger" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline"
+        >
+          ✖️ Twitter
+        </a>
+      </div>
     </div>
   </section>
 
