@@ -218,6 +218,31 @@ async function authRoutes(fastify) {
     fastify.log.error({ clientMessage: message, clientError: error, clientContext: context }, 'Client-side error log received');
     return { ok: true };
   });
+
+  // ─── TRANSIENT SYNC RELAY (QR Code Multi-device sync) ──────
+  const syncSessions = new Map();
+
+  fastify.post('/api/auth/sync/initiate', async (request, reply) => {
+    const { syncId, payload } = request.body;
+    syncSessions.set(syncId, { payload, createdAt: Date.now() });
+    
+    // Auto-delete after 2 minutes
+    setTimeout(() => {
+      syncSessions.delete(syncId);
+    }, 120000);
+    
+    return { success: true };
+  });
+
+  fastify.get('/api/auth/sync/retrieve/:syncId', async (request, reply) => {
+    const { syncId } = request.params;
+    const session = syncSessions.get(syncId);
+    if (!session) {
+      return reply.code(404).send({ error: 'Sync session not found or expired' });
+    }
+    syncSessions.delete(syncId);
+    return { payload: session.payload };
+  });
 }
 
 export default authRoutes;

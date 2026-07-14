@@ -106,6 +106,22 @@ async function messageRoutes(fastify) {
     // If not delivered, enqueue for later delivery
     if (!delivered) {
       await fastify.store.enqueuePending(recipientId, msg.id);
+      
+      // Dispatch Web Push notification
+      let groupName = null;
+      if (groupId) {
+        try {
+          const groupObj = await fastify.store.getGroup(groupId);
+          if (groupObj) {
+            groupName = groupObj.name;
+          }
+        } catch {}
+      }
+
+      await fastify.sendPushNotification(recipientId, {
+        title: groupName ? `@${groupName}` : `@${request.user.username}`,
+        body: groupName ? `@${request.user.username}: Sent an encrypted message` : 'Sent an encrypted message'
+      });
     } else {
       await fastify.store.markDelivered(msg.id);
     }

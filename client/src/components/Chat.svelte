@@ -8,10 +8,25 @@
   import { generateOneTimePrekeys, importStaticKey } from '../lib/crypto/keys.js';
   import { decryptSignalingPayload } from '../lib/crypto/decryption.js';
   import { fromBase64 } from '../lib/crypto/utils.js';
+  import { playOutgoingCallSound, playIncomingCallSound, stopCallSounds } from '../lib/callSounds.js';
   import ChatSidebar from './ChatSidebar.svelte';
   import ChatView from './ChatView.svelte';
 
   let unsubscribers = [];
+
+  $: if ($activeCall) {
+    if ($activeCall.status === 'ringing') {
+      if ($activeCall.direction === 'outgoing') {
+        playOutgoingCallSound();
+      } else if ($activeCall.direction === 'incoming') {
+        playIncomingCallSound();
+      }
+    } else {
+      stopCallSounds();
+    }
+  } else {
+    stopCallSounds();
+  }
 
   onMount(async () => {
     // 1. Fetch conversations & groups from server
@@ -55,6 +70,7 @@
   onDestroy(() => {
     for (const unsub of unsubscribers) unsub();
     disconnectWebSocket();
+    stopCallSounds();
   });
 
   function handleSent(data) {

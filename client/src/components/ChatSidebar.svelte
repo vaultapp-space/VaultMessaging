@@ -9,6 +9,8 @@
   import { isPrfSupported, registerBiometric, authenticateBiometric } from '../lib/crypto/webauthn.js';
 
   import { syncCloudVault } from '../lib/crypto/sync.js';
+  import { encryptSyncPayload } from '../lib/crypto/keys.js';
+  import { toBase64 } from '../lib/crypto/utils.js';
   import WalletSettings from './WalletSettings.svelte';
 
   let showBackupModal = false;
@@ -17,6 +19,56 @@
   let isSyncing = false;
   let syncError = '';
   let lastSyncedTime = new Date().toLocaleTimeString();
+
+  let showSyncModal = false;
+  let syncQrUrl = '';
+  let syncLink = '';
+
+  async function initiateQrSync() {
+    try {
+      const syncId = crypto.randomUUID();
+      const aesKeyBytes = crypto.getRandomValues(new Uint8Array(32));
+      const keyBase64 = toBase64(aesKeyBytes);
+      
+      const syncPayload = {
+        identityKeyPair: {
+          ecdh: {
+            publicKey: await crypto.subtle.exportKey('jwk', $identityKeyPair.ecdh.publicKey),
+            privateKey: await crypto.subtle.exportKey('jwk', $identityKeyPair.ecdh.privateKey)
+          },
+          ecdsa: {
+            publicKey: await crypto.subtle.exportKey('jwk', $identityKeyPair.ecdsa.publicKey),
+            privateKey: await crypto.subtle.exportKey('jwk', $identityKeyPair.ecdsa.privateKey)
+          }
+        },
+        signedPrekeyPair: {
+          publicKey: await crypto.subtle.exportKey('jwk', $signedPrekeyPair.publicKey),
+          privateKey: await crypto.subtle.exportKey('jwk', $signedPrekeyPair.privateKey)
+        },
+        loginPassword: $loginPassword,
+        currentUser: $currentUser
+      };
+
+      const encryptedPayload = await encryptSyncPayload(syncPayload, aesKeyBytes);
+      
+      const res = await fetch('/api/auth/sync/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ syncId, payload: encryptedPayload })
+      });
+      
+      if (res.ok) {
+        syncLink = `${window.location.origin}/?syncId=${syncId}&key=${encodeURIComponent(keyBase64)}`;
+        syncQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(syncLink)}`;
+        showSyncModal = true;
+      } else {
+        alert('Failed to initiate sync session on server');
+      }
+    } catch (err) {
+      console.error('QR Sync initiation failed:', err);
+      alert('Failed to construct sync payload');
+    }
+  }
 
   async function triggerManualSync() {
     isSyncing = true;
@@ -811,6 +863,17 @@
             </button>
           </div>
         </div>
+
+        <div class="border-t border-vault-border pt-4 space-y-3">
+          <span class="text-xs font-semibold text-vault-text block">QR Sync (Multi-Device)</span>
+          <span class="text-[10px] text-vault-text-dim block">Instant login on another device by scanning a secure transient QR sync link.</span>
+          <button
+            on:click={initiateQrSync}
+            class="py-1.5 px-3 text-[10px] bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none"
+          >
+            Generate Sync QR
+          </button>
+        </div>
       </div>
 
       <div class="px-5 py-3.5 bg-vault-elevated border-t border-vault-border flex justify-end">
@@ -819,6 +882,63 @@
           class="btn-primary py-1.5 px-4 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl"
         >
           Done
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showSyncModal}
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
+    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-center">
+      <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
+        <h3 class="text-sm font-semibold text-vault-text">Device QR Sync</h3>
+        <button on:click={() => showSyncModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close sync modal">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="p-6 flex flex-col items-center gap-4">
+        <p class="text-xs text-vault-text-dim leading-relaxed">
+          Scan this QR code with another device or open the link to instantly sync your keys and session.
+        </p>
+        
+        {#if syncQrUrl}
+          <div class="p-3 bg-white rounded-2xl border border-vault-border shadow-inner">
+            <img src={syncQrUrl} alt="Sync QR Code" class="w-[200px] h-[200px]" />
+          </div>
+        {/if}
+
+        <div class="w-full mt-2 space-y-1 text-left">
+          <span class="text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold">Direct Sync Link</span>
+          <div class="flex items-center gap-2 p-2.5 bg-vault-elevated border border-vault-border rounded-xl">
+            <input
+              type="text"
+              readonly
+              value={syncLink}
+              class="w-full bg-transparent border-none text-[10px] font-mono text-vault-text-dim focus:outline-none select-all"
+            />
+            <button
+              on:click={() => {
+                navigator.clipboard.writeText(syncLink);
+                alert('Sync link copied to clipboard!');
+              }}
+              class="text-[10px] text-vault-accent hover:underline font-semibold focus:outline-none bg-transparent border-none cursor-pointer"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-5 py-3.5 bg-vault-elevated border-t border-vault-border flex justify-end">
+        <button
+          on:click={() => showSyncModal = false}
+          class="btn-primary py-1.5 px-4 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl"
+        >
+          Close
         </button>
       </div>
     </div>

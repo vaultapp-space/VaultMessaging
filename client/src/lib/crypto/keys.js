@@ -716,3 +716,17 @@ export async function importStaticKey(rawBytes) {
   );
 }
 
+export async function encryptSyncPayload(payloadObj, aesKeyRawBytes) {
+  const aesKey = await importStaticKey(aesKeyRawBytes);
+  const plaintext = JSON.stringify(payloadObj);
+  const { iv, ciphertext } = await encrypt(aesKey, plaintext);
+  return JSON.stringify({ iv, ciphertext });
+}
+
+export async function decryptSyncPayload(encryptedJsonStr, aesKeyRawBytes) {
+  const aesKey = await importStaticKey(aesKeyRawBytes);
+  const { iv, ciphertext } = JSON.parse(encryptedJsonStr);
+  const plaintext = await decrypt(aesKey, iv, ciphertext);
+  return JSON.parse(plaintext);
+}
+

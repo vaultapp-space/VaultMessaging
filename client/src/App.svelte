@@ -1,7 +1,9 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import { currentUser, isLoading, setUser, activeView } from './lib/stores/session.js';
+  import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, loginPassword } from './lib/stores/session.js';
   import { getMe } from './lib/api/http.js';
+  import { decryptSyncPayload } from './lib/crypto/keys.js';
+  import { fromBase64 } from './lib/crypto/utils.js';
   import Auth from './components/Auth.svelte';
   import Chat from './components/Chat.svelte';
   import Landing from './components/Landing.svelte';
@@ -70,6 +72,50 @@
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
+
+    // Check for QR Sync params in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const syncId = urlParams.get('syncId');
+    const keyParam = urlParams.get('key');
+    if (syncId && keyParam) {
+      isLoading.set(true);
+      try {
+        const res = await fetch(`/api/auth/sync/retrieve/${syncId}`);
+        if (res.ok) {
+          const { payload } = await res.json();
+          const keyRaw = fromBase64(decodeURIComponent(keyParam));
+          
+          const decrypted = await decryptSyncPayload(payload, keyRaw);
+          
+          // Import JWKs to CryptoKeys
+          const ikpEcdhPrivate = await crypto.subtle.importKey('jwk', decrypted.identityKeyPair.ecdh.privateKey, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits', 'deriveKey']);
+          const ikpEcdhPublic = await crypto.subtle.importKey('jwk', decrypted.identityKeyPair.ecdh.publicKey, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
+          const ikpEcdsaPrivate = await crypto.subtle.importKey('jwk', decrypted.identityKeyPair.ecdsa.privateKey, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+          const ikpEcdsaPublic = await crypto.subtle.importKey('jwk', decrypted.identityKeyPair.ecdsa.publicKey, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
+          
+          const spkPrivate = await crypto.subtle.importKey('jwk', decrypted.signedPrekeyPair.privateKey, { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits', 'deriveKey']);
+          const spkPublic = await crypto.subtle.importKey('jwk', decrypted.signedPrekeyPair.publicKey, { name: 'ECDH', namedCurve: 'P-256' }, true, []);
+
+          identityKeyPair.set({
+            ecdh: { privateKey: ikpEcdhPrivate, publicKey: ikpEcdhPublic },
+            ecdsa: { privateKey: ikpEcdsaPrivate, publicKey: ikpEcdsaPublic }
+          });
+          signedPrekeyPair.set({ privateKey: spkPrivate, publicKey: spkPublic });
+          loginPassword.set(decrypted.loginPassword);
+
+          // Clear query params from URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          setUser(decrypted.currentUser);
+          isLoading.set(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to execute QR session sync:', err);
+      }
+      isLoading.set(false);
+    }
+
     // Try to restore session from HTTP-only cookie (server validates)
     try {
       const user = await getMe();
