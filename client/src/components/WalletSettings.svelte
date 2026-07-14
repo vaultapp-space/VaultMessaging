@@ -165,6 +165,10 @@
       DEGEN: '0x4ed4E862860beD51a9570b96d89Af5E1B0Efefed',
       AERO: '0x940181a94A35A4569E4529A3CDfB74e38FD98631'
     },
+    bsc: {
+      USDC: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d',
+      CAKE: '0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82'
+    },
     arbitrum: {
       USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
       ARB: '0x912CE59144191C1204E64559FE8253a0e49E6548'
@@ -1021,6 +1025,8 @@
         (parseFloat(opUsdc) || 0) * 1.0 +
         (parseFloat(matic) || 0) * 0.42 +
         (parseFloat(polygonUsdc) || 0) * 1.0 +
+        (parseFloat(bscMainnet) || 0) * 580.0 +
+        (parseFloat(bscUsdc) || 0) * 1.0 +
         (parseFloat(sol) || 0) * 145.20 +
         (parseFloat(solUsdc) || 0) * 1.0 +
         (parseFloat(btc) || 0) * 64250
