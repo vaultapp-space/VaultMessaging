@@ -39,6 +39,7 @@
 
   // Unified Simulator Tab Switcher
   let simTab = 'chat'; // 'chat' | 'wallet'
+  let chatInspectorView = 'ratchet'; // 'ratchet' | 'x3dh'
 
   // Double Ratchet Simulator state
   let simMessages = [
@@ -516,9 +517,26 @@
   <section class="w-full max-w-5xl mx-auto px-6 py-10 z-10 border-t border-vault-border/20">
     <!-- Header of Sandbox -->
     <div class="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
-      <div class="text-left">
-        <h2 class="text-lg font-bold tracking-tight text-vault-text">Protocol Sandbox</h2>
-        <p class="text-[10px] text-vault-text-dim mt-0.5">Toggle between Alice's messaging tunnel and her local multi-chain wallet.</p>
+      <div class="text-left flex items-center gap-4">
+        <div>
+          <h2 class="text-lg font-bold tracking-tight text-vault-text">Protocol Sandbox</h2>
+          <p class="text-[10px] text-vault-text-dim mt-0.5">Toggle between Alice's messaging tunnel and her local multi-chain wallet.</p>
+        </div>
+        <!-- Radar Map Status -->
+        <div class="hidden md:flex items-center gap-2 px-2.5 py-1 bg-vault-surface/40 border border-vault-border/20 rounded-xl font-mono text-[8px] text-vault-text-dim select-none animate-fade-in">
+          <svg class="w-3.5 h-3.5 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10" stroke-dasharray="2 2" class="opacity-30" />
+            <circle cx="12" cy="12" r="6" stroke-dasharray="2 2" class="opacity-50" />
+            <line x1="12" y1="2" x2="12" y2="22" class="opacity-20" />
+            <line x1="2" y1="12" x2="22" y2="12" class="opacity-20" />
+            <!-- Radar Sweep Hand -->
+            <line x1="12" y1="12" x2="19" y2="7" class="animate-radar-sweep origin-center" style="transform-origin: 12px 12px;" />
+            <!-- Blinking Nodes -->
+            <circle cx="7" cy="9" r="1" fill="var(--color-vault-accent)" class="animate-pulse" />
+            <circle cx="16" cy="15" r="1" fill="var(--color-vault-accent)" class="animate-pulse" style="animation-delay: 0.5s;" />
+          </svg>
+          <span>P2P Relays: 4 Active</span>
+        </div>
       </div>
 
       <!-- Tab Switcher group -->
@@ -837,137 +855,263 @@
           </div>
 
           {#if simTab === 'chat'}
-            <!-- 💬 CHAT PROTOCOL STATE METRICS & SVG -->
-            <!-- Step Progress Visualizer -->
-            <div class="grid grid-cols-4 gap-2 text-center text-[9px] font-bold font-mono mb-4 select-none">
-              <div class="p-1.5 rounded-lg border {activeRatchetStep === 'dh' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
-                1. DH STEP
-              </div>
-              <div class="p-1.5 rounded-lg border {activeRatchetStep === 'kdf' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
-                2. KDF MERKLE
-              </div>
-              <div class="p-1.5 rounded-lg border {activeRatchetStep === 'encrypt' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
-                3. AES-GCM
-              </div>
-              <div class="p-1.5 rounded-lg border {activeRatchetStep === 'decrypt' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
-                4. RECIPIENT
-              </div>
+            <!-- Inspector View Selector -->
+            <div class="flex p-0.5 bg-vault-surface/40 border border-vault-border/30 rounded-xl glass w-fit mb-4 select-none text-[8px] font-bold font-mono">
+              <button 
+                on:click={() => chatInspectorView = 'ratchet'}
+                class="px-2.5 py-1 rounded-lg transition-all focus:outline-none cursor-pointer {chatInspectorView === 'ratchet' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text'}"
+              >
+                🔑 Double Ratchet
+              </button>
+              <button 
+                on:click={() => chatInspectorView = 'x3dh'}
+                class="px-2.5 py-1 rounded-lg transition-all focus:outline-none cursor-pointer {chatInspectorView === 'x3dh' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text'}"
+              >
+                🤝 X3DH Handshake
+              </button>
             </div>
 
-            <!-- SVG Double Ratchet Schematic Diagram -->
-            <div class="mb-4 p-2 bg-vault-surface/20 border border-vault-border/10 rounded-xl flex justify-center items-center relative overflow-hidden select-none">
-              <svg class="w-full max-w-[420px] h-[100px]" viewBox="0 0 450 120">
-                <defs>
-                  <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                    <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-border)" />
-                  </marker>
-                  <marker id="arrow-active" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                    <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-accent)" />
-                  </marker>
-                </defs>
-
-                <!-- Node 1: DH Secret -->
-                <g transform="translate(60, 60)">
-                  <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'dh' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
-                  <text x="0" y="3" class="text-[9px] font-mono font-bold {activeRatchetStep === 'dh' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">DH Sec</text>
-                </g>
-
-                <!-- Connection DH -> KDF -->
-                <line x1="82" y1="60" x2="155" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke={activeRatchetStep === 'dh' || activeRatchetStep === 'kdf' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
-
-                <!-- Node 2: KDF Node -->
-                <g transform="translate(190, 60)">
-                  <circle cx="0" cy="0" r="24" class="transition-all duration-300 {activeRatchetStep === 'kdf' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
-                  <text x="0" y="3" class="text-[10px] font-mono font-bold {activeRatchetStep === 'kdf' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">KDF</text>
-                </g>
-
-                <!-- Connection KDF -> Chain Key (UP) -->
-                <line x1="190" y1="36" x2="190" y2="20" class="transition-all duration-300 stroke-[1.25px]" stroke={activeRatchetStep === 'kdf' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
-                <g transform="translate(190, 16)">
-                  <circle cx="0" cy="0" r="5" class="transition-all duration-300 {activeRatchetStep === 'kdf' ? 'fill-vault-accent' : 'fill-vault-text-dim'}" />
-                  <text x="10" y="3" class="text-[8px] font-mono {activeRatchetStep === 'kdf' ? 'fill-vault-accent font-bold' : 'fill-vault-text-dim'}">Chain Key</text>
-                </g>
-
-                <!-- Connection KDF -> Message Key -->
-                <line x1="214" y1="60" x2="280" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
-
-                <!-- Node 4: Message Key -->
-                <g transform="translate(315, 60)">
-                  <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'encrypt' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
-                  <text x="0" y="3" class="text-[9px] font-mono font-bold {activeRatchetStep === 'encrypt' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">Msg Key</text>
-                </g>
-
-                <!-- Connection Message Key -> Cipher -->
-                <line x1="337" y1="60" x2="375" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke-dasharray="3 3" stroke={activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
-                <g transform="translate(395, 60)">
-                  <text x="0" y="4" class="text-sm select-none transition-transform duration-300 {activeRatchetStep === 'decrypt' ? 'scale-110' : ''}" text-anchor="middle">
-                    {#if activeRatchetStep === 'decrypt'}
-                      🔓
-                    {:else if activeRatchetStep === 'encrypt'}
-                      🔒
-                    {:else}
-                      ✉️
-                    {/if}
-                  </text>
-                </g>
-              </svg>
-            </div>
-
-            <!-- State variables grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-[10px] font-mono select-all">
-              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/key">
-                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
-                  SENDER CHAIN KEY
-                  <button 
-                    on:click={() => { navigator.clipboard.writeText(aliceChainKey); alert('Sender Chain Key copied to clipboard!'); }}
-                    class="text-[7px] text-vault-text-dim group-hover/key:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
-                  >
-                    Copy
-                  </button>
-                </span>
-                <span class="text-vault-text-secondary truncate pr-6">{aliceChainKey}</span>
+            {#if chatInspectorView === 'ratchet'}
+              <!-- 💬 CHAT PROTOCOL STATE METRICS & SVG -->
+              <!-- Step Progress Visualizer -->
+              <div class="grid grid-cols-4 gap-2 text-center text-[9px] font-bold font-mono mb-4 select-none">
+                <div class="p-1.5 rounded-lg border {activeRatchetStep === 'dh' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
+                  1. DH STEP
+                </div>
+                <div class="p-1.5 rounded-lg border {activeRatchetStep === 'kdf' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
+                  2. KDF MERKLE
+                </div>
+                <div class="p-1.5 rounded-lg border {activeRatchetStep === 'encrypt' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
+                  3. AES-GCM
+                </div>
+                <div class="p-1.5 rounded-lg border {activeRatchetStep === 'decrypt' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
+                  4. RECIPIENT
+                </div>
               </div>
-              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/key2">
-                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
-                  RECEIVER CHAIN KEY
-                  <button 
-                    on:click={() => { navigator.clipboard.writeText(bobChainKey); alert('Receiver Chain Key copied to clipboard!'); }}
-                    class="text-[7px] text-vault-text-dim group-hover/key2:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
-                  >
-                    Copy
-                  </button>
-                </span>
-                <span class="text-vault-text-secondary truncate pr-6">{bobChainKey}</span>
+
+              <!-- SVG Double Ratchet Schematic Diagram -->
+              <div class="mb-4 p-2 bg-vault-surface/20 border border-vault-border/10 rounded-xl flex justify-center items-center relative overflow-hidden select-none">
+                <svg class="w-full max-w-[420px] h-[100px]" viewBox="0 0 450 120">
+                  <defs>
+                    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-border)" />
+                    </marker>
+                    <marker id="arrow-active" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-accent)" />
+                    </marker>
+                  </defs>
+
+                  <!-- Node 1: DH Secret -->
+                  <g transform="translate(60, 60)">
+                    <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'dh' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
+                    <text x="0" y="3" class="text-[9px] font-mono font-bold {activeRatchetStep === 'dh' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">DH Sec</text>
+                  </g>
+
+                  <!-- Connection DH -> KDF -->
+                  <line x1="82" y1="60" x2="155" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke={activeRatchetStep === 'dh' || activeRatchetStep === 'kdf' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
+
+                  <!-- Node 2: KDF Node -->
+                  <g transform="translate(190, 60)">
+                    <circle cx="0" cy="0" r="24" class="transition-all duration-300 {activeRatchetStep === 'kdf' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
+                    <text x="0" y="3" class="text-[10px] font-mono font-bold {activeRatchetStep === 'kdf' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">KDF</text>
+                  </g>
+
+                  <!-- Connection KDF -> Chain Key (UP) -->
+                  <line x1="190" y1="36" x2="190" y2="20" class="transition-all duration-300 stroke-[1.25px]" stroke={activeRatchetStep === 'kdf' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
+                  <g transform="translate(190, 16)">
+                    <circle cx="0" cy="0" r="5" class="transition-all duration-300 {activeRatchetStep === 'kdf' ? 'fill-vault-accent' : 'fill-vault-text-dim'}" />
+                    <text x="10" y="3" class="text-[8px] font-mono {activeRatchetStep === 'kdf' ? 'fill-vault-accent font-bold' : 'fill-vault-text-dim'}">Chain Key</text>
+                  </g>
+
+                  <!-- Connection KDF -> Message Key -->
+                  <line x1="214" y1="60" x2="280" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
+
+                  <!-- Node 4: Message Key -->
+                  <g transform="translate(315, 60)">
+                    <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'encrypt' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
+                    <text x="0" y="3" class="text-[9px] font-mono font-bold {activeRatchetStep === 'encrypt' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">Msg Key</text>
+                  </g>
+
+                  <!-- Connection Message Key -> Cipher -->
+                  <line x1="337" y1="60" x2="375" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke-dasharray="3 3" stroke={activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
+                  <g transform="translate(395, 60)">
+                    <text x="0" y="4" class="text-sm select-none transition-transform duration-300 {activeRatchetStep === 'decrypt' ? 'scale-110' : ''}" text-anchor="middle">
+                      {#if activeRatchetStep === 'decrypt'}
+                        🔓
+                      {:else if activeRatchetStep === 'encrypt'}
+                        🔒
+                      {:else}
+                        ✉️
+                      {/if}
+                    </text>
+                  </g>
+                </svg>
               </div>
-              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 md:col-span-2 relative group/key3">
-                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
-                  EPHEMERAL MESSAGE DECRYPTION KEY
-                  <button 
-                    on:click={() => { navigator.clipboard.writeText(derivedMessageKey); alert('Decryption Message Key copied to clipboard!'); }}
-                    class="text-[7px] text-vault-text-dim group-hover/key3:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
-                  >
-                    Copy
-                  </button>
-                </span>
-                <span class="text-vault-text font-bold truncate pr-6 transition-colors duration-300 {activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'text-vault-accent text-glow-accent' : ''}">{derivedMessageKey}</span>
+
+              <!-- State variables grid -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-[10px] font-mono select-all">
+                <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/key">
+                  <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                    SENDER CHAIN KEY
+                    <button 
+                      on:click={() => { navigator.clipboard.writeText(aliceChainKey); alert('Sender Chain Key copied to clipboard!'); }}
+                      class="text-[7px] text-vault-text-dim group-hover/key:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                    >
+                      Copy
+                    </button>
+                  </span>
+                  <span class="text-vault-text-secondary truncate pr-6">{aliceChainKey}</span>
+                </div>
+                <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/key2">
+                  <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                    RECEIVER CHAIN KEY
+                    <button 
+                      on:click={() => { navigator.clipboard.writeText(bobChainKey); alert('Receiver Chain Key copied to clipboard!'); }}
+                      class="text-[7px] text-vault-text-dim group-hover/key2:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                    >
+                      Copy
+                    </button>
+                  </span>
+                  <span class="text-vault-text-secondary truncate pr-6">{bobChainKey}</span>
+                </div>
+                <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 md:col-span-2 relative group/key3">
+                  <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                    EPHEMERAL MESSAGE DECRYPTION KEY
+                    <button 
+                      on:click={() => { navigator.clipboard.writeText(derivedMessageKey); alert('Decryption Message Key copied to clipboard!'); }}
+                      class="text-[7px] text-vault-text-dim group-hover/key3:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                    >
+                      Copy
+                    </button>
+                  </span>
+                  <span class="text-vault-text font-bold truncate pr-6 transition-colors duration-300 {activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'text-vault-accent text-glow-accent' : ''}">{derivedMessageKey}</span>
+                </div>
               </div>
-            </div>
+            {:else}
+              <!-- 🤝 X3DH HANDSHAKE PROTOCOL STACK -->
+              <div class="mb-4 p-3 bg-vault-surface/20 border border-vault-border/10 rounded-xl flex flex-col gap-3 font-mono text-[9px] text-vault-text-secondary select-none animate-fade-in">
+                <div class="text-[10px] font-bold text-vault-text border-b border-vault-border/10 pb-1.5 flex items-center justify-between">
+                  <span>X3DH Handshake Protocol Setup</span>
+                  <span class="text-[8px] px-1 bg-vault-accent/10 text-vault-accent rounded font-normal">Offline Negotiated</span>
+                </div>
+                
+                <div class="relative flex flex-col gap-4 pl-4 border-l-2 border-vault-border/30 py-1">
+                  <!-- Step 1 -->
+                  <div class="relative">
+                    <div class="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-vault-accent"></div>
+                    <div class="font-bold text-vault-text">1. Prekey Publishing (Bob)</div>
+                    <div class="text-vault-text-dim text-[8.5px] mt-0.5 leading-relaxed">
+                      Bob uploads Identity Key (IK_B), Signed Prekey (SPK_B) signed with his key, and One-Time Prekey Bundle (OPK_B) to the network.
+                    </div>
+                  </div>
+                  
+                  <!-- Step 2 -->
+                  <div class="relative">
+                    <div class="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-vault-accent"></div>
+                    <div class="font-bold text-vault-text">2. Prekey Fetching (Alice)</div>
+                    <div class="text-vault-text-dim text-[8.5px] mt-0.5 leading-relaxed">
+                      Alice fetches Bob's prekey bundle from the gateway. Alice generates an ephemeral keypair (EK_A).
+                    </div>
+                  </div>
+                  
+                  <!-- Step 3 -->
+                  <div class="relative">
+                    <div class="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-vault-accent"></div>
+                    <div class="font-bold text-vault-text">3. DH Computations & Root Key Derivation</div>
+                    <div class="text-vault-text-dim text-[8.5px] mt-0.5 leading-relaxed">
+                      Alice computes four Diffie-Hellman handshakes:<br/>
+                      <span class="text-vault-accent">DH1 = (IK_A, SPK_B)</span> | 
+                      <span class="text-vault-accent">DH2 = (EK_A, IK_B)</span> | 
+                      <span class="text-vault-accent">DH3 = (EK_A, SPK_B)</span> | 
+                      <span class="text-vault-accent">DH4 = (EK_A, OPK_B)</span><br/>
+                      Concatenates secrets into a Master Salt: KDF(DH1 || DH2 || DH3 || DH4) ➔ Root Session Key.
+                    </div>
+                  </div>
+                  
+                  <!-- Step 4 -->
+                  <div class="relative">
+                    <div class="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-vault-accent"></div>
+                    <div class="font-bold text-vault-text">4. Offline Handshake Envelope</div>
+                    <div class="text-vault-text-dim text-[8.5px] mt-0.5 leading-relaxed">
+                      Alice encrypts her first message with the Root Key. She uploads her Identity Key (IK_A), Ephemeral Key (EK_A), and cipher text to Bob's mailbox.
+                    </div>
+                  </div>
+                  
+                  <!-- Step 5 -->
+                  <div class="relative">
+                    <div class="absolute -left-[21px] top-1.5 w-2 h-2 rounded-full bg-vault-accent"></div>
+                    <div class="font-bold text-vault-text">5. Decryption & Setup (Bob)</div>
+                    <div class="text-vault-text-dim text-[8.5px] mt-0.5 leading-relaxed">
+                      Bob returns online, reads Alice's envelope, performs matching DH calculations using his private keys, derives the same Root Key, and decrypts the channel.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {/if}
 
           {:else}
-            <!-- 💳 WALLET PROTOCOL METRICS -->
-            <div class="text-[11px] text-vault-text-secondary leading-relaxed mb-4 flex flex-col gap-2.5">
-              <p>
-                In non-custodial systems, the client generates cryptographic proofs to update blockchain states locally. When **Shielded UTXO proofs** are toggled, Vault computes a zero-knowledge proof client-side to verify transactions without exposing ledger values.
+            <!-- 💳 WALLET PROTOCOL METRICS & zk-SNARK PROVER STACK -->
+            <div class="text-[11px] text-vault-text-secondary leading-relaxed mb-4 flex flex-col gap-3">
+              <p class="leading-relaxed text-[10px]">
+                Vault computes zero-knowledge proofs client-side when **Shielded UTXO** transfers are enabled. This verifies ledger state transitions without exposing public keys or token amounts.
               </p>
-              
-              <div class="grid grid-cols-2 gap-2 text-[9px] font-mono select-none">
-                <div class="p-2 border border-vault-border/20 rounded-lg bg-vault-surface/20">
-                  <span class="text-vault-text-dim block uppercase font-bold text-[8px] mb-0.5">Aggregator Protocol</span>
-                  <span>Uniswap v3 / Jupiter API</span>
+
+              <!-- zk-SNARK Prover Execution Stack -->
+              <div class="p-3 bg-vault-surface/20 border border-vault-border/10 rounded-xl flex flex-col gap-2.5 font-mono select-none">
+                <div class="text-[9px] font-bold text-vault-text border-b border-vault-border/10 pb-1.5 flex items-center justify-between">
+                  <span>zk-SNARK Prover Stack (groth16)</span>
+                  <span class="text-[8px] px-1.5 py-0.5 rounded font-normal {isShieldedRails ? 'bg-vault-accent/15 text-vault-accent' : 'bg-vault-surface border border-vault-border text-vault-text-dim'}">
+                    {isShieldedRails ? '🛡️ Shielded ZK Mode' : 'Transparent Broadcast Mode'}
+                  </span>
                 </div>
-                <div class="p-2 border border-vault-border/20 rounded-lg bg-vault-surface/20">
-                  <span class="text-vault-text-dim block uppercase font-bold text-[8px] mb-0.5">zk Prover Stack</span>
-                  <span>WASM Prover (Groth16)</span>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[8.5px] font-bold">
+                  <!-- Step 1: Inputs -->
+                  <div class="p-2 rounded-lg border flex flex-col gap-1 transition-all duration-300
+                    {walletStatus === 'signing' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 
+                     walletStatus !== 'idle' ? 'bg-vault-accent/5 border-vault-accent/20 text-vault-accent/70' : 
+                     'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}"
+                  >
+                    <div>1. SECRETS</div>
+                    <div class="text-[7.5px] font-normal leading-tight opacity-75">
+                      {walletStatus === 'signing' ? '🔍 Scanning UTXOs...' : 'UTXO Witnesses'}
+                    </div>
+                  </div>
+
+                  <!-- Step 2: Constraints -->
+                  <div class="p-2 rounded-lg border flex flex-col gap-1 transition-all duration-300
+                    {walletStatus === 'proving' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 
+                     (walletStatus === 'broadcasting' || walletStatus === 'success') ? 'bg-vault-accent/5 border-vault-accent/20 text-vault-accent/70' : 
+                     'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}"
+                  >
+                    <div>2. CIRCUIT</div>
+                    <div class="text-[7.5px] font-normal leading-tight opacity-75">
+                      {walletStatus === 'proving' ? '⚙️ Proving constraints...' : 'R1CS Constraints'}
+                    </div>
+                  </div>
+
+                  <!-- Step 3: Proof Generation -->
+                  <div class="p-2 rounded-lg border flex flex-col gap-1 transition-all duration-300
+                    {walletStatus === 'broadcasting' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 
+                     walletStatus === 'success' ? 'bg-vault-accent/5 border-vault-accent/20 text-vault-accent/70' : 
+                     'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}"
+                  >
+                    <div>3. PROOF</div>
+                    <div class="text-[7.5px] font-normal leading-tight opacity-75">
+                      {walletStatus === 'broadcasting' ? '⚡ Broadcast proof...' : 'pi_A, pi_B, pi_C'}
+                    </div>
+                  </div>
+
+                  <!-- Step 4: Verification -->
+                  <div class="p-2 rounded-lg border flex flex-col gap-1 transition-all duration-300
+                    {walletStatus === 'success' ? 'bg-vault-accent/15 border-vault-accent text-vault-accent' : 
+                     'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}"
+                  >
+                    <div>4. VERIFY</div>
+                    <div class="text-[7.5px] font-normal leading-tight opacity-75">
+                      {walletStatus === 'success' ? '✅ zk-Proof VALID' : 'Verifier Contract'}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1153,5 +1297,14 @@
   .btn-glow-accent:hover:not(:disabled) {
     box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
     transform: translateY(-0.5px);
+  }
+
+  /* Radar sweep rotating line */
+  :global(.animate-radar-sweep) {
+    animation: radarRotate 4s linear infinite;
+  }
+  @keyframes radarRotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 </style>
