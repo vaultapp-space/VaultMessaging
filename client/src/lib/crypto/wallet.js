@@ -10,7 +10,7 @@ import { toBase64, fromBase64 } from './utils.js';
 
 // Blockchain clients
 import { createPublicClient, createWalletClient, http, parseUnits, formatUnits } from 'viem';
-import { mainnet, base, arbitrum, optimism, polygon } from 'viem/chains';
+import { mainnet, base, arbitrum, optimism, polygon, bsc } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConfirmTransaction } from '@solana/web3.js';
 import { 
@@ -432,6 +432,7 @@ export const ERC20_TOKENS = {
   arbitrum: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
   optimism: '0x0b2C639c533813F4Aa9d7837CAf62653d097Ff85',
   polygon: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+  bsc: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d',
   USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913' // Base USDC fallback
 };
 
@@ -474,7 +475,8 @@ const CHAIN_MAP = {
   'base': base,
   'arbitrum': arbitrum,
   'optimism': optimism,
-  'polygon': polygon
+  'polygon': polygon,
+  'bsc': bsc
 };
 
 /**

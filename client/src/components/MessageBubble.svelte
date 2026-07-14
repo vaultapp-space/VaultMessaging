@@ -33,6 +33,7 @@
     if (chain === 'bitcoin') return `https://mempool.space/tx/${hash}`;
     if (chain === 'solana' || chain === 'solana-devnet' || chain === 'solana-mainnet') return `https://solscan.io/tx/${hash}`;
     if (chain === 'base' || chain === 'base-sepolia') return `https://basescan.org/tx/${hash}`;
+    if (chain === 'bsc') return `https://bscscan.com/tx/${hash}`;
     if (chain === 'arbitrum') return `https://arbiscan.io/tx/${hash}`;
     if (chain === 'optimism') return `https://optimistic.etherscan.io/tx/${hash}`;
     if (chain === 'polygon') return `https://polygonscan.com/tx/${hash}`;
@@ -45,6 +46,7 @@
     if (chain === 'bitcoin') return 'Bitcoin';
     if (chain.includes('solana')) return 'Solana';
     if (chain === 'base' || chain === 'base-sepolia') return 'Base L2';
+    if (chain === 'bsc') return 'BSC';
     if (chain === 'arbitrum') return 'Arbitrum L2';
     if (chain === 'optimism') return 'Optimism L2';
     if (chain === 'polygon') return 'Polygon';

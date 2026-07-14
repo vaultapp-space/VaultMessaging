@@ -55,6 +55,9 @@
   let baseUsdcBalance = '0.00';   // Base Mainnet USDC
   let baseDegenBalance = '0.00';  // Base Mainnet DEGEN
   let baseAeroBalance = '0.00';   // Base Mainnet AERO
+  let bscMainnetBalance = '0.00'; // BSC Mainnet BNB
+  let bscUsdcBalance = '0.00';    // BSC Mainnet USDC
+  let bscCakeBalance = '0.00';    // BSC Mainnet CAKE
   let arbMainnetBalance = '0.00';  // Arbitrum ETH
   let arbUsdcBalance = '0.00';    // Arbitrum USDC
   let arbArbBalance = '0.00';     // Arbitrum ARB
@@ -76,6 +79,7 @@
   const AVAILABLE_CHAINS = [
     { id: 'ethereum', name: 'Ethereum Mainnet', type: 'evm', icon: 'Ξ' },
     { id: 'base', name: 'Base Mainnet', type: 'evm', icon: 'Ξ' },
+    { id: 'bsc', name: 'BNB Smart Chain', type: 'evm', icon: '⬡' },
     { id: 'arbitrum', name: 'Arbitrum One', type: 'evm', icon: 'Ξ' },
     { id: 'optimism', name: 'Optimism Mainnet', type: 'evm', icon: 'Ξ' },
     { id: 'polygon', name: 'Polygon Mainnet', type: 'evm', icon: '⬡' },
@@ -124,6 +128,9 @@
     { name: 'USD Coin (Base L2)', symbol: 'USDC', balance: baseUsdcBalance, network: 'Base Mainnet', chainId: 'base', color: 'text-blue-400' },
     { name: 'Degen', symbol: 'DEGEN', balance: baseDegenBalance, network: 'Base Mainnet', chainId: 'base', color: 'text-purple-500' },
     { name: 'Aerodrome', symbol: 'AERO', balance: baseAeroBalance, network: 'Base Mainnet', chainId: 'base', color: 'text-blue-400' },
+    { name: 'BNB (BSC)', symbol: 'BNB', balance: bscMainnetBalance, network: 'BNB Smart Chain', chainId: 'bsc', color: 'text-amber-400' },
+    { name: 'USD Coin (BSC)', symbol: 'USDC', balance: bscUsdcBalance, network: 'BNB Smart Chain', chainId: 'bsc', color: 'text-blue-400' },
+    { name: 'PancakeSwap', symbol: 'CAKE', balance: bscCakeBalance, network: 'BNB Smart Chain', chainId: 'bsc', color: 'text-yellow-600' },
     { name: 'Ethereum (Arbitrum)', symbol: 'ETH', balance: arbMainnetBalance, network: 'Arbitrum One', chainId: 'arbitrum', color: 'text-blue-500' },
     { name: 'USD Coin (Arbitrum)', symbol: 'USDC', balance: arbUsdcBalance, network: 'Arbitrum One', chainId: 'arbitrum', color: 'text-blue-400' },
     { name: 'Arbitrum', symbol: 'ARB', balance: arbArbBalance, network: 'Arbitrum One', chainId: 'arbitrum', color: 'text-blue-600' },
@@ -138,6 +145,7 @@
   const MAIN_NATIVE_COINS = {
     ethereum: 'ETH',
     base: 'ETH',
+    bsc: 'BNB',
     arbitrum: 'ETH',
     optimism: 'ETH',
     polygon: 'POL',
@@ -431,6 +439,7 @@
     if (chain === 'solana-mainnet') return `https://solscan.io/tx/${hash}`;
     if (chain === 'base-sepolia') return `https://sepolia.basescan.org/tx/${hash}`;
     if (chain === 'base') return `https://basescan.org/tx/${hash}`;
+    if (chain === 'bsc') return `https://bscscan.com/tx/${hash}`;
     if (chain === 'arbitrum') return `https://arbiscan.io/tx/${hash}`;
     if (chain === 'optimism') return `https://optimistic.etherscan.io/tx/${hash}`;
     if (chain === 'polygon') return `https://polygonscan.com/tx/${hash}`;
@@ -962,6 +971,8 @@
         opUsdc,
         matic,
         polygonUsdc,
+        bscMainnet,
+        bscUsdc,
         sol,
         solUsdc,
         btc
@@ -976,6 +987,8 @@
         getERC20Balance($walletState.evmAddress, ERC20_TOKENS.optimism, 'optimism').catch(() => '0.00'),
         getEVMBalance($walletState.evmAddress, 'polygon').catch(() => '0.00'),
         getERC20Balance($walletState.evmAddress, ERC20_TOKENS.polygon, 'polygon').catch(() => '0.00'),
+        getEVMBalance($walletState.evmAddress, 'bsc').catch(() => '0.00'),
+        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.bsc, 'bsc').catch(() => '0.00'),
         getSolanaBalance($walletState.solAddress, true).catch(() => '0.00'),
         getSolanaTokenBalance($walletState.solAddress, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', true).catch(() => '0.00'), // Live Mainnet USDC
         getBitcoinBalance($walletState.btcAddress).catch(() => '0.00000000')
@@ -990,6 +1003,8 @@
       opUsdcBalance = opUsdc;
       maticBalance = matic;
       polygonUsdcBalance = polygonUsdc;
+      bscMainnetBalance = bscMainnet;
+      bscUsdcBalance = bscUsdc;
       solBalance = sol;
       solUsdcBalance = solUsdc;
       btcBalance = btc;
@@ -1271,6 +1286,12 @@
     if (cleanSym === 'POL' || cleanSym === 'MATIC') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
     }
+    if (cleanSym === 'BNB') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#F3BA2F"/><g fill="white"><path d="M16 6.5l3.8 3.8-3.8 3.8-3.8-3.8zm0 11.4l3.8-3.8 1.9 1.9-5.7 5.7-5.7-5.7 1.9-1.9zm5.7-5.7l1.9 1.9-3.8 3.8-1.9-1.9zm-11.4 0l1.9-1.9 3.8 3.8-1.9 1.9z"/></g></svg>`;
+    }
+    if (cleanSym === 'CAKE') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#D1884F"/><path d="M16 8c-3.3 0-6 2.7-6 6h12c0-3.3-2.7-6-6-6zm-6 8c0 3.3 2.7 6 6 6s6-2.7 6-6H10z" fill="white"/></svg>`;
+    }
     
     // ETH logo
     if (cleanSym === 'ETH') {
@@ -1296,6 +1317,9 @@
     }
     if (chainId === 'polygon') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
+    }
+    if (chainId === 'bsc') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#F3BA2F"/><path d="M16 6.5l3.8 3.8-3.8 3.8-3.8-3.8zm0 11.4l3.8-3.8 1.9 1.9-5.7 5.7-5.7-5.7 1.9-1.9zm5.7-5.7l1.9 1.9-3.8 3.8-1.9-1.9zm-11.4 0l1.9-1.9 3.8 3.8-1.9 1.9z" fill="white"/></svg>`;
     }
     if (chainId === 'solana-mainnet') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#14F195" fill-opacity="0.1"/><circle cx="16" cy="16" r="15" stroke="url(#sol-chain-grad-ws)" stroke-width="1.5" fill="none"/><defs><linearGradient id="sol-chain-grad-ws" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#9945FF"/><stop offset="100%" stop-color="#14F195"/></linearGradient></defs><g fill="url(#sol-chain-grad-ws)"><path d="M22.5 8.7h-11.8c-0.3 0-0.5 0.2-0.6 0.4l-1.8 3.1c-0.1 0.2-0.1 0.5 0 0.7 0.1 0.2 0.3 0.4 0.6 0.4h11.8c0.3 0 0.5-0.2 0.6-0.4l1.8-3.1c0.1-0.2 0.1-0.5 0-0.7-0.1-0.2-0.3-0.4-0.6-0.4z"/></g></svg>`;

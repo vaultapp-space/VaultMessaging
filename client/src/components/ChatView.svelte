@@ -1817,10 +1817,10 @@
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#12AAFF"/><path d="M16 6l9.5 16.5H6.5L16 6zm0 4L9.8 20.5h12.4L16 10zm0 3.5l3.5 6h-7l3.5-6z" fill="white"/></svg>`;
     }
     if (chainId === 'optimism') {
-      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#FF0420"/><path d="M12.5 11c-2.5 0-4.5 2-4.5 4.5s2 4.5 4.5 4.5 4.5-2 4.5-4.5-2-4.5-4.5-4.5zm0 7c-1.4 0-2.5-1.1-2.5-2.5s1.1-2.5 2.5-2.5 2.5 1.1 2.5 2.5-1.1 2.5-2.5 2.5z" fill="white"/></svg>`;
-    }
-    if (chainId === 'polygon') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
+    }
+    if (chainId === 'bsc') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#F3BA2F"/><path d="M16 6.5l3.8 3.8-3.8 3.8-3.8-3.8zm0 11.4l3.8-3.8 1.9 1.9-5.7 5.7-5.7-5.7 1.9-1.9zm5.7-5.7l1.9 1.9-3.8 3.8-1.9-1.9zm-11.4 0l1.9-1.9 3.8 3.8-1.9 1.9z" fill="white"/></svg>`;
     }
     if (chainId === 'solana-mainnet') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#14F195" fill-opacity="0.1"/><circle cx="16" cy="16" r="15" stroke="url(#sol-chain-grad-cv)" stroke-width="1.5" fill="none"/><defs><linearGradient id="sol-chain-grad-cv" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#9945FF"/><stop offset="100%" stop-color="#14F195"/></linearGradient></defs><g fill="url(#sol-chain-grad-cv)"><path d="M22.5 8.7h-11.8c-0.3 0-0.5 0.2-0.6 0.4l-1.8 3.1c-0.1 0.2-0.1 0.5 0 0.7 0.1 0.2 0.3 0.4 0.6 0.4h11.8c0.3 0 0.5-0.2 0.6-0.4l1.8-3.1c0.1-0.2 0.1-0.5 0-0.7-0.1-0.2-0.3-0.4-0.6-0.4z"/></g></svg>`;
@@ -1836,8 +1836,14 @@
     if (cleanSym === 'USDC') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#2775CA"/><path d="M16 6.5C10.75 6.5 6.5 10.75 6.5 16S10.75 25.5 16 25.5 25.5 21.25 25.5 16 21.25 6.5 16 6.5zm0 17.5c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm2-10c0-1.1-.9-2-2-2s-2 .9-2 2 .9 2 2 2c1.1 0 2-.9 2-2zm-2 4c-1.1 0-2 .9-2 2 s.9 2 2 2 2-.9 2-2-.9-2-2-2z" fill="white"/></svg>`;
     }
-    if (cleanSym === 'POL') {
+    if (cleanSym === 'POL' || cleanSym === 'MATIC') {
       return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#8247E5"/><path d="M22.5 12.3l-2.6-1.5c-0.3-0.2-0.7-0.2-1 0l-1.3 0.8c-0.3 0.2-0.5 0.5-0.5 0.8v1.8l-1.1 0.6-1.3-0.8c-0.3-0.2-0.7-0.2-1 0l-2.6 1.5c-0.3 0.2-0.5 0.5-0.5 0.8v3.1c0 0.3 0.2 0.7 0.5 0.8l2.6 1.5c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.3-0.2-0.7-0.5-0.8l-1.3-0.8 1.1-0.6 1.3 0.8c0.3 0.2 0.7 0.2 1 0l2.6-1.5c0.3-0.2 0.5-0.5 0.5-0.8v-3.1c0-0.4-0.2-0.7-0.5-0.9zm-9 7.8l-1.6-0.9v-1.8l1.6 0.9v1.8zm2.6-4.6l-1.6-0.9 1.6-0.9 1.6 0.9-1.6 0.9zm4.8-1.5l-1.6-0.9v-1.8l1.6 0.9v1.8z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'BNB') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#F3BA2F"/><path d="M16 6.5l3.8 3.8-3.8 3.8-3.8-3.8zm0 11.4l3.8-3.8 1.9 1.9-5.7 5.7-5.7-5.7 1.9-1.9zm5.7-5.7l1.9 1.9-3.8 3.8-1.9-1.9zm-11.4 0l1.9-1.9 3.8 3.8-1.9 1.9z" fill="white"/></svg>`;
+    }
+    if (cleanSym === 'CAKE') {
+      return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#D1884F"/><path d="M16 8c-3.3 0-6 2.7-6 6h12c0-3.3-2.7-6-6-6zm-6 8c0 3.3 2.7 6 6 6s6-2.7 6-6H10z" fill="white"/></svg>`;
     }
     return `<svg viewBox="0 0 32 32" class="w-full h-full"><circle cx="16" cy="16" r="16" fill="#627EEA"/><g fill="white"><path d="M16 4.5l-5.3 8.8L16 16l5.3-2.7z" fill-opacity="0.8"/><path d="M16 4.5V16l5.3-2.7z"/><path d="M16 17.5l-5.3-2.2 5.3 7.7 5.3-7.7z" fill-opacity="0.8"/><path d="M16 17.5V23l5.3-7.7z"/></g></svg>`;
   }
@@ -1912,7 +1918,7 @@
     isLoadingBalance = true;
     try {
       if (payNetwork !== 'solana-mainnet') {
-        if (payAsset === 'ETH' || payAsset === 'POL') {
+        if (payAsset === 'ETH' || payAsset === 'POL' || payAsset === 'BNB') {
           payBalance = await getEVMBalance($walletState.evmAddress, payNetwork);
         } else {
           payBalance = await getERC20Balance($walletState.evmAddress, ERC20_TOKENS[payNetwork] || ERC20_TOKENS.base, payNetwork);
@@ -2070,7 +2076,7 @@
         } else {
           if (payNetwork !== 'solana-mainnet') {
             const tokenAddress = payAsset === 'USDC' ? (ERC20_TOKENS[payNetwork] || ERC20_TOKENS.base) : null;
-            if (payAsset === 'ETH' || payAsset === 'POL') {
+            if (payAsset === 'ETH' || payAsset === 'POL' || payAsset === 'BNB') {
               hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount, null, payNetwork);
             } else {
               if (payGasless) {
@@ -2878,7 +2884,7 @@
                           {@html getChainLogo(payNetwork)}
                         </span>
                         <span class="truncate">
-                          {payNetwork === 'solana-mainnet' ? 'Solana' : payNetwork.charAt(0).toUpperCase() + payNetwork.slice(1)}
+                          {payNetwork === 'solana-mainnet' ? 'Solana' : payNetwork === 'bsc' ? 'BSC' : payNetwork.charAt(0).toUpperCase() + payNetwork.slice(1)}
                         </span>
                       </div>
                       <span class="text-vault-text-dim text-[7px]">▼</span>
@@ -2889,7 +2895,7 @@
                     <!-- Backdrop out-clicks dismisser -->
                     <button type="button" class="fixed inset-0 z-40 cursor-default bg-transparent border-none w-full h-full" on:click|stopPropagation={() => showPayNetworkDropdown = false} aria-label="Dismiss network dropdown"></button>
                     <div class="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-vault-elevated border border-vault-border rounded-xl shadow-xl p-1 animate-scale-up text-xs">
-                      {#each ['ethereum', 'base', 'arbitrum', 'optimism', 'polygon', 'solana-mainnet'] as chainId}
+                      {#each ['ethereum', 'base', 'bsc', 'arbitrum', 'optimism', 'polygon', 'solana-mainnet'] as chainId}
                         <button
                           type="button"
                           on:click={() => {
@@ -2903,7 +2909,7 @@
                           <span class="w-3.5 h-3.5 flex items-center justify-center shrink-0">
                             {@html getChainLogo(chainId)}
                           </span>
-                          <span class="font-semibold">{chainId === 'solana-mainnet' ? 'Solana Mainnet' : chainId.charAt(0).toUpperCase() + chainId.slice(1) + ' Mainnet'}</span>
+                          <span class="font-semibold">{chainId === 'solana-mainnet' ? 'Solana Mainnet' : chainId === 'bsc' ? 'BNB Smart Chain' : chainId.charAt(0).toUpperCase() + chainId.slice(1) + ' Mainnet'}</span>
                         </button>
                       {/each}
                     </div>
@@ -2925,6 +2931,9 @@
                     {:else if payNetwork === 'base'}
                       <option value="USDC">USDC (Base USDC)</option>
                       <option value="ETH">ETH (Base Native)</option>
+                    {:else if payNetwork === 'bsc'}
+                      <option value="USDC">USDC (BSC USDC)</option>
+                      <option value="BNB">BNB (BSC Native)</option>
                     {:else if payNetwork === 'arbitrum'}
                       <option value="USDC">USDC (Arbitrum USDC)</option>
                       <option value="ETH">ETH (Arbitrum Native)</option>
