@@ -43,7 +43,7 @@ await fastify.register(fastifyHelmet, {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:"],
+      imgSrc: ["'self'", "data:", "blob:", "https://api.qrserver.com"],
       connectSrc: isProd
         ? ["'self'", "wss:", "https://vaultapp.space", "https://www.vaultapp.space"]
         : ["'self'", "ws:", "wss:", "http://localhost:3001"],

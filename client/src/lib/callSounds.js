@@ -1,10 +1,12 @@
 // ============================================================
 // Vault — Web Audio API Call Ringtone Synthesizer
-// Zero external assets dependency. Programmatic dials and chimes.
+// Zero external assets dependency. Programmatic chimes and tones.
 // ============================================================
 
 let audioCtx = null;
 let currentSounds = [];
+let loopActive = false;
+let activeTimeout = null;
 
 function getAudioContext() {
   if (!audioCtx) {
@@ -18,11 +20,10 @@ export function playOutgoingCallSound() {
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') ctx.resume();
 
-  // Outgoing call: two oscillators (440Hz and 480Hz) pulsing together
-  let active = true;
+  loopActive = true;
 
   const playPulse = () => {
-    if (!active) return;
+    if (!loopActive) return;
     const osc1 = ctx.createOscillator();
     const osc2 = ctx.createOscillator();
     const gainNode = ctx.createGain();
@@ -47,20 +48,12 @@ export function playOutgoingCallSound() {
 
     currentSounds.push(osc1, osc2, gainNode);
 
-    // Pulse repeats every 3 seconds
-    setTimeout(() => {
-      if (active) playPulse();
+    activeTimeout = setTimeout(() => {
+      if (loopActive) playPulse();
     }, 3000);
   };
 
   playPulse();
-
-  return {
-    stop: () => {
-      active = false;
-      stopCallSounds();
-    }
-  };
 }
 
 export function playIncomingCallSound() {
@@ -68,8 +61,7 @@ export function playIncomingCallSound() {
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') ctx.resume();
 
-  // Incoming call: sweet synthesized melody
-  let active = true;
+  loopActive = true;
   const notes = [
     { f: 523.25, d: 0.15 }, // C5
     { f: 659.25, d: 0.15 }, // E5
@@ -78,7 +70,7 @@ export function playIncomingCallSound() {
   ];
 
   const playMelody = () => {
-    if (!active) return;
+    if (!loopActive) return;
     let timeOffset = 0;
 
     notes.forEach(note => {
@@ -103,23 +95,20 @@ export function playIncomingCallSound() {
       timeOffset += note.d + 0.05;
     });
 
-    // Repeat melody loop every 2.5 seconds
-    setTimeout(() => {
-      if (active) playMelody();
+    activeTimeout = setTimeout(() => {
+      if (loopActive) playMelody();
     }, 2500);
   };
 
   playMelody();
-
-  return {
-    stop: () => {
-      active = false;
-      stopCallSounds();
-    }
-  };
 }
 
 export function stopCallSounds() {
+  loopActive = false;
+  if (activeTimeout) {
+    clearTimeout(activeTimeout);
+    activeTimeout = null;
+  }
   currentSounds.forEach(node => {
     try {
       node.disconnect();

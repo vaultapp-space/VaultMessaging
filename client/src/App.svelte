@@ -76,7 +76,8 @@
     // Check for QR Sync params in URL
     const urlParams = new URLSearchParams(window.location.search);
     const syncId = urlParams.get('syncId');
-    const keyParam = urlParams.get('key');
+    const keyMatch = window.location.search.match(/[&?]key=([^&]+)/);
+    const keyParam = keyMatch ? keyMatch[1] : null;
     if (syncId && keyParam) {
       isLoading.set(true);
       try {
