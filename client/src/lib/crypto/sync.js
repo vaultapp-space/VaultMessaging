@@ -4,7 +4,7 @@
 // ============================================================
 
 import { get } from 'svelte/store';
-import { identityKeyPair, signedPrekeyPair, localBackupKey, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys, isDecoySession } from '../stores/session.js';
+import { identityKeyPair, signedPrekeyPair, localBackupKey, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys } from '../stores/session.js';
 import { saveEncryptedVault } from '../api/http.js';
 import { encryptIdentityVault } from './keys.js';
 
@@ -45,7 +45,7 @@ export async function syncCloudVault() {
       groupSenderKeys: serializedGroupKeys
     }, password);
 
-    await saveEncryptedVault(vault, get(isDecoySession));
+    await saveEncryptedVault(vault);
     console.log('[Sync] Cloud vault successfully updated.');
   } catch (err) {
     console.error('[Sync] Failed to backup cloud vault:', err);

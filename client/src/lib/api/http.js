@@ -131,9 +131,8 @@ export async function fetchAttachmentChunk(id, index) {
   return request('GET', `/attachments/chunk/download/${id}/${index}`);
 }
 
-export async function saveEncryptedVault(encryptedVault, isDecoy = false) {
-  const extraHeaders = isDecoy ? { 'x-vault-decoy': 'true' } : {};
-  return request('POST', '/auth/vault', { encryptedVault }, extraHeaders);
+export async function saveEncryptedVault(encryptedVault) {
+  return request('POST', '/auth/vault', { encryptedVault });
 }
 
 export async function joinGroup(joinKey) {
