@@ -81,12 +81,12 @@ await fastify.register(authPlugin);
 
 await fastify.register(authRoutes);
 await fastify.register(keysRoutes);
+await fastify.register(pushRoutes);
 await fastify.register(messageRoutes);
 await fastify.register(wsRoutes);
 await fastify.register(attachmentRoutes);
 await fastify.register(groupRoutes);
 await fastify.register(chunkRoutes);
-await fastify.register(pushRoutes);
 await fastify.register(turnRoutes);
 
 // ─── Reaper Worker (24h hard deletion) ──────────────────────

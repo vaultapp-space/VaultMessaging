@@ -4,6 +4,7 @@
 // ============================================================
 
 import crypto from 'crypto';
+import fp from 'fastify-plugin';
 
 // VAPID keys generated dynamically on startup in volatile memory (Section 0)
 const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', {
@@ -93,4 +94,4 @@ async function pushRoutes(fastify) {
   });
 }
 
-export default pushRoutes;
+export default fp(pushRoutes);
