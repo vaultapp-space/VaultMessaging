@@ -38,8 +38,71 @@
   });
 
   // Unified Simulator Tab Switcher
-  let simTab = 'chat'; // 'chat' | 'wallet'
+  let simTab = 'chat'; // 'chat' | 'wallet' | 'call'
   let chatInspectorView = 'ratchet'; // 'ratchet' | 'x3dh'
+
+  // E2EE Call Simulator state
+  let callState = 'ringing'; // 'idle' | 'ringing' | 'connected'
+  let callSecondsCount = 0;
+  let callTimer = '00:00';
+  let callInterval = null;
+  let callLogs = [
+    '[WebRTC] Listening for signaling packets via WebSocket...',
+    '[WebRTC] Received secure SDP offer from Bob.'
+  ];
+  let callFrequencies = Array.from({ length: 15 }, () => 4);
+  let callFrequenciesInterval = null;
+
+  function acceptSimCall() {
+    callState = 'connected';
+    callLogs = [
+      ...callLogs,
+      '[X3DH] Active prekeys matched. Negotiating session keys...',
+      '[Double Ratchet] Derived symmetric master call key.',
+      '[DTLS-SRTP] Initializing encrypted media channel...',
+      '[DTLS-SRTP] DTLS handshake complete. Key negotiated: SRTP_AES128_CM_HMAC_SHA1_80',
+      '[WebRTC] Audio stream encrypted. P2P Connection established.'
+    ];
+
+    callInterval = setInterval(() => {
+      callSecondsCount++;
+      const min = String(Math.floor(callSecondsCount / 60)).padStart(2, '0');
+      const sec = String(callSecondsCount % 60).padStart(2, '0');
+      callTimer = `${min}:${sec}`;
+    }, 1000);
+
+    callFrequenciesInterval = setInterval(() => {
+      callFrequencies = callFrequencies.map(() => Math.floor(Math.random() * 26) + 4);
+    }, 100);
+  }
+
+  function rejectSimCall() {
+    callState = 'idle';
+    callLogs = [...callLogs, '[WebRTC] Call rejected by user. Session closed.'];
+    clearIntervals();
+  }
+
+  function startSimCall() {
+    callState = 'ringing';
+    callSecondsCount = 0;
+    callTimer = '00:00';
+    callLogs = [
+      '[WebRTC] Listening for signaling packets via WebSocket...',
+      '[WebRTC] Received secure SDP offer from Bob.'
+    ];
+    clearIntervals();
+  }
+
+  function endSimCall() {
+    callState = 'idle';
+    callLogs = [...callLogs, '[WebRTC] Connection ended by user. DTLS-SRTP tunnel closed.'];
+    clearIntervals();
+  }
+
+  function clearIntervals() {
+    if (callInterval) { clearInterval(callInterval); callInterval = null; }
+    if (callFrequenciesInterval) { clearInterval(callFrequenciesInterval); callFrequenciesInterval = null; }
+  }
 
   // Double Ratchet Simulator state
   let simMessages = [
@@ -317,9 +380,17 @@
       walletLogs = [...walletLogs, `[WebAuthn] User successfully verified. PRF extension returned secret bits.`];
       
       setTimeout(() => {
-        walletLogs = [...walletLogs, `[WebAuthn] Decrypted local database key. Session restored.`];
-        isBiometricScanning = false;
-        walletLocked = false;
+        walletLogs = [...walletLogs, `[KeyDerivation] Deriving DB Key: PBKDF2 (HMAC-SHA256, 100k iterations)`];
+        
+        setTimeout(() => {
+          walletLogs = [...walletLogs, `[KeyDerivation] Database key successfully derived.`];
+          
+          setTimeout(() => {
+            walletLogs = [...walletLogs, `[Database] Decrypted local database key. Session restored.`];
+            isBiometricScanning = false;
+            walletLocked = false;
+          }, 600);
+        }, 600);
       }, 800);
     }, 1200);
   }
@@ -469,6 +540,24 @@
 </script>
 
 <div class="h-screen overflow-y-auto flex flex-col justify-between relative bg-vault-black text-vault-text font-sans selection:bg-vault-accent/20 selection:text-vault-accent">
+
+  <!-- Live Network Pulse Banner -->
+  <div class="w-full bg-vault-surface/40 border-b border-vault-border/20 py-2 px-4 z-20 flex justify-center items-center overflow-hidden">
+    <div class="flex items-center gap-6 font-mono text-[9px] text-vault-text-dim tracking-wider uppercase whitespace-nowrap animate-fade-in select-none">
+      <div class="flex items-center gap-1.5">
+        <span class="relative flex h-1.5 w-1.5">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-vault-accent opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-vault-accent"></span>
+        </span>
+        <span class="text-vault-text font-bold">Network:</span>
+        <span class="text-vault-accent">Operational</span>
+      </div>
+      <div>Active Relays: <span class="text-vault-text font-bold">14</span></div>
+      <div class="hidden sm:inline">24h Volume: <span class="text-vault-text font-bold">1,842,912 msgs</span></div>
+      <div>P2P Latency: <span class="text-vault-text font-bold">24ms</span></div>
+      <div class="hidden md:inline">Shielded ZK Rail: <span class="text-vault-accent font-bold">Active</span></div>
+    </div>
+  </div>
   
   <!-- Minimalist background overlay -->
   <div class="pointer-events-none fixed inset-0 z-0">
@@ -560,13 +649,13 @@
   </section>
 
   <!-- Unified tabbed playground simulator widget -->
-  <section class="w-full max-w-5xl mx-auto px-6 py-10 z-10 border-t border-vault-border/20">
+  <section class="w-full max-w-5xl mx-auto px-6 py-10 z-10 border-t border-vault-border/20 reveal-section">
     <!-- Header of Sandbox -->
     <div class="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
       <div class="text-left flex items-center gap-4">
         <div>
           <h2 class="text-lg font-bold tracking-tight text-vault-text">Protocol Sandbox</h2>
-          <p class="text-[10px] text-vault-text-dim mt-0.5">Toggle between Alice's messaging tunnel and her local multi-chain wallet.</p>
+          <p class="text-[10px] text-vault-text-dim mt-0.5">Toggle between Alice's messaging tunnel, her local multi-chain wallet, and secure E2EE calls.</p>
         </div>
         <!-- Radar Map Status -->
         <div class="hidden md:flex items-center gap-2 px-2.5 py-1 bg-vault-surface/40 border border-vault-border/20 rounded-xl font-mono text-[8px] text-vault-text-dim select-none animate-fade-in">
@@ -591,13 +680,19 @@
           on:click={() => simTab = 'chat'}
           class="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all focus:outline-none cursor-pointer {simTab === 'chat' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text'}"
         >
-          💬 Chat Protocol
+          💬 Chat
         </button>
         <button 
           on:click={() => simTab = 'wallet'}
           class="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all focus:outline-none cursor-pointer {simTab === 'wallet' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text'}"
         >
-          💳 DeFi Wallet
+          💳 Wallet
+        </button>
+        <button 
+          on:click={() => { simTab = 'call'; startSimCall(); }}
+          class="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all focus:outline-none cursor-pointer {simTab === 'call' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text'}"
+        >
+          📞 E2EE Call
         </button>
       </div>
     </div>
@@ -707,23 +802,27 @@
             {#if walletLocked}
               <div class="absolute inset-0 bg-vault-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4 z-20 animate-fade-in text-center">
                 {#if isBiometricScanning}
-                  <!-- Biometric Scan radar animation -->
-                  <div class="relative w-16 h-16 mb-4 flex items-center justify-center">
-                    <div class="absolute inset-0 rounded-full border border-vault-accent/35 animate-ping opacity-75"></div>
-                    <div class="absolute inset-1 rounded-full border-2 border-vault-accent border-t-transparent animate-spin"></div>
-                    <svg class="w-8 h-8 text-vault-accent animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A4 4 0 0111 3h2a4 4 0 013.136 1.243l2.764 2.764A4 4 0 0120 10v2a4 4 0 01-1.243 2.864l-2.764 2.764A4 4 0 0113 19h-2a4 4 0 01-3.136-1.243L5.092 15A4 4 0 014 12v-2a4 4 0 011.243-2.864l2.764-2.764z" />
+                  <!-- Biometric Fingerprint Scan Animation with Laser effect -->
+                  <div class="relative w-18 h-18 mb-4 flex items-center justify-center border border-vault-accent/30 rounded-full p-3 bg-vault-accent/5">
+                    <div class="absolute inset-0 rounded-full border border-vault-accent/30 animate-pulse"></div>
+                    <svg class="w-10 h-10 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 009 11a13.917 13.917 0 00-2.338-7.58l-.05-.09m3.06 18.06A14.12 14.12 0 0112 11c0-2.907-.874-5.612-2.382-7.87m6.764 11.73a14.178 14.178 0 00.562-3.86M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                    </svg>
+                    <!-- Laser Scanner Line -->
+                    <div class="absolute left-0 right-0 h-[2px] bg-vault-accent/80 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-scanner-scan"></div>
+                  </div>
+                  <div class="text-[10px] font-mono text-vault-accent animate-pulse">DERIVING BIOMETRIC KEY (WebAuthn PRF)...</div>
+                {:else}
+                  <!-- Fingerprint SVG Icon -->
+                  <div class="relative w-18 h-18 mb-3 flex items-center justify-center border border-vault-border/30 rounded-full p-3 bg-vault-surface/40 hover:border-vault-accent/40 transition-colors">
+                    <svg class="w-10 h-10 text-vault-text-dim" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.25">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 009 11a13.917 13.917 0 00-2.338-7.58l-.05-.09m3.06 18.06A14.12 14.12 0 0112 11c0-2.907-.874-5.612-2.382-7.87m6.764 11.73a14.178 14.178 0 00.562-3.86M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
                     </svg>
                   </div>
-                  <div class="text-[10px] font-mono text-vault-accent animate-pulse">Scanning biometric credentials (FaceID/TouchID)...</div>
-                {:else}
-                  <svg class="w-10 h-10 text-vault-text-dim mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                  </svg>
                   <p class="text-[10px] text-vault-text-secondary leading-relaxed mb-3">Keychain encrypted locally in browser IndexedDB.</p>
                   <button 
                     on:click={simulateBiometricUnlock}
-                    class="py-2 px-4 text-[10px] bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl transition-all cursor-pointer shadow-md focus:outline-none"
+                    class="py-2.5 px-5 text-[10px] bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl transition-all cursor-pointer shadow-md focus:outline-none btn-glow"
                   >
                     Unlock via Biometrics
                   </button>
@@ -881,6 +980,97 @@
                 </div>
               {/if}
             </div>
+          </div>
+        {:else}
+          <!-- 📞 CALL SIMULATOR INTERFACE -->
+          <div class="px-4 py-2.5 border-b border-vault-border/20 bg-vault-surface/40 flex items-center justify-between z-10">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-bold font-mono uppercase tracking-wider text-vault-text">E2EE Call Simulator</span>
+            </div>
+            <div class="flex items-center gap-2">
+              {#if callState === 'connected'}
+                <span class="relative flex h-1.5 w-1.5">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-vault-accent opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-vault-accent"></span>
+                </span>
+                <span class="text-[9px] font-bold font-mono text-vault-accent">{callTimer}</span>
+              {:else if callState === 'ringing'}
+                <span class="text-[8px] text-vault-warning font-mono bg-vault-warning/10 border border-vault-warning/20 px-1.5 py-0.5 rounded uppercase animate-pulse">Ringing...</span>
+              {:else}
+                <span class="text-[8px] text-vault-text-dim font-mono bg-vault-border/50 px-1.5 py-0.5 rounded uppercase">Disconnected</span>
+              {/if}
+            </div>
+          </div>
+
+          <div class="flex-1 p-5 flex flex-col justify-between overflow-y-auto z-10 relative text-center">
+            {#if callState === 'ringing'}
+              <!-- Ringing Screen -->
+              <div class="flex-grow flex flex-col items-center justify-center gap-4 animate-fade-in my-auto">
+                <div class="relative w-18 h-18 flex items-center justify-center">
+                  <div class="absolute inset-0 rounded-full border border-vault-accent/35 animate-ping opacity-75"></div>
+                  <div class="absolute inset-1 rounded-full border border-vault-accent/50 animate-pulse"></div>
+                  <div class="w-14 h-14 bg-vault-surface border border-vault-border/40 rounded-full flex items-center justify-center text-xl select-none">👤</div>
+                </div>
+                <div>
+                  <h3 class="text-sm font-bold text-vault-text">Bob</h3>
+                  <p class="text-[10px] text-vault-text-dim mt-0.5">Incoming Secure P2P Video Call...</p>
+                </div>
+                <div class="flex gap-4 mt-2">
+                  <button 
+                    on:click={acceptSimCall}
+                    class="py-2.5 px-5 text-[10px] bg-vault-accent text-vault-black hover:bg-vault-accent/90 font-bold rounded-xl transition-all cursor-pointer shadow-md focus:outline-none btn-glow-accent"
+                  >
+                    Accept
+                  </button>
+                  <button 
+                    on:click={rejectSimCall}
+                    class="py-2.5 px-5 text-[10px] bg-vault-danger/25 text-vault-danger hover:bg-vault-danger/35 border border-vault-danger/30 font-bold rounded-xl transition-all cursor-pointer focus:outline-none"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            {:else if callState === 'connected'}
+              <!-- Connected Ongoing Call Screen -->
+              <div class="flex-grow flex flex-col justify-between gap-4 animate-fade-in">
+                
+                <!-- Animated Frequency/Audio Voice Visualizer -->
+                <div class="flex-1 flex items-center justify-center gap-1.5 h-24 my-auto">
+                  {#each callFrequencies as height}
+                    <div 
+                      class="w-1.5 bg-vault-accent rounded-full transition-all duration-100" 
+                      style="height: {height}px; opacity: {0.4 + (height/30)*0.6};"
+                    ></div>
+                  {/each}
+                </div>
+
+                <div class="mb-2">
+                  <h3 class="text-sm font-bold text-vault-text">Bob</h3>
+                  <p class="text-[9px] text-vault-accent font-mono uppercase tracking-wider">DTLS-SRTP Stream Active</p>
+                </div>
+
+                <div class="flex justify-center mb-2">
+                  <button 
+                    on:click={endSimCall}
+                    class="py-2.5 px-6 text-[10px] bg-vault-danger text-vault-text font-bold rounded-xl transition-all cursor-pointer shadow-md focus:outline-none btn-glow"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+            {:else}
+              <!-- Call Ended / Call Idle Screen -->
+              <div class="flex-1 flex flex-col items-center justify-center gap-3 select-none animate-fade-in">
+                <span class="text-2xl mb-1">📞</span>
+                <span class="text-[10px] font-mono text-vault-text-dim">E2EE Voice/Video channel idle.</span>
+                <button 
+                  on:click={startSimCall}
+                  class="mt-2 py-2.5 px-5 text-[10px] bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl transition-all cursor-pointer shadow-md focus:outline-none btn-glow"
+                >
+                  Simulate Call Request
+                </button>
+              </div>
+            {/if}
           </div>
         {/if}
 
@@ -1181,7 +1371,7 @@
                   <span class="break-all">{log}</span>
                 </div>
               {/each}
-            {:else}
+            {:else if simTab === 'wallet'}
               {#each walletLogs as log}
                 <div class="flex items-start gap-1">
                   <span class="text-vault-accent/70">▶</span>
@@ -1194,6 +1384,18 @@
                 <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Awaiting credential verification...</div>
               {:else if walletStatus === 'broadcasting'}
                 <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Transferring payload to nodes...</div>
+              {/if}
+            {:else}
+              {#each callLogs as log}
+                <div class="flex items-start gap-1">
+                  <span class="text-vault-accent/70">▶</span>
+                  <span class="break-all">{log}</span>
+                </div>
+              {/each}
+              {#if callState === 'ringing'}
+                <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Waiting for user response...</div>
+              {:else if callState === 'connected'}
+                <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Stream active. Exchanging media packets...</div>
               {/if}
             {/if}
           </div>
@@ -1212,7 +1414,7 @@
   </section>
 
   <!-- Cryptographic Details Grid (Progressive Disclosure) -->
-  <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10 border-t border-vault-border/20">
+  <section class="w-full max-w-5xl mx-auto px-6 py-12 z-10 border-t border-vault-border/20 reveal-section">
     <div class="text-center mb-8">
       <h2 class="text-lg font-bold tracking-tight text-vault-text">Protocol Suite</h2>
       <p class="text-[10px] text-vault-text-dim mt-0.5">Hover or tap on any capability card to inspect its cryptographic implementation details.</p>
@@ -1223,7 +1425,7 @@
         <button
           type="button"
           on:click={() => toggleFeature(idx)}
-          class="group flex flex-col gap-2 p-5 bg-vault-surface/20 border border-vault-border/15 rounded-2xl hover:border-vault-accent/20 transition-all hover:bg-vault-surface/40 hover:-translate-y-0.5 duration-200 shadow-sm glass relative overflow-hidden cursor-pointer text-left w-full block"
+          class="group flex flex-col gap-2 p-5 bg-vault-surface/20 border border-vault-border/15 rounded-2xl hover:border-vault-accent/20 transition-all hover:bg-vault-surface/40 hover:-translate-y-0.5 duration-200 shadow-sm glass relative overflow-hidden cursor-pointer text-left w-full block glow-card"
         >
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg bg-vault-surface border border-vault-border/50 flex items-center justify-center text-vault-text-secondary group-hover:text-vault-accent group-hover:border-vault-accent/30 transition-all shadow-inner">
@@ -1244,7 +1446,7 @@
   </section>
 
   <!-- Collapsible FAQ Accordion Section -->
-  <section class="w-full max-w-3xl mx-auto px-6 py-12 z-10 border-t border-vault-border/20">
+  <section class="w-full max-w-3xl mx-auto px-6 py-12 z-10 border-t border-vault-border/20 reveal-section">
     <div class="text-center mb-8">
       <h2 class="text-lg font-bold tracking-tight text-vault-text">Frequently Asked Questions</h2>
       <p class="text-[10px] text-vault-text-dim mt-0.5">Deep-dive technical details about Vault's security model.</p>
@@ -1252,7 +1454,7 @@
 
     <div class="flex flex-col gap-3">
       {#each faqs as faq, index}
-        <div class="glass-strong border border-vault-border/20 rounded-2xl overflow-hidden shadow-sm transition-all duration-200">
+        <div class="glass-strong border border-vault-border/20 rounded-2xl overflow-hidden shadow-sm transition-all duration-200 glow-card">
           <button 
             on:click={() => toggleFaq(index)}
             class="w-full px-5 py-3.5 flex items-center justify-between text-left focus:outline-none cursor-pointer bg-vault-surface/10 hover:bg-vault-surface/30 transition-colors"
@@ -1381,5 +1583,38 @@
   @keyframes radarRotate {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+  }
+
+  /* Laser scanner scanning effect */
+  :global(.animate-scanner-scan) {
+    animation: scannerScan 2s ease-in-out infinite;
+  }
+  @keyframes scannerScan {
+    0%, 100% { top: 5%; }
+    50% { top: 95%; }
+  }
+
+  /* Scroll Reveal animation using simple fade-in-up */
+  :global(.reveal-section) {
+    animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Card Glow Borders on hover */
+  :global(.glow-card) {
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+  :global(.glow-card:hover) {
+    border-color: rgba(16, 185, 129, 0.3) !important;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.05) !important;
   }
 </style>
