@@ -228,6 +228,8 @@
   let ethSecondary = '1,200.00 USDT';
   let baseBalance = '2.31';
   let baseSecondary = '480.00 USDC';
+  let bscBalance = '4.25';
+  let bscSecondary = '1,250.00 USDT';
   let btcBalance = '0.045';
 
   function simulateWalletAction() {
@@ -260,6 +262,9 @@
             } else if (selectedChain === 'ethereum') {
               ethBalance = '1.02';
               ethSecondary = '1,150.00 USDT';
+            } else if (selectedChain === 'bsc') {
+              bscBalance = '5.12';
+              bscSecondary = '1,100.00 USDT';
             }
           }, 1000);
         }, 1000);
@@ -331,6 +336,8 @@
     ethSecondary = '1,200.00 USDT';
     baseBalance = '2.31';
     baseSecondary = '480.00 USDC';
+    bscBalance = '4.25';
+    bscSecondary = '1,250.00 USDT';
   }
 
   // FAQ Accordion State
@@ -650,6 +657,7 @@
               <option value="solana">Solana (SPL)</option>
               <option value="ethereum">Ethereum (ERC20)</option>
               <option value="base">Base L2</option>
+              <option value="bsc">BSC (BEP20)</option>
               <option value="bitcoin">Bitcoin Native</option>
             </select>
           </div>
@@ -688,7 +696,7 @@
             <div class="p-3 bg-vault-elevated/70 border transition-all duration-300 rounded-xl flex flex-col gap-0.5 relative overflow-hidden {isShieldedRails ? 'border-vault-accent/40 shadow-[0_0_10px_rgba(16,185,129,0.05)]' : 'border-vault-border/20'} text-left">
               <div class="flex items-center justify-between text-[9px] font-mono text-vault-text-dim">
                 <span>LOCAL KEYPAIR</span>
-                <span class="text-vault-accent/80 font-bold">{selectedChain === 'solana' ? '9xQd...3zPq' : selectedChain === 'ethereum' ? '0x71C...a1B2' : selectedChain === 'base' ? '0x94f...c123' : 'bc1q...5xyz'}</span>
+                <span class="text-vault-accent/80 font-bold">{selectedChain === 'solana' ? '9xQd...3zPq' : selectedChain === 'ethereum' ? '0x71C...a1B2' : selectedChain === 'base' ? '0x94f...c123' : selectedChain === 'bsc' ? '0x3bB...e5C6' : 'bc1q...5xyz'}</span>
               </div>
               
               <div class="flex items-baseline gap-1.5 mt-0.5">
@@ -701,6 +709,9 @@
                 {:else if selectedChain === 'base'}
                   <span class="text-xl font-black text-vault-text">{baseBalance}</span>
                   <span class="text-[10px] font-bold text-vault-text-secondary">ETH</span>
+                {:else if selectedChain === 'bsc'}
+                  <span class="text-xl font-black text-vault-text">{bscBalance}</span>
+                  <span class="text-[10px] font-bold text-vault-text-secondary">BNB</span>
                 {:else if selectedChain === 'bitcoin'}
                   <span class="text-xl font-black text-vault-text">{btcBalance}</span>
                   <span class="text-[10px] font-bold text-vault-text-secondary">BTC</span>
@@ -714,6 +725,8 @@
                 <div class="text-[9px] text-vault-text-secondary font-mono">Secondary: {ethSecondary}</div>
               {:else if selectedChain === 'base'}
                 <div class="text-[9px] text-vault-text-secondary font-mono">Secondary: {baseSecondary}</div>
+              {:else if selectedChain === 'bsc'}
+                <div class="text-[9px] text-vault-text-secondary font-mono">Secondary: {bscSecondary}</div>
               {/if}
 
               <!-- zk-SNARK rails toggle button -->
