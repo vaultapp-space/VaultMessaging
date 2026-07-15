@@ -305,10 +305,23 @@ export async function restoreBackup() {
 
     messagesByPeer.update(map => {
       for (const item of parsed) {
-        for (const m of item.messages) {
+        const currentMessages = map.get(item.peerId) || [];
+        const combined = [...item.messages];
+        const backupIds = new Set(item.messages.map(m => m.id));
+        for (const m of currentMessages) {
+          if (!backupIds.has(m.id)) {
+            combined.push(m);
+          }
+        }
+        for (const m of combined) {
           knownMessageIds.add(m.id);
         }
-        map.set(item.peerId, item.messages);
+        combined.sort((a, b) => {
+          const tA = new Date(a.sentAt).getTime();
+          const tB = new Date(b.sentAt).getTime();
+          return tA - tB;
+        });
+        map.set(item.peerId, combined);
       }
       return new Map(map);
     });

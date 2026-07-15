@@ -101,13 +101,10 @@ export function connectWebSocket() {
     }
   };
 
-  socket.onclose = (event) => {
+  socket.onclose = () => {
     wsConnected.set(false);
     socket = null;
-
-    if (!event.wasClean) {
-      scheduleReconnect();
-    }
+    scheduleReconnect();
   };
 
   socket.onerror = () => {
