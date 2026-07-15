@@ -311,3 +311,59 @@ body {
   animation: shimmer 1.5s ease-in-out infinite;
   border-radius: var(--radius-md);
 }
+
+/* ─── Premium UX Animations ───────────────────────────────── */
+
+@keyframes hud-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.animate-hud-rotate {
+  animation: hud-rotate 10s linear infinite;
+}
+
+.animate-hud-rotate-reverse {
+  animation: hud-rotate 15s linear infinite reverse;
+}
+
+@keyframes neon-pulse {
+  0%, 100% { filter: drop-shadow(0 0 2px var(--color-vault-accent)); }
+  50% { filter: drop-shadow(0 0 8px var(--color-vault-accent)); }
+}
+
+.animate-neon-pulse {
+  animation: neon-pulse 2s infinite ease-in-out;
+}
+
+@keyframes flash-green {
+  0% { background-color: rgba(16, 185, 129, 0.2); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-red {
+  0% { background-color: rgba(239, 68, 68, 0.2); }
+  100% { background-color: transparent; }
+}
+
+.animate-flash-green {
+  animation: flash-green 1s ease-out forwards;
+}
+
+.animate-flash-red {
+  animation: flash-red 1s ease-out forwards;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.flow-line {
+  stroke-dasharray: 8, 4;
+  animation: dash 1s linear infinite;
+  filter: drop-shadow(0 0 4px var(--color-vault-accent));
+}
+
+

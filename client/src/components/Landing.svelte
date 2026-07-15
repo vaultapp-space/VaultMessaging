@@ -15,6 +15,19 @@
   let liveLatency = 24;
   let liveRelays = 4;
   let statsInterval = null;
+  let jitterInterval = null;
+
+  // Live Prices Ticker
+  let solPrice = 142.45;
+  let ethPrice = 3450.80;
+  let btcPrice = 64850.00;
+  let solPriceChange = 0.05;
+  let ethPriceChange = -0.12;
+  let btcPriceChange = 0.24;
+  let solPriceFlash = '';
+  let ethPriceFlash = '';
+  let btcPriceFlash = '';
+  let priceFeedInterval = null;
 
   async function fetchNetworkStats() {
     try {
@@ -38,6 +51,35 @@
     fetchNetworkStats();
     statsInterval = setInterval(fetchNetworkStats, 10000);
 
+    // Network stats micro-jitter
+    jitterInterval = setInterval(() => {
+      const latJitter = Math.floor(Math.random() * 5) - 2; // -2 to +2
+      const connJitter = Math.floor(Math.random() * 3) - 1; // -1 to +1
+      liveLatency = Math.max(15, Math.min(50, liveLatency + latJitter));
+      liveConnections = Math.max(1, liveConnections + connJitter);
+    }, 2000);
+
+    // Live asset price tick intervals
+    priceFeedInterval = setInterval(() => {
+      const solMove = (Math.random() * 0.4 - 0.2);
+      solPrice = Math.max(10, solPrice + solMove);
+      solPriceChange = solMove;
+      solPriceFlash = solMove >= 0 ? 'up' : 'down';
+      setTimeout(() => solPriceFlash = '', 1000);
+
+      const ethMove = (Math.random() * 8.0 - 4.0);
+      ethPrice = Math.max(100, ethPrice + ethMove);
+      ethPriceChange = ethMove;
+      ethPriceFlash = ethMove >= 0 ? 'up' : 'down';
+      setTimeout(() => ethPriceFlash = '', 1000);
+
+      const btcMove = (Math.random() * 120.0 - 60.0);
+      btcPrice = Math.max(1000, btcPrice + btcMove);
+      btcPriceChange = btcMove;
+      btcPriceFlash = btcMove >= 0 ? 'up' : 'down';
+      setTimeout(() => btcPriceFlash = '', 1000);
+    }, 4000);
+
     // Ticking 24h decay timer
     timerInterval = setInterval(() => {
       ttlSeconds--;
@@ -59,6 +101,8 @@
     return () => {
       clearInterval(timerInterval);
       if (statsInterval) clearInterval(statsInterval);
+      if (jitterInterval) clearInterval(jitterInterval);
+      if (priceFeedInterval) clearInterval(priceFeedInterval);
     };
   });
 
@@ -309,6 +353,28 @@
   // WebAuthn Lock/Unlock state
   let walletLocked = false;
   let isBiometricScanning = false;
+  let biometricPercent = 0;
+  let biometricStatusText = 'INITIALIZING SCAN...';
+
+  // zk-SNARK Prover stream state
+  let proverStream = '';
+  let proverInterval = null;
+
+  function startProverStream() {
+    proverStream = '';
+    proverInterval = setInterval(() => {
+      const hex = Array.from({ length: 3 }, () => '0x' + Math.floor(Math.random() * 65536).toString(16).padStart(4, '0')).join(' ');
+      const constraints = Math.floor(Math.random() * 20000) + 28000;
+      proverStream = `[groth16] Proving constraints: ${constraints}/48204  Inputs: ${hex}`;
+    }, 80);
+  }
+
+  function stopProverStream() {
+    if (proverInterval) {
+      clearInterval(proverInterval);
+      proverInterval = null;
+    }
+  }
 
   let solBalance = '12.45';
   let solSecondary = '150.00 USDC';
@@ -364,23 +430,22 @@
         
         setTimeout(() => {
           walletLogs = [...walletLogs, `[zk-SNARK] Generating zero-knowledge input parameters...`];
+          walletStatus = 'proving';
+          startProverStream();
           
           setTimeout(() => {
-            walletLogs = [...walletLogs, `[zk-SNARK] Computing zk proof values (proving key)...`];
-            
-            setTimeout(() => {
-              walletLogs = [...walletLogs, `[zk-SNARK] Secret inputs generated. Hiding sender and recipient addresses.`];
-              walletStatus = 'broadcasting';
-              walletLogs = [...walletLogs, `[Broadcasting] Dispatching shielded proof payload to RPC provider...`];
+            stopProverStream();
+            walletLogs = [...walletLogs, `[zk-SNARK] Secret inputs generated. Hiding sender and recipient addresses.`];
+            walletStatus = 'broadcasting';
+            walletLogs = [...walletLogs, `[Broadcasting] Dispatching shielded proof payload to RPC provider...`];
 
-              setTimeout(() => {
-                walletStatus = 'success';
-                txHash = '0xzk' + Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-                walletLogs = [...walletLogs, `[Success] Zero-knowledge confidential transfer broadcasted. Tx: ${txHash}`];
-              }, 1000);
-            }, 800);
-          }, 800);
-        }, 800);
+            setTimeout(() => {
+              walletStatus = 'success';
+              txHash = '0xzk' + Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+              walletLogs = [...walletLogs, `[Success] Zero-knowledge confidential transfer broadcasted. Tx: ${txHash}`];
+            }, 1000);
+          }, 1600);
+        }, 1000);
       } else {
         walletLogs = [...walletLogs, `[Signing] Requesting biometric confirmation for public address send...`];
         setTimeout(() => {
@@ -399,25 +464,43 @@
   function simulateBiometricUnlock() {
     if (!walletLocked || isBiometricScanning) return;
     isBiometricScanning = true;
+    biometricPercent = 0;
+    biometricStatusText = 'INITIALIZING BIOMETRIC SCAN...';
     walletLogs = [...walletLogs, `[WebAuthn] Initializing credentials request via FaceID/TouchID...`];
 
-    setTimeout(() => {
-      walletLogs = [...walletLogs, `[WebAuthn] User successfully verified. PRF extension returned secret bits.`];
-      
-      setTimeout(() => {
-        walletLogs = [...walletLogs, `[KeyDerivation] Deriving DB Key: PBKDF2 (HMAC-SHA256, 100k iterations)`];
-        
-        setTimeout(() => {
+    const start = Date.now();
+    const duration = 2500;
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(100, Math.floor((elapsed / duration) * 100));
+      biometricPercent = progress;
+
+      if (progress < 25) {
+        biometricStatusText = 'READING BIOMETRIC SEED...';
+      } else if (progress < 50) {
+        if (!walletLogs.includes(`[WebAuthn] User successfully verified. PRF extension returned secret bits.`)) {
+          walletLogs = [...walletLogs, `[WebAuthn] User successfully verified. PRF extension returned secret bits.`];
+        }
+        biometricStatusText = 'VERIFYING SIGNATURE...';
+      } else if (progress < 75) {
+        if (!walletLogs.includes(`[KeyDerivation] Deriving DB Key: PBKDF2 (HMAC-SHA256, 100k iterations)`)) {
+          walletLogs = [...walletLogs, `[KeyDerivation] Deriving DB Key: PBKDF2 (HMAC-SHA256, 100k iterations)`];
+        }
+        biometricStatusText = 'DERIVING PRF KEY (PBKDF2)...';
+      } else if (progress < 100) {
+        if (!walletLogs.includes(`[KeyDerivation] Database key successfully derived.`)) {
           walletLogs = [...walletLogs, `[KeyDerivation] Database key successfully derived.`];
-          
-          setTimeout(() => {
-            walletLogs = [...walletLogs, `[Database] Decrypted local database key. Session restored.`];
-            isBiometricScanning = false;
-            walletLocked = false;
-          }, 600);
-        }, 600);
-      }, 800);
-    }, 1200);
+        }
+        biometricStatusText = 'DECRYPTING STORAGE VAULT...';
+      } else {
+        clearInterval(interval);
+        if (!walletLogs.includes(`[Database] Decrypted local database key. Session restored.`)) {
+          walletLogs = [...walletLogs, `[Database] Decrypted local database key. Session restored.`];
+        }
+        isBiometricScanning = false;
+        walletLocked = false;
+      }
+    }, 50);
   }
 
   function resetWalletDemo() {
@@ -828,15 +911,20 @@
               <div class="absolute inset-0 bg-vault-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4 z-20 animate-fade-in text-center">
                 {#if isBiometricScanning}
                   <!-- Biometric Fingerprint Scan Animation with Laser effect -->
-                  <div class="relative w-18 h-18 mb-4 flex items-center justify-center border border-vault-accent/30 rounded-full p-3 bg-vault-accent/5">
-                    <div class="absolute inset-0 rounded-full border border-vault-accent/30 animate-pulse"></div>
-                    <svg class="w-10 h-10 text-vault-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                  <div class="relative w-24 h-24 mb-4 flex items-center justify-center p-3 select-none">
+                    <!-- Concentric Sci-Fi Rotating Rings -->
+                    <div class="absolute inset-0 rounded-full border border-dashed border-vault-accent/40 animate-hud-rotate"></div>
+                    <div class="absolute inset-2 rounded-full border border-double border-vault-accent/30 animate-hud-rotate-reverse"></div>
+                    <div class="absolute inset-4 rounded-full border border-vault-accent/20 animate-pulse"></div>
+
+                    <svg class="w-10 h-10 text-vault-accent z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 009 11a13.917 13.917 0 00-2.338-7.58l-.05-.09m3.06 18.06A14.12 14.12 0 0112 11c0-2.907-.874-5.612-2.382-7.87m6.764 11.73a14.178 14.178 0 00.562-3.86M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
                     </svg>
                     <!-- Laser Scanner Line -->
-                    <div class="absolute left-0 right-0 h-[2px] bg-vault-accent/80 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-scanner-scan"></div>
+                    <div class="absolute left-2 right-2 h-[2px] bg-vault-accent/80 shadow-[0_0_10px_rgba(16,185,129,0.9)] animate-scanner-scan z-10"></div>
                   </div>
-                  <div class="text-[10px] font-mono text-vault-accent animate-pulse">DERIVING BIOMETRIC KEY (WebAuthn PRF)...</div>
+                  <div class="text-[13px] font-mono text-vault-text font-bold mb-1 select-none">{biometricPercent}%</div>
+                  <div class="text-[9px] font-mono text-vault-accent animate-pulse tracking-wide select-none">{biometricStatusText}</div>
                 {:else}
                   <!-- Fingerprint SVG Icon -->
                   <div class="relative w-18 h-18 mb-3 flex items-center justify-center border border-vault-border/30 rounded-full p-3 bg-vault-surface/40 hover:border-vault-accent/40 transition-colors">
@@ -892,8 +980,27 @@
                 <div class="text-[9px] text-vault-text-secondary font-mono">Secondary: {bscSecondary}</div>
               {/if}
 
+              <!-- Live Asset Price Feeds (Oracle) -->
+              <div class="mt-2.5 pt-2 border-t border-vault-border/10 flex items-center justify-between select-none">
+                <div class="text-[8px] font-mono text-vault-text-dim font-bold uppercase tracking-wider">Oracle Feed</div>
+                <div class="flex items-center gap-1.5 font-mono text-[8px] tracking-tight">
+                  <div class="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-vault-border/15 bg-vault-surface/40 transition-colors {solPriceFlash === 'up' ? 'animate-flash-green' : solPriceFlash === 'down' ? 'animate-flash-red' : ''}">
+                    <span class="text-vault-text-dim">SOL:</span>
+                    <span class={solPriceChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}>${solPrice.toFixed(2)}</span>
+                  </div>
+                  <div class="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-vault-border/15 bg-vault-surface/40 transition-colors {ethPriceFlash === 'up' ? 'animate-flash-green' : ethPriceFlash === 'down' ? 'animate-flash-red' : ''}">
+                    <span class="text-vault-text-dim">ETH:</span>
+                    <span class={ethPriceChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}>${ethPrice.toFixed(2)}</span>
+                  </div>
+                  <div class="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-vault-border/15 bg-vault-surface/40 transition-colors {btcPriceFlash === 'up' ? 'animate-flash-green' : btcPriceFlash === 'down' ? 'animate-flash-red' : ''}">
+                    <span class="text-vault-text-dim">BTC:</span>
+                    <span class={btcPriceChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}>${btcPrice.toFixed(0)}</span>
+                  </div>
+                </div>
+              </div>
+
               <!-- zk-SNARK rails toggle button -->
-              <div class="mt-3 pt-2.5 border-t border-vault-border/20 flex items-center justify-between">
+              <div class="mt-2.5 pt-2 border-t border-vault-border/20 flex items-center justify-between">
                 <span class="text-[9px] font-mono font-bold text-vault-text-secondary flex items-center gap-1">
                   🛡️ Shielded UTXO Proofs
                 </span>
@@ -1166,20 +1273,27 @@
                     <marker id="arrow-active" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                       <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-accent)" />
                     </marker>
+                    <filter id="neon-glow" x="-50%" y="-50%" width="200%" height="200%">
+                      <feGaussianBlur stdDeviation="3" result="blur" />
+                      <feMerge>
+                        <feMergeNode in="blur" />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
                   </defs>
 
                   <!-- Node 1: DH Secret -->
                   <g transform="translate(60, 60)">
-                    <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'dh' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
+                    <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'dh' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" filter={activeRatchetStep === 'dh' ? 'url(#neon-glow)' : ''} />
                     <text x="0" y="3" class="text-[9px] font-mono font-bold {activeRatchetStep === 'dh' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">DH Sec</text>
                   </g>
 
                   <!-- Connection DH -> KDF -->
-                  <line x1="82" y1="60" x2="155" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke={activeRatchetStep === 'dh' || activeRatchetStep === 'kdf' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
+                  <line x1="82" y1="60" x2="155" y2="60" class="transition-all duration-300 stroke-[1.25px] {activeRatchetStep === 'dh' || activeRatchetStep === 'kdf' ? 'flow-line' : ''}" stroke={activeRatchetStep === 'dh' || activeRatchetStep === 'kdf' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
 
                   <!-- Node 2: KDF Node -->
                   <g transform="translate(190, 60)">
-                    <circle cx="0" cy="0" r="24" class="transition-all duration-300 {activeRatchetStep === 'kdf' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
+                    <circle cx="0" cy="0" r="24" class="transition-all duration-300 {activeRatchetStep === 'kdf' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" filter={activeRatchetStep === 'kdf' ? 'url(#neon-glow)' : ''} />
                     <text x="0" y="3" class="text-[10px] font-mono font-bold {activeRatchetStep === 'kdf' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">KDF</text>
                   </g>
 
@@ -1191,16 +1305,16 @@
                   </g>
 
                   <!-- Connection KDF -> Message Key -->
-                  <line x1="214" y1="60" x2="280" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
+                  <line x1="214" y1="60" x2="280" y2="60" class="transition-all duration-300 stroke-[1.25px] {activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'flow-line' : ''}" stroke={activeRatchetStep === 'kdf' || activeRatchetStep === 'encrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeRatchetStep === 'encrypt' ? 'url(#arrow-active)' : 'url(#arrow)'} />
 
                   <!-- Node 4: Message Key -->
                   <g transform="translate(315, 60)">
-                    <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'encrypt' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" />
+                    <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeRatchetStep === 'encrypt' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" filter={activeRatchetStep === 'encrypt' ? 'url(#neon-glow)' : ''} />
                     <text x="0" y="3" class="text-[9px] font-mono font-bold {activeRatchetStep === 'encrypt' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">Msg Key</text>
                   </g>
 
                   <!-- Connection Message Key -> Cipher -->
-                  <line x1="337" y1="60" x2="375" y2="60" class="transition-all duration-300 stroke-[1.25px]" stroke-dasharray="3 3" stroke={activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
+                  <line x1="337" y1="60" x2="375" y2="60" class="transition-all duration-300 stroke-[1.25px] {activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'flow-line' : ''}" stroke-dasharray="3 3" stroke={activeRatchetStep === 'encrypt' || activeRatchetStep === 'decrypt' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
                   <g transform="translate(395, 60)">
                     <text x="0" y="4" class="text-sm select-none transition-transform duration-300 {activeRatchetStep === 'decrypt' ? 'scale-110' : ''}" text-anchor="middle">
                       {#if activeRatchetStep === 'decrypt'}
@@ -1407,6 +1521,13 @@
                 <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Querying liquidity routing...</div>
               {:else if walletStatus === 'signing'}
                 <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Awaiting credential verification...</div>
+              {:else if walletStatus === 'proving'}
+                <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Proving circuit parameters (zk-SNARK)...</div>
+                {#if proverStream}
+                  <div class="text-vault-accent/75 font-mono text-[8.5px] pl-3.5 leading-tight select-none truncate">
+                    {proverStream}
+                  </div>
+                {/if}
               {:else if walletStatus === 'broadcasting'}
                 <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Transferring payload to nodes...</div>
               {/if}
