@@ -880,7 +880,7 @@
             </button>
           </form>
 
-        {:else}
+        {:else if simTab === 'wallet'}
           <!-- 💳 DEFI WALLET SIMULATOR INTERFACE -->
           {#if isShieldedRails}
             <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.03)_0%,transparent_75%)] pointer-events-none z-0"></div>
@@ -1113,7 +1113,7 @@
               {/if}
             </div>
           </div>
-        {:else}
+        {:else if simTab === 'call'}
           <!-- 📞 CALL SIMULATOR INTERFACE -->
           <div class="px-4 py-2.5 border-b border-vault-border/20 bg-vault-surface/40 flex items-center justify-between z-10">
             <div class="flex items-center gap-1.5">
