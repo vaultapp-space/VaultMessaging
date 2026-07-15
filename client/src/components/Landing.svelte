@@ -103,6 +103,8 @@
       if (statsInterval) clearInterval(statsInterval);
       if (jitterInterval) clearInterval(jitterInterval);
       if (priceFeedInterval) clearInterval(priceFeedInterval);
+      if (proverInterval) clearInterval(proverInterval);
+      clearIntervals();
     };
   });
 
