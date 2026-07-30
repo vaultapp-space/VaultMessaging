@@ -621,12 +621,12 @@
   <section class="w-full max-w-4xl mx-auto px-6 pb-4 z-10 reveal-section">
     <div class="relative rounded-2xl overflow-hidden border border-vault-border/20 shadow-2xl glass">
       <img
-        src="/screenshot-desktop.png"
+        src="/landing-app-preview.png"
         alt="Vault Messenger desktop app showing an encrypted conversation and an active E2EE call"
         class="w-full h-auto block"
         loading="lazy"
-        width="1024"
-        height="576"
+        width="2600"
+        height="1553"
       />
       <span class="absolute top-3 left-3 text-[8px] font-mono font-bold uppercase tracking-wider px-2 py-1 rounded bg-vault-black/70 text-vault-accent border border-vault-accent/30 backdrop-blur-sm">
         App Preview
