@@ -94,40 +94,111 @@
   ];
   let callFrequencies = Array.from({ length: 15 }, () => 4);
   let callFrequenciesInterval = null;
+  let callStepInterval = null;
+
+  // Live, steppable WebRTC connection-establishment state (mirrors the
+  // Double Ratchet stepper on the chat tab so the call demo feels equally
+  // "live" instead of dumping all logs at once).
+  let activeCallStep = 'idle'; // 'idle' | 'signaling' | 'ice' | 'dtls' | 'media'
+  let iceMode = 'direct'; // 'direct' | 'relay' — user-toggleable before/after connecting
+  let localCandidate = 'host udp 10.0.0.4:52341';
+  let remoteCandidate = 'srflx udp 203.0.113.9:60122';
+  let srtpCipher = 'SRTP_AES128_CM_HMAC_SHA1_80';
+  let connQuality = 92;
+  let connQualityInterval = null;
+
+  function randomPort() {
+    return 40000 + Math.floor(Math.random() * 20000);
+  }
+
+  function regenerateCandidates() {
+    if (iceMode === 'relay') {
+      localCandidate = `relay udp 13.204.30.174:${randomPort()}`;
+      remoteCandidate = `relay udp 13.204.30.174:${randomPort()}`;
+    } else {
+      localCandidate = `host udp 10.0.0.4:${randomPort()}`;
+      remoteCandidate = `srflx udp 203.0.113.9:${randomPort()}`;
+    }
+  }
+
+  function toggleIceMode() {
+    iceMode = iceMode === 'direct' ? 'relay' : 'direct';
+    regenerateCandidates();
+    if (callState !== 'idle') {
+      callLogs = [
+        ...callLogs,
+        iceMode === 'relay'
+          ? '[ICE] Direct path failed NAT traversal check. Falling back to TURN relay.'
+          : '[ICE] Direct host/srflx candidate pair available. Bypassing TURN relay.'
+      ];
+    }
+  }
 
   function acceptSimCall() {
     callState = 'connected';
+    regenerateCandidates();
+    activeCallStep = 'signaling';
     callLogs = [
       ...callLogs,
       '[X3DH] Active prekeys matched. Negotiating session keys...',
-      '[Double Ratchet] Derived symmetric master call key.',
-      '[DTLS-SRTP] Initializing encrypted media channel...',
-      '[DTLS-SRTP] DTLS handshake complete. Key negotiated: SRTP_AES128_CM_HMAC_SHA1_80',
-      '[WebRTC] Audio stream encrypted. P2P Connection established.'
+      '[Double Ratchet] Derived symmetric master call key.'
     ];
 
-    callInterval = setInterval(() => {
-      callSecondsCount++;
-      const min = String(Math.floor(callSecondsCount / 60)).padStart(2, '0');
-      const sec = String(callSecondsCount % 60).padStart(2, '0');
-      callTimer = `${min}:${sec}`;
-    }, 1000);
+    callStepInterval = setTimeout(() => {
+      activeCallStep = 'ice';
+      callLogs = [
+        ...callLogs,
+        `[ICE] Gathering candidates... selected pair: ${localCandidate} ⇄ ${remoteCandidate}`
+      ];
 
-    callFrequenciesInterval = setInterval(() => {
-      callFrequencies = callFrequencies.map(() => Math.floor(Math.random() * 26) + 4);
-    }, 100);
+      callStepInterval = setTimeout(() => {
+        activeCallStep = 'dtls';
+        callLogs = [
+          ...callLogs,
+          '[DTLS-SRTP] Initializing encrypted media channel...',
+          `[DTLS-SRTP] Handshake complete. Key negotiated: ${srtpCipher}`
+        ];
+
+        callStepInterval = setTimeout(() => {
+          activeCallStep = 'media';
+          callLogs = [
+            ...callLogs,
+            `[WebRTC] Audio stream encrypted. ${iceMode === 'relay' ? 'Relayed via TURN' : 'Direct P2P'} connection established.`
+          ];
+
+          callInterval = setInterval(() => {
+            callSecondsCount++;
+            const min = String(Math.floor(callSecondsCount / 60)).padStart(2, '0');
+            const sec = String(callSecondsCount % 60).padStart(2, '0');
+            callTimer = `${min}:${sec}`;
+          }, 1000);
+
+          callFrequenciesInterval = setInterval(() => {
+            callFrequencies = callFrequencies.map(() => Math.floor(Math.random() * 26) + 4);
+          }, 100);
+
+          connQualityInterval = setInterval(() => {
+            const jitter = Math.floor(Math.random() * 7) - 3;
+            connQuality = Math.max(70, Math.min(99, connQuality + jitter));
+          }, 1500);
+        }, 700);
+      }, 700);
+    }, 600);
   }
 
   function rejectSimCall() {
     callState = 'idle';
+    activeCallStep = 'idle';
     callLogs = [...callLogs, '[WebRTC] Call rejected by user. Session closed.'];
     clearIntervals();
   }
 
   function startSimCall() {
     callState = 'ringing';
+    activeCallStep = 'idle';
     callSecondsCount = 0;
     callTimer = '00:00';
+    connQuality = 92;
     callLogs = [
       '[WebRTC] Listening for signaling packets via WebSocket...',
       '[WebRTC] Received secure SDP offer from Bob.'
@@ -137,6 +208,7 @@
 
   function endSimCall() {
     callState = 'idle';
+    activeCallStep = 'idle';
     callLogs = [...callLogs, '[WebRTC] Connection ended by user. DTLS-SRTP tunnel closed.'];
     clearIntervals();
   }
@@ -144,6 +216,8 @@
   function clearIntervals() {
     if (callInterval) { clearInterval(callInterval); callInterval = null; }
     if (callFrequenciesInterval) { clearInterval(callFrequenciesInterval); callFrequenciesInterval = null; }
+    if (callStepInterval) { clearTimeout(callStepInterval); callStepInterval = null; }
+    if (connQualityInterval) { clearInterval(connQualityInterval); connQualityInterval = null; }
   }
 
   // Double Ratchet Simulator state
@@ -555,9 +629,15 @@
         </button>
         <button
           on:click={() => { simTab = 'call'; startSimCall(); }}
-          class="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all focus:outline-none cursor-pointer {simTab === 'call' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text'}"
+          class="relative px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all focus:outline-none cursor-pointer {simTab === 'call' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text call-tab-attract'}"
         >
           📞 E2EE Call
+          {#if simTab !== 'call'}
+            <span class="absolute -top-1.5 -right-1.5 flex h-2.5 w-2.5">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-vault-accent opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-vault-accent"></span>
+            </span>
+          {/if}
         </button>
       </div>
     </div>
@@ -947,10 +1027,136 @@
 
           {:else}
             <!-- 📞 CALL SIGNALING DETAILS -->
-            <div class="text-[11px] text-vault-text-secondary leading-relaxed mb-4 flex flex-col gap-3">
-              <p class="leading-relaxed text-[10px]">
+            <div class="mb-3 flex items-center justify-between gap-2">
+              <p class="leading-relaxed text-[10px] text-vault-text-secondary flex-1">
                 Voice/video streams are symmetric-key encrypted using a key negotiated over the same Double Ratchet session as your messages, then carried peer-to-peer over WebRTC (DTLS-SRTP) — the server only relays SDP/ICE signaling, never media.
               </p>
+              <button
+                on:click={toggleIceMode}
+                class="shrink-0 text-[8px] font-mono font-bold uppercase px-2 py-1 rounded-lg border transition-all cursor-pointer {iceMode === 'relay' ? 'bg-vault-warning/10 border-vault-warning/30 text-vault-warning' : 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent'}"
+                title="Toggle simulated NAT traversal path"
+              >
+                {iceMode === 'relay' ? '🔀 TURN Relay' : '⇄ Direct P2P'}
+              </button>
+            </div>
+
+            <!-- Step Progress Visualizer -->
+            <div class="grid grid-cols-4 gap-2 text-center text-[9px] font-bold font-mono mb-4 select-none">
+              <div class="p-1.5 rounded-lg border {activeCallStep === 'signaling' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
+                1. SDP OFFER
+              </div>
+              <div class="p-1.5 rounded-lg border {activeCallStep === 'ice' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
+                2. ICE GATHER
+              </div>
+              <div class="p-1.5 rounded-lg border {activeCallStep === 'dtls' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
+                3. DTLS-SRTP
+              </div>
+              <div class="p-1.5 rounded-lg border {activeCallStep === 'media' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}">
+                4. MEDIA FLOW
+              </div>
+            </div>
+
+            <!-- SVG Live Connection Path Diagram -->
+            <div class="mb-4 p-2 bg-vault-surface/20 border border-vault-border/10 rounded-xl flex justify-center items-center relative overflow-hidden select-none">
+              <svg class="w-full max-w-[420px] h-[110px]" viewBox="0 0 450 130">
+                <defs>
+                  <marker id="call-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-border)" />
+                  </marker>
+                  <marker id="call-arrow-active" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-accent)" />
+                  </marker>
+                  <filter id="call-glow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+
+                <!-- Alice node -->
+                <g transform="translate(45, 65)">
+                  <circle cx="0" cy="0" r="20" class="fill-vault-surface stroke-vault-border/50" />
+                  <text x="0" y="4" class="text-[10px] select-none" text-anchor="middle">🎙️</text>
+                  <text x="0" y="32" class="text-[8px] font-mono font-bold fill-vault-text-dim" text-anchor="middle">You</text>
+                </g>
+
+                <!-- Signaling server (top path) -->
+                <line x1="65" y1="55" x2="185" y2="25" class="transition-all duration-300 stroke-[1.25px] {activeCallStep === 'signaling' ? 'flow-line' : ''}" stroke={activeCallStep === 'signaling' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end="url(#call-arrow)" />
+                <line x1="265" y1="25" x2="385" y2="55" class="transition-all duration-300 stroke-[1.25px] {activeCallStep === 'signaling' ? 'flow-line' : ''}" stroke={activeCallStep === 'signaling' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} marker-end={activeCallStep === 'signaling' ? 'url(#call-arrow-active)' : 'url(#call-arrow)'} />
+                <g transform="translate(225, 20)">
+                  <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeCallStep === 'signaling' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'}" filter={activeCallStep === 'signaling' ? 'url(#call-glow)' : ''} />
+                  <text x="0" y="3" class="text-[7px] font-mono font-bold {activeCallStep === 'signaling' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">Signal</text>
+                </g>
+
+                <!-- STUN/TURN node (only relevant mid-path) -->
+                <g transform="translate(225, 90)">
+                  <circle cx="0" cy="0" r="22" class="transition-all duration-300 {activeCallStep === 'ice' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2 animate-pulse' : 'fill-vault-surface stroke-vault-border/50'} {iceMode === 'relay' ? '' : 'opacity-40'}" filter={activeCallStep === 'ice' ? 'url(#call-glow)' : ''} />
+                  <text x="0" y="3" class="text-[7px] font-mono font-bold {activeCallStep === 'ice' ? 'fill-vault-accent' : 'fill-vault-text'}" text-anchor="middle">{iceMode === 'relay' ? 'TURN' : 'STUN'}</text>
+                </g>
+                <line x1="65" y1="70" x2="203" y2="88" class="transition-all duration-300 stroke-[1.25px] {activeCallStep === 'ice' ? 'flow-line' : ''}" stroke-dasharray="3 3" stroke={activeCallStep === 'ice' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
+                <line x1="247" y1="88" x2="385" y2="70" class="transition-all duration-300 stroke-[1.25px] {activeCallStep === 'ice' ? 'flow-line' : ''}" stroke-dasharray="3 3" stroke={activeCallStep === 'ice' ? 'var(--color-vault-accent)' : 'var(--color-vault-border)'} />
+
+                <!-- Direct P2P path (highlighted once media flowing, only when direct) -->
+                <line x1="65" y1="68" x2="385" y2="68" class="transition-all duration-500 stroke-[1.5px] {activeCallStep === 'media' && iceMode === 'direct' ? 'flow-line' : ''}" stroke={activeCallStep === 'media' && iceMode === 'direct' ? 'var(--color-vault-accent)' : 'transparent'} marker-end={activeCallStep === 'media' && iceMode === 'direct' ? 'url(#call-arrow-active)' : ''} />
+
+                <!-- Bob node -->
+                <g transform="translate(405, 65)">
+                  <circle cx="0" cy="0" r="20" class="transition-all duration-300 {activeCallStep === 'media' ? 'fill-vault-accent/15 stroke-vault-accent stroke-2' : 'fill-vault-surface stroke-vault-border/50'}" />
+                  <text x="0" y="4" class="text-[10px] select-none" text-anchor="middle">👤</text>
+                  <text x="0" y="32" class="text-[8px] font-mono font-bold fill-vault-text-dim" text-anchor="middle">Bob</text>
+                </g>
+              </svg>
+            </div>
+
+            <!-- Live ICE / SRTP state grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 text-[10px] font-mono select-all">
+              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/ice1">
+                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                  LOCAL ICE CANDIDATE
+                  <button
+                    on:click={() => { navigator.clipboard.writeText(localCandidate); alert('Local ICE candidate copied to clipboard!'); }}
+                    class="text-[7px] text-vault-text-dim group-hover/ice1:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                  >
+                    Copy
+                  </button>
+                </span>
+                <span class="text-vault-text-secondary truncate pr-6">{localCandidate}</span>
+              </div>
+              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/ice2">
+                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                  REMOTE ICE CANDIDATE
+                  <button
+                    on:click={() => { navigator.clipboard.writeText(remoteCandidate); alert('Remote ICE candidate copied to clipboard!'); }}
+                    class="text-[7px] text-vault-text-dim group-hover/ice2:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                  >
+                    Copy
+                  </button>
+                </span>
+                <span class="text-vault-text-secondary truncate pr-6">{remoteCandidate}</span>
+              </div>
+              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5 relative group/ice3">
+                <span class="text-vault-text-dim text-[8px] font-semibold flex items-center justify-between">
+                  SRTP CIPHER
+                  <button
+                    on:click={() => { navigator.clipboard.writeText(srtpCipher); alert('SRTP cipher copied to clipboard!'); }}
+                    class="text-[7px] text-vault-text-dim group-hover/ice3:text-vault-accent hover:underline cursor-pointer bg-transparent border-none p-0 focus:outline-none"
+                  >
+                    Copy
+                  </button>
+                </span>
+                <span class="text-vault-text-secondary truncate pr-6 transition-colors duration-300 {activeCallStep === 'dtls' || activeCallStep === 'media' ? 'text-vault-accent text-glow-accent' : ''}">{srtpCipher}</span>
+              </div>
+              <div class="p-2.5 bg-vault-surface/40 border border-vault-border/20 rounded-xl flex flex-col gap-0.5">
+                <span class="text-vault-text-dim text-[8px] font-semibold">LINK QUALITY</span>
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 h-1.5 bg-vault-border/30 rounded-full overflow-hidden">
+                    <div class="h-full bg-vault-accent transition-all duration-700 rounded-full" style="width: {activeCallStep === 'media' ? connQuality : 0}%"></div>
+                  </div>
+                  <span class="text-vault-text-secondary text-[9px] w-8 text-right">{activeCallStep === 'media' ? connQuality : '--'}%</span>
+                </div>
+              </div>
             </div>
           {/if}
         </div>
@@ -1147,6 +1353,16 @@
   .btn-glow-accent:hover:not(:disabled) {
     box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
     transform: translateY(-0.5px);
+  }
+
+  /* Subtle draw-the-eye pulse on the inactive Call tab so visitors notice
+     there's a second, equally-built demo behind the default Chat tab. */
+  :global(.call-tab-attract) {
+    animation: callTabAttract 2.6s ease-in-out infinite;
+  }
+  @keyframes callTabAttract {
+    0%, 100% { box-shadow: 0 0 0 rgba(16, 185, 129, 0); }
+    50% { box-shadow: 0 0 10px rgba(16, 185, 129, 0.18); }
   }
 
   /* Radar sweep rotating line */
