@@ -10,6 +10,7 @@
   import Auth from './components/Auth.svelte';
   import Chat from './components/Chat.svelte';
   import Landing from './components/Landing.svelte';
+  import VaultCoin from './components/VaultCoin.svelte';
 
   // Initialize theme from localStorage immediately (no flicker)
   const initialTheme = localStorage.getItem('vault_theme') || 'dark';
@@ -207,6 +208,10 @@
       {:else if $activeView === 'auth'}
         <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
           <Auth />
+        </div>
+      {:else if $activeView === 'vaultcoin'}
+        <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
+          <VaultCoin />
         </div>
       {:else}
         <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>

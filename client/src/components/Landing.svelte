@@ -444,9 +444,15 @@
       >BETA</span>
     </div>
 
-    <div>
-      <button 
-        on:click={() => activeView.set('auth')} 
+    <div class="flex items-center gap-2">
+      <button
+        on:click={() => activeView.set('vaultcoin')}
+        class="py-2 px-4 text-xs text-vault-text-dim hover:text-vault-text font-bold rounded-xl focus:outline-none transition-all cursor-pointer border border-vault-border/30 hover:border-vault-border/60"
+      >
+        Vault Coin
+      </button>
+      <button
+        on:click={() => activeView.set('auth')}
         class="py-2 px-5 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md btn-glow"
       >
         Launch Web App
