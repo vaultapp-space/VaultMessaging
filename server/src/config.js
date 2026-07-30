@@ -44,6 +44,9 @@ if (process.env.NODE_ENV === 'production') {
   if (config.jwtSecret === 'vault-dev-secret-change-in-production') {
     throw new Error('FATAL: JWT_SECRET must be set in production. Do not use the default dev secret.');
   }
+  if (config.turnSecret === 'vaultturnsecret') {
+    throw new Error('FATAL: TURN_SECRET must be set in production. Do not use the default dev secret.');
+  }
   if (config.clientOrigin.startsWith('http://')) {
     console.warn('[SECURITY] CLIENT_ORIGIN is using HTTP in production. HTTPS is strongly recommended.');
   }

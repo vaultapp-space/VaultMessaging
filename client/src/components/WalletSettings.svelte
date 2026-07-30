@@ -1,27 +1,13 @@
 <script>
   import { onMount } from 'svelte';
-  import { currentUser, loginPassword, walletState, walletBioEnabled } from '../lib/stores/session.js';
-  import { saveEncryptedWallet, loadEncryptedWallet, clearEncryptedWallet, saveEncryptedBioWallet, loadEncryptedBioWallet, clearEncryptedBioWallet } from '../lib/db.js';
-  import { 
-    generateNewMnemonic, 
-    isValidMnemonic, 
-    deriveAddressesFromMnemonic, 
-    encryptWallet, 
-    decryptWallet, 
-    generatePDFBackup,
-    getEVMBalance,
-    getERC20Balance,
-    getSolanaBalance,
-    getSolanaTokenBalance,
-    getBitcoinBalance,
-    sendEVMTransaction,
-    sendSolanaTransaction,
-    ERC20_TOKENS,
-    SPL_TOKENS,
-    encryptWalletWithBioKey,
-    decryptWalletWithBioKey
-  } from '../lib/crypto/wallet.js';
-  import { isPrfSupported, registerBiometric, authenticateBiometric } from '../lib/crypto/webauthn.js';
+  import { currentUser, walletState, walletBioEnabled } from '../lib/stores/session.js';
+  import { clearEncryptedWallet, clearEncryptedBioWallet } from '../lib/db.js';
+  import { isPrfSupported } from '../lib/crypto/webauthn.js';
+
+  // Wallet crypto/blockchain functionality has been removed pending a rebuild.
+  // Local placeholder constants preserve UI references without pulling in real token data.
+  const ERC20_TOKENS = {};
+  const SPL_TOKENS = {};
 
   let step = 'loading'; // 'loading' | 'welcome' | 'create_show' | 'create_verify' | 'import' | 'dashboard'
   let encryptedWalletData = null;
@@ -151,41 +137,6 @@
     polygon: 'POL',
     'solana-mainnet': 'SOL',
     bitcoin: 'BTC'
-  };
-
-  const TOKEN_CONTRACTS = {
-    ethereum: {
-      USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-      USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-      LINK: '0x514910771AF9Ca656af840dff83E8264EcF986CA',
-      UNI: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984'
-    },
-    base: {
-      USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bda02913',
-      DEGEN: '0x4ed4E862860beD51a9570b96d89Af5E1B0Efefed',
-      AERO: '0x940181a94A35A4569E4529A3CDfB74e38FD98631'
-    },
-    bsc: {
-      USDC: '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d',
-      CAKE: '0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82'
-    },
-    arbitrum: {
-      USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-      ARB: '0x912CE59144191C1204E64559FE8253a0e49E6548'
-    },
-    optimism: {
-      USDC: '0x0b2C639c533813F4Aa9d7837CAf62653d097Ff85',
-      OP: '0x4200000000000000000000000000000000000042'
-    },
-    polygon: {
-      USDC: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
-      QUICK: '0xB5C4D6197054707a431548598B6ecCc2A60d625D'
-    },
-    'solana-mainnet': {
-      USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-      BONK: 'DezXAZ8z7PnrnRJjz3wX4dxBS42eArRn6YW6RJxxRBMP',
-      WIF: 'EKpQGSJtjMFqKZ9KQGWzeZqDDB7LYv3ct9KuJ24C1gPP'
-    }
   };
 
   // Send filters
@@ -427,11 +378,6 @@
     localStorage.setItem(`vault_tx_history_${$currentUser.id}`, JSON.stringify(txHistory));
   }
 
-  function recordTransaction(tx) {
-    txHistory = [{ ...tx, timestamp: Date.now() }, ...txHistory].slice(0, 100);
-    saveTxHistory();
-  }
-
   function clearTxHistory() {
     txHistory = [];
     saveTxHistory();
@@ -513,88 +459,29 @@
       }];
     }
 
-    try {
-      encryptedWalletData = await loadEncryptedWallet($currentUser.id);
-      if (encryptedWalletData) {
-        // Try to decrypt automatically if login password is in memory
-        if ($loginPassword) {
-          const mnemonic = await decryptWallet(encryptedWalletData, $loginPassword);
-          const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(mnemonic);
-          walletState.set({ mnemonic, evmAddress, solAddress, btcAddress });
-          step = 'dashboard';
-        } else if (biometricActive) {
-          // Attempt biometric unlock silently
-          await handleBiometricUnlock();
-        } else {
-          step = 'welcome';
-        }
-      } else {
-        step = 'welcome';
-      }
-    } catch (err) {
-      console.error('Failed to load wallet:', err);
-      step = 'welcome';
-    }
+    // Wallet decryption/derivation has been removed pending a rebuild — always land on welcome.
+    step = 'welcome';
   });
 
   async function handleBiometricUnlock() {
-    if (!$currentUser) return;
-    const credId = localStorage.getItem(`vault_wallet_bio_cred_id_${$currentUser.id}`);
-    const salt = $currentUser.salt;
-    
-    if (!credId || !salt) {
-      step = 'welcome';
-      return;
-    }
-
-    try {
-      step = 'loading';
-      const bioWalletData = await loadEncryptedBioWallet($currentUser.id);
-      if (!bioWalletData) {
-        throw new Error('Biometric credentials data missing locally.');
-      }
-
-      const key = await authenticateBiometric(credId, salt);
-      const mnemonic = await decryptWalletWithBioKey(bioWalletData, key);
-
-      const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(mnemonic);
-      walletState.set({ mnemonic, evmAddress, solAddress, btcAddress });
-      step = 'dashboard';
-    } catch (err) {
-      console.error('Biometric unlock failed:', err);
-      step = 'welcome';
-    }
+    // Wallet functionality is coming soon — biometric unlock is not yet wired to a real wallet.
+    alert('Wallet functionality is coming soon.');
+    step = 'welcome';
   }
 
   async function handleUnlockWithAccountPassword() {
-    const password = prompt('Enter your Vault account password to unlock your wallet:');
-    if (!password) return;
-    try {
-      if (encryptedWalletData) {
-        const mnemonic = await decryptWallet(encryptedWalletData, password);
-        const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(mnemonic);
-        walletState.set({ mnemonic, evmAddress, solAddress, btcAddress });
-        step = 'dashboard';
-      } else {
-        alert('No wallet data found to decrypt.');
-      }
-    } catch (err) {
-      alert('Incorrect password. Wallet decryption failed.');
-    }
+    // Wallet functionality is coming soon — password unlock is not yet wired to a real wallet.
+    alert('Wallet functionality is coming soon.');
   }
 
   async function startWalletCreation() {
-    generatedMnemonic = generateNewMnemonic();
+    // Wallet functionality is coming soon — no real mnemonic is generated or derived.
+    generatedMnemonic = '';
+    pendingEvmAddress = '';
+    pendingSolAddress = '';
     blurredMnemonic = true;
     copiedMnemonic = false;
     step = 'create_show';
-    try {
-      const { evmAddress, solAddress } = await deriveAddressesFromMnemonic(generatedMnemonic);
-      pendingEvmAddress = evmAddress;
-      pendingSolAddress = solAddress;
-    } catch (err) {
-      console.error('Failed to pre-derive addresses:', err);
-    }
   }
 
   function copyMnemonicToClipboard(text) {
@@ -604,23 +491,13 @@
   }
 
   function downloadBackupPDF(mnemonic, evm, sol) {
-    const blob = generatePDFBackup($currentUser?.username || 'user', mnemonic, evm, sol);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `vault_wallet_backup_${$currentUser?.username || 'user'}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Wallet functionality is coming soon — no real backup can be generated.
+    alert('Wallet functionality is coming soon.');
   }
 
   async function goToVerification() {
-    const words = generatedMnemonic.split(' ');
-    shuffledWords = [...words].sort(() => Math.random() - 0.5);
-    selectedWords = [];
-    verificationError = '';
-    step = 'create_verify';
+    // Wallet functionality is coming soon — no real mnemonic exists to verify.
+    alert('Wallet functionality is coming soon.');
   }
 
   function selectWord(word, index) {
@@ -636,29 +513,8 @@
   }
 
   async function completeWalletSetup() {
-    const candidateMnemonic = selectedWords.join(' ');
-    if (candidateMnemonic !== generatedMnemonic) {
-      verificationError = 'Incorrect word order. Please try again.';
-      return;
-    }
-
-    let password = $loginPassword;
-    if (!password) {
-      password = prompt('Set encryption: Confirm your Vault account password to secure your wallet:');
-      if (!password) return;
-    }
-
-    try {
-      const encrypted = await encryptWallet(generatedMnemonic, password);
-      await saveEncryptedWallet($currentUser.id, encrypted);
-      const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(generatedMnemonic);
-      walletState.set({ mnemonic: generatedMnemonic, evmAddress, solAddress, btcAddress });
-      encryptedWalletData = encrypted;
-      step = 'dashboard';
-    } catch (err) {
-      console.error('Setup failed:', err);
-      alert('Failed to securely save your wallet: ' + err.message);
-    }
+    // Wallet functionality is coming soon — nothing can be encrypted or saved yet.
+    verificationError = 'Wallet functionality is coming soon.';
   }
 
   function startWalletImport() {
@@ -668,68 +524,18 @@
   }
 
   async function handleImportWallet() {
-    const cleaned = importInput.trim().toLowerCase().replace(/\s+/g, ' ');
-    if (!isValidMnemonic(cleaned)) {
-      importError = 'Invalid mnemonic phrase. Check spelling and length (must be 12 words).';
-      return;
-    }
-
-    let password = $loginPassword;
-    if (!password) {
-      password = prompt('Confirm your Vault account password to encrypt your imported wallet:');
-      if (!password) return;
-    }
-
-    try {
-      const encrypted = await encryptWallet(cleaned, password);
-      await saveEncryptedWallet($currentUser.id, encrypted);
-      const { evmAddress, solAddress, btcAddress } = await deriveAddressesFromMnemonic(cleaned);
-      walletState.set({ mnemonic: cleaned, evmAddress, solAddress, btcAddress });
-      encryptedWalletData = encrypted;
-      step = 'dashboard';
-    } catch (err) {
-      console.error('Import failed:', err);
-      importError = 'Import failed: ' + err.message;
-    }
+    // Wallet functionality is coming soon — imports are not yet processed.
+    importError = 'Wallet import is coming soon.';
   }
 
   async function handleToggleBiometrics(e) {
     const enabled = e.target.checked;
     if (enabled) {
-      let password = $loginPassword;
-      if (!password) {
-        password = prompt('Enter your Vault account password to authorize biometric setup:');
-        if (!password) {
-          e.target.checked = false;
-          return;
-        }
-      }
-      
-      try {
-        if (!encryptedWalletData) {
-          throw new Error('No active wallet configuration found to bind biometrics.');
-        }
-        
-        const mnemonic = await decryptWallet(encryptedWalletData, password);
-        const result = await registerBiometric($currentUser.username, $currentUser.salt);
-        const bioKey = result.prfKey;
-        
-        const encryptedBioWallet = await encryptWalletWithBioKey(mnemonic, bioKey);
-        await saveEncryptedBioWallet($currentUser.id, encryptedBioWallet);
-        
-        localStorage.setItem(`vault_wallet_bio_enabled_${$currentUser.id}`, 'true');
-        localStorage.setItem(`vault_wallet_bio_cred_id_${$currentUser.id}`, result.credentialId);
-        
-        biometricActive = true;
-        walletBioEnabled.set(true);
-        alert('Biometric Wallet Unlock enabled successfully!');
-      } catch (err) {
-        console.error('Biometric registration failed:', err);
-        alert('Failed to register biometrics: ' + err.message);
-        e.target.checked = false;
-        biometricActive = false;
-        walletBioEnabled.set(false);
-      }
+      // Wallet functionality is coming soon — biometric setup is not yet wired to a real wallet.
+      alert('Wallet functionality is coming soon.');
+      e.target.checked = false;
+      biometricActive = false;
+      walletBioEnabled.set(false);
     } else {
       try {
         await clearEncryptedBioWallet($currentUser.id);
@@ -864,87 +670,9 @@
 
   async function handleExecuteSwap() {
     if (!swapFromAmount || !routeDetails) return;
-    
-    let password = $loginPassword;
-    let bioKey = null;
-    
-    if (biometricActive) {
-      swapStatus = 'signing';
-      try {
-        const credId = localStorage.getItem(`vault_wallet_bio_cred_id_${$currentUser.id}`);
-        const salt = $currentUser.salt;
-        bioKey = await authenticateBiometric(credId, salt);
-      } catch (err) {
-        console.error('Biometric authentication failed:', err);
-        swapStatus = 'error';
-        swapError = 'Biometric unlock cancelled or failed.';
-        return;
-      }
-    } else if (!password) {
-      password = prompt('Enter your Vault account password to authorize and sign swap:');
-      if (!password) return;
-    }
-
-    swapStatus = 'signing';
-    swapError = '';
-    swapTxHash = '';
-
-    try {
-      let mnemonic = '';
-      if (biometricActive && bioKey) {
-        const bioWalletData = await loadEncryptedBioWallet($currentUser.id);
-        mnemonic = await decryptWalletWithBioKey(bioWalletData, bioKey);
-      } else {
-        mnemonic = await decryptWallet(encryptedWalletData, password);
-      }
-
-      swapStatus = 'broadcasting';
-      
-      let hash = '';
-      if (swapFromAsset === 'ETH') {
-        hash = await sendEVMTransaction(mnemonic, $walletState.evmAddress, '0.0001', null, 'base');
-      } else if (swapFromAsset === 'USDC-Base') {
-        hash = await sendEVMTransaction(mnemonic, $walletState.evmAddress, '0.001', ERC20_TOKENS.base, 'base');
-      } else if (swapFromAsset === 'SOL') {
-        hash = await sendSolanaTransaction(mnemonic, $walletState.solAddress, '0.001');
-      } else if (swapFromAsset === 'USDC-Solana') {
-        hash = await sendSolanaTransaction(mnemonic, $walletState.solAddress, '0.01', SPL_TOKENS.USDC);
-      }
-
-      swapTxHash = hash;
-      swapStatus = 'success';
-      recordTransaction({
-        type: 'swap',
-        asset: `${swapFromAsset.split('-')[0]} → ${swapToAsset.split('-')[0]}`,
-        amount: swapFromAmount,
-        to: $walletState.evmAddress,
-        from: $walletState.evmAddress,
-        hash: hash,
-        chain: swapFromAsset.includes('Sol') ? 'solana-mainnet' : 'base',
-        status: 'success'
-      });
-      
-      if (swapFromAsset === 'ETH') {
-        baseMainnetBalance = (parseFloat(baseMainnetBalance) - parseFloat(swapFromAmount)).toFixed(4);
-        baseUsdcBalance = (parseFloat(baseUsdcBalance) + parseFloat(swapToAmount)).toFixed(2);
-      } else if (swapFromAsset === 'USDC-Base') {
-        baseUsdcBalance = (parseFloat(baseUsdcBalance) - parseFloat(swapFromAmount)).toFixed(2);
-        baseMainnetBalance = (parseFloat(baseMainnetBalance) + parseFloat(swapToAmount)).toFixed(4);
-      } else if (swapFromAsset === 'SOL') {
-        solBalance = (parseFloat(solBalance) - parseFloat(swapFromAmount)).toFixed(4);
-        solUsdcBalance = (parseFloat(solUsdcBalance) + parseFloat(swapToAmount)).toFixed(2);
-      } else if (swapFromAsset === 'USDC-Solana') {
-        solUsdcBalance = (parseFloat(solUsdcBalance) - parseFloat(swapFromAmount)).toFixed(2);
-        solBalance = (parseFloat(solBalance) + parseFloat(swapToAmount)).toFixed(4);
-      }
-
-      setTimeout(fetchBalances, 3000);
-      
-    } catch (err) {
-      console.error('Swap failed:', err);
-      swapError = err.message || 'Transaction swap failed';
-      swapStatus = 'error';
-    }
+    // Wallet functionality is coming soon — swaps are not yet executed.
+    swapStatus = 'error';
+    swapError = 'Wallet functionality is coming soon.';
   }
 
   function copyAddress(address, type) {
@@ -961,82 +689,8 @@
   }
 
   async function fetchBalances() {
-    if (!$walletState) return;
-    isFetchingBalances = true;
-    try {
-      const [
-        ethMainnet,
-        ethUsdc,
-        ethBase,
-        baseUsdc,
-        ethArb,
-        arbUsdc,
-        ethOp,
-        opUsdc,
-        matic,
-        polygonUsdc,
-        bscMainnet,
-        bscUsdc,
-        sol,
-        solUsdc,
-        btc
-      ] = await Promise.all([
-        getEVMBalance($walletState.evmAddress, 'ethereum').catch(() => '0.00'),
-        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.ethereum, 'ethereum').catch(() => '0.00'),
-        getEVMBalance($walletState.evmAddress, 'base').catch(() => '0.00'),
-        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.base, 'base').catch(() => '0.00'),
-        getEVMBalance($walletState.evmAddress, 'arbitrum').catch(() => '0.00'),
-        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.arbitrum, 'arbitrum').catch(() => '0.00'),
-        getEVMBalance($walletState.evmAddress, 'optimism').catch(() => '0.00'),
-        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.optimism, 'optimism').catch(() => '0.00'),
-        getEVMBalance($walletState.evmAddress, 'polygon').catch(() => '0.00'),
-        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.polygon, 'polygon').catch(() => '0.00'),
-        getEVMBalance($walletState.evmAddress, 'bsc').catch(() => '0.00'),
-        getERC20Balance($walletState.evmAddress, ERC20_TOKENS.bsc, 'bsc').catch(() => '0.00'),
-        getSolanaBalance($walletState.solAddress, true).catch(() => '0.00'),
-        getSolanaTokenBalance($walletState.solAddress, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', true).catch(() => '0.00'), // Live Mainnet USDC
-        getBitcoinBalance($walletState.btcAddress).catch(() => '0.00000000')
-      ]);
-      ethMainnetBalance = ethMainnet;
-      ethUsdcBalance = ethUsdc;
-      baseMainnetBalance = ethBase;
-      baseUsdcBalance = baseUsdc;
-      arbMainnetBalance = ethArb;
-      arbUsdcBalance = arbUsdc;
-      opMainnetBalance = ethOp;
-      opUsdcBalance = opUsdc;
-      maticBalance = matic;
-      polygonUsdcBalance = polygonUsdc;
-      bscMainnetBalance = bscMainnet;
-      bscUsdcBalance = bscUsdc;
-      solBalance = sol;
-      solUsdcBalance = solUsdc;
-      btcBalance = btc;
-
-      // Push portfolio snapshot after balances update
-      const currentTotal = (
-        (parseFloat(ethMainnet) || 0) * 3120 +
-        (parseFloat(ethUsdc) || 0) * 1.0 +
-        (parseFloat(ethBase) || 0) * 3120 +
-        (parseFloat(baseUsdc) || 0) * 1.0 +
-        (parseFloat(ethArb) || 0) * 3120 +
-        (parseFloat(arbUsdc) || 0) * 1.0 +
-        (parseFloat(ethOp) || 0) * 3120 +
-        (parseFloat(opUsdc) || 0) * 1.0 +
-        (parseFloat(matic) || 0) * 0.42 +
-        (parseFloat(polygonUsdc) || 0) * 1.0 +
-        (parseFloat(bscMainnet) || 0) * 580.0 +
-        (parseFloat(bscUsdc) || 0) * 1.0 +
-        (parseFloat(sol) || 0) * 145.20 +
-        (parseFloat(solUsdc) || 0) * 1.0 +
-        (parseFloat(btc) || 0) * 64250
-      );
-      pushPortfolioSnapshot(currentTotal);
-    } catch (err) {
-      console.error('Failed to fetch balances:', err);
-    } finally {
-      isFetchingBalances = false;
-    }
+    // Wallet functionality is coming soon — balances are not fetched; defaults remain displayed.
+    return;
   }
 
   // WalletConnect State
@@ -1113,50 +767,8 @@
 
   async function handleApproveSignRequest() {
     if (!pendingWCSignRequest) return;
-    
-    let password = $loginPassword;
-    let bioKey = null;
-
-    if (biometricActive) {
-      wcSignStatus = 'signing';
-      try {
-        const credId = localStorage.getItem(`vault_wallet_bio_cred_id_${$currentUser.id}`);
-        const salt = $currentUser.salt;
-        bioKey = await authenticateBiometric(credId, salt);
-      } catch (err) {
-        console.error('Biometric authentication failed:', err);
-        wcSignStatus = 'error';
-        return;
-      }
-    } else if (!password) {
-      password = prompt('Enter your Vault account password to sign this dApp message:');
-      if (!password) return;
-    }
-
-    wcSignStatus = 'signing';
-    try {
-      // Cryptographically verify authorization key
-      if (biometricActive && bioKey) {
-        const bioWalletData = await loadEncryptedBioWallet($currentUser.id);
-        if (!bioWalletData) {
-          throw new Error('Biometric credentials data missing locally.');
-        }
-        await decryptWalletWithBioKey(bioWalletData, bioKey);
-      } else {
-        await decryptWallet(encryptedWalletData, password);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 800));
-      wcSignStatus = 'success';
-      setTimeout(() => {
-        wcSignPrompt = false;
-        pendingWCSignRequest = null;
-        wcSignStatus = 'idle';
-      }, 1500);
-    } catch (err) {
-      console.error('Signature authorization failed:', err);
-      wcSignStatus = 'error';
-    }
+    // Wallet functionality is coming soon — dApp message signing is not yet wired to a real wallet.
+    wcSignStatus = 'error';
   }
   async function handleSendCrypto() {
     if (!sendRecipient || !sendAmount || !sendAssetObject) return;
@@ -1196,51 +808,9 @@
       }
     }
     
-    // Get password to decrypt mnemonic
-    let password = $loginPassword;
-    if (!password) {
-      password = prompt('Enter your Vault account password to authorize and sign transaction:');
-      if (!password) return;
-    }
-    
-    sendStatus = 'signing';
-    sendError = '';
-    txHash = '';
-    
-    try {
-      const mnemonic = await decryptWallet(encryptedWalletData, password);
-      sendStatus = 'broadcasting';
-      
-      let hash = '';
-      if (sendAssetObject.chainId === 'bitcoin') {
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        hash = '0x' + Array.from({length: 64}, () => Math.floor(Math.random()*16).toString(16)).join('');
-      } else if (sendAssetObject.chainId === 'solana-mainnet') {
-        const tokenMint = TOKEN_CONTRACTS['solana-mainnet'][sendAssetObject.symbol] || null;
-        hash = await sendSolanaTransaction(mnemonic, sendRecipient, sendAmount, tokenMint, true);
-      } else { // EVM
-        const tokenMint = TOKEN_CONTRACTS[sendAssetObject.chainId]?.[sendAssetObject.symbol] || null;
-        hash = await sendEVMTransaction(mnemonic, sendRecipient, sendAmount, tokenMint, sendAssetObject.chainId);
-      }
-      
-      txHash = hash;
-      sendStatus = 'success';
-      recordTransaction({
-        type: 'send',
-        asset: sendAssetObject.symbol,
-        amount: sendAmount,
-        to: sendRecipient,
-        from: sendAssetObject.chainId === 'solana-mainnet' ? $walletState.solAddress : (sendAssetObject.chainId === 'bitcoin' ? $walletState.btcAddress : $walletState.evmAddress),
-        hash: hash,
-        chain: sendAssetObject.chainId,
-        status: 'success'
-      });
-      setTimeout(fetchBalances, 2000);
-    } catch (err) {
-      console.error('Transfer failed:', err);
-      sendError = err.message || 'Transaction failed';
-      sendStatus = 'error';
-    }
+    // Wallet functionality is coming soon — transactions are not yet signed or broadcast.
+    sendStatus = 'error';
+    sendError = 'Wallet functionality is coming soon.';
   }
 
   $: if ($walletState && step === 'dashboard') {

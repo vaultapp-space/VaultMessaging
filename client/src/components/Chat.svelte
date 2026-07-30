@@ -11,6 +11,7 @@
   import { playOutgoingCallSound, playIncomingCallSound, stopCallSounds } from '../lib/callSounds.js';
   import ChatSidebar from './ChatSidebar.svelte';
   import ChatView from './ChatView.svelte';
+  import MiniCallBar from './MiniCallBar.svelte';
 
   let unsubscribers = [];
   let ping = 32;
@@ -417,6 +418,11 @@
     </div>
   {/if}
 </div>
+
+<!-- Mini call bar: shown when a call is live but the user has navigated
+     away from that peer's chat (ChatView renders the full call UI itself
+     when it IS the active peer's chat). -->
+<MiniCallBar />
 
 <!-- Global Incoming Call Popup Overlay -->
 {#if $activeCall && $activeCall.status === 'incoming'}

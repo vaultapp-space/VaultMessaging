@@ -3,10 +3,7 @@
   import { decryptFile, decryptChunk } from '../lib/crypto/keys.js';
   import { fetchAttachment, fetchAttachmentChunk } from '../lib/api/http.js';
   import { getAvatarGradient } from '../lib/avatar.js';
-  import { getEVMTransactionStatus, getSolanaTransactionStatus, releaseEscrowAssets, decryptWallet, decryptWalletWithBioKey, ERC20_TOKENS, SPL_TOKENS } from '../lib/crypto/wallet.js';
-  import { activePaymentDetails, currentUser, loginPassword, walletBioEnabled, walletState } from '../lib/stores/session.js';
-  import { loadEncryptedBioWallet, loadEncryptedWallet } from '../lib/db.js';
-  import { authenticateBiometric } from '../lib/crypto/webauthn.js';
+  import { activePaymentDetails, currentUser, walletState } from '../lib/stores/session.js';
 
   export let message;
   export let isOwn = false;
@@ -458,80 +455,15 @@
 
   async function handleReleaseEscrow() {
     if (!escrowData || isReleasingEscrow || escrowStatus !== 'active') return;
-    
-    let password = $loginPassword;
-    let bioKey = null;
-
-    if ($walletBioEnabled) {
-      isReleasingEscrow = true;
-      try {
-        const credId = localStorage.getItem(`vault_wallet_bio_cred_id_${$currentUser.id}`);
-        const salt = $currentUser.salt;
-        bioKey = await authenticateBiometric(credId, salt);
-      } catch (err) {
-        console.error('Biometric authentication failed:', err);
-        isReleasingEscrow = false;
-        return;
-      }
-    } else if (!password) {
-      password = prompt('Enter your Vault account password to authorize and release escrow:');
-      if (!password) return;
-    }
-
-    isReleasingEscrow = true;
-    try {
-      let mnemonic = '';
-      if ($walletBioEnabled && bioKey) {
-        const bioWalletData = await loadEncryptedBioWallet($currentUser.id);
-        mnemonic = await decryptWalletWithBioKey(bioWalletData, bioKey);
-      } else {
-        const encryptedWallet = await loadEncryptedWallet($currentUser.id);
-        if (!encryptedWallet) {
-          throw new Error('No wallet backup found on this device.');
-        }
-        mnemonic = await decryptWallet(encryptedWallet, password);
-      }
-
-      const hash = await releaseEscrowAssets(
-        mnemonic,
-        escrowData.amount,
-        escrowData.tokenSymbol,
-        escrowData.network,
-        escrowData.sellerAddress
-      );
-
-      escrowTxHash = hash;
-      escrowStatus = 'released';
-      escrowData.status = 'released';
-      message.text = JSON.stringify(escrowData);
-    } catch (err) {
-      console.error('Release escrow failed:', err);
-      alert('Release failed: ' + err.message);
-    } finally {
-      isReleasingEscrow = false;
-    }
+    // Wallet functionality is coming soon — escrow release is not yet wired to a real wallet.
+    alert('Wallet functionality is coming soon.');
   }
 
   async function pollTransactionStatus() {
-    if (!paymentData || paymentStatus !== 'pending') return;
-    try {
-      let status = 'pending';
-      const isSolana = paymentData.network && paymentData.network.includes('solana');
-      if (!isSolana) {
-        status = await getEVMTransactionStatus(paymentData.txHash, paymentData.network);
-      } else {
-        status = await getSolanaTransactionStatus(paymentData.txHash);
-      }
-      
-      if (status !== 'pending') {
-        paymentStatus = status;
-        if (statusPollTimer) {
-          clearInterval(statusPollTimer);
-          statusPollTimer = null;
-        }
-      }
-    } catch (err) {
-      console.error('Error polling transaction status:', err);
+    // Wallet functionality is coming soon — on-chain status cannot be checked; stop polling.
+    if (statusPollTimer) {
+      clearInterval(statusPollTimer);
+      statusPollTimer = null;
     }
   }
 

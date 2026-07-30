@@ -239,9 +239,9 @@ async function wsRoutes(fastify) {
 
       // ─── DELIVERED acknowledgment ──────────────────────────────
       if (data.type === WS_EVENTS.DELIVERED && data.messageId) {
-        await fastify.store.markDelivered(data.messageId);
         const msg = await fastify.store.getMessage(data.messageId);
-        if (msg) {
+        if (msg && msg.recipient_id === userId) {
+          await fastify.store.markDelivered(data.messageId);
           const senderSockets = fastify.store.getConnections(msg.sender_id);
           const payload = JSON.stringify({
             type: WS_EVENTS.DELIVERED,
@@ -257,9 +257,9 @@ async function wsRoutes(fastify) {
 
       // ─── READ acknowledgment ───────────────────────────────────
       if (data.type === 'read' && data.messageId) {
-        await fastify.store.markRead(data.messageId);
         const msg = await fastify.store.getMessage(data.messageId);
-        if (msg) {
+        if (msg && msg.recipient_id === userId) {
+          await fastify.store.markRead(data.messageId);
           const senderSockets = fastify.store.getConnections(msg.sender_id);
           const payload = JSON.stringify({
             type: 'read',

@@ -393,11 +393,18 @@ class DataStore {
        ORDER BY peer_id, last_message_at DESC`,
       [userId]
     );
+
+    const undeliveredRes = await this.pool.query(
+      `SELECT DISTINCT sender_id FROM encrypted_messages WHERE recipient_id = $1 AND delivered = FALSE`,
+      [userId]
+    );
+    const peersWithUndelivered = new Set(undeliveredRes.rows.map(r => r.sender_id));
+
     return res.rows.map(row => ({
       peerId: row.peer_id,
       peerUsername: row.peer_username,
       lastMessageAt: row.last_message_at,
-      hasUndelivered: false
+      hasUndelivered: peersWithUndelivered.has(row.peer_id)
     }));
   }
 
@@ -774,17 +781,17 @@ class DataStore {
     const now = new Date();
     const yearMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
     const redisKey = `user:upload_limit:${userId}:${yearMonth}`;
-
-    const usageStr = await this.redis.get(redisKey);
-    const currentUsage = usageStr ? parseInt(usageStr, 10) : 0;
     const LIMIT = 50 * 1024 * 1024; // 50MB
 
-    if (currentUsage + size > LIMIT) {
+    // Atomically reserve the usage first to avoid a check-then-increment race
+    // between concurrent uploads, then roll back if it pushed us over the limit.
+    const newUsage = await this.redis.incrby(redisKey, size);
+    await this.redis.expire(redisKey, 35 * 24 * 60 * 60); // 35 days
+
+    if (newUsage > LIMIT) {
+      await this.redis.decrby(redisKey, size);
       throw new Error('Monthly upload limit of 50MB exceeded');
     }
-
-    await this.redis.incrby(redisKey, size);
-    await this.redis.expire(redisKey, 35 * 24 * 60 * 60); // 35 days
   }
 }
 

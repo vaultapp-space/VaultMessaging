@@ -7,3 +7,5 @@ build/
 .system_generated/
 *.log
 vps_key.pem
+promotional_materials/
+

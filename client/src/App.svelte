@@ -1,9 +1,9 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, loginPassword, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
-  import { getMe } from './lib/api/http.js';
-  import { decryptSyncPayload } from './lib/crypto/keys.js';
+  import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, loginPassword, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
+  import { getMe, replenishPrekeys } from './lib/api/http.js';
+  import { decryptSyncPayload, generateOneTimePrekeys } from './lib/crypto/keys.js';
   import { fromBase64 } from './lib/crypto/utils.js';
   import { RatchetSession } from './lib/crypto/ratchet.js';
   import { SenderKeySession } from './lib/crypto/senderkeys.js';
@@ -133,9 +133,24 @@
             groupSenderKeys.set(groupKeysMap);
           }
 
+          // This device has no private halves for the one-time prekeys already
+          // published under this identity — generate and upload a fresh batch so
+          // new incoming sessions started against this device can be decrypted.
+          try {
+            const { publicKeys, keyPairs } = await generateOneTimePrekeys(20);
+            await replenishPrekeys(publicKeys);
+            const otpPairsWithPub = keyPairs.map((kp, idx) => ({
+              keyPair: kp,
+              pubKeyBase64: publicKeys[idx]
+            }));
+            oneTimePrekeyPairs.set(otpPairsWithPub);
+          } catch (err) {
+            console.error('Failed to replenish one-time prekeys after QR sync:', err);
+          }
+
           // Clear query params from URL
           window.history.replaceState({}, document.title, window.location.pathname);
-          
+
           setUser(decrypted.currentUser);
           isLoading.set(false);
           return;

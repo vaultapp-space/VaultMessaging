@@ -1,5 +1,6 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, loginPassword, identityKeyPair, signedPrekeyPair, activeCall, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, joinGroup } from '../lib/api/http.js';
@@ -318,7 +319,7 @@
     const passphrase = prompt('Create a password to encrypt your identity key backup file:');
     if (!passphrase) return;
     try {
-      const encrypted = await exportIdentityBackup($identityKeyPair, $identityKeyPair.ecdsa, passphrase);
+      const encrypted = await exportIdentityBackup($identityKeyPair.ecdh, $identityKeyPair.ecdsa, passphrase);
       
       const blob = new Blob([encrypted], { type: 'application/json' });
       const url = URL.createObjectURL(blob);

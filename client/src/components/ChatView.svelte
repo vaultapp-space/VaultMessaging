@@ -3,44 +3,29 @@
   import { get } from 'svelte/store';
   import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls, walletState, loginPassword, activePaymentDetails, walletBioEnabled } from '../lib/stores/session.js';
   import { messagesByPeer, addMessage, addMessages, addOptimisticMessage, confirmMessage, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
-  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, fetchTurnCredentials, sendClientDebugLog } from '../lib/api/http.js';
-  import { sendTyping, wsConnected, onWsEvent, wsSend } from '../lib/api/ws.js';
+  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey } from '../lib/api/http.js';
+  import { sendTyping, wsConnected, onWsEvent } from '../lib/api/ws.js';
   import { RatchetSession } from '../lib/crypto/ratchet.js';
-  import { x3dhInitiate, x3dhRespond, deriveInitialKeys } from '../lib/crypto/x3dh.js';
-  import { exportPublicKeyBase64, encrypt as encryptSelf, decrypt as decryptSelf, encryptFile, generateKeyPair, signData, encryptChunk, decryptChunk, importStaticKey } from '../lib/crypto/keys.js';
+  import { x3dhInitiate, deriveInitialKeys } from '../lib/crypto/x3dh.js';
+  import { exportPublicKeyBase64, encrypt as encryptSelf, encryptFile, generateKeyPair, signData, encryptChunk, decryptChunk } from '../lib/crypto/keys.js';
   import { SenderKeySession } from '../lib/crypto/senderkeys.js';
   import { randomHex, toBase64, fromBase64 } from '../lib/crypto/utils.js';
   import { getAvatarGradient } from '../lib/avatar.js';
   import { syncCloudVault } from '../lib/crypto/sync.js';
   import MessageBubble from './MessageBubble.svelte';
-  import { 
-    getEVMBalance,
-    getERC20Balance,
-    getSolanaBalance,
-    getSolanaTokenBalance,
-    sendEVMTransaction,
-    sendSolanaTransaction,
-    sendGaslessEVMTransaction,
-    decryptWallet,
-    deriveAddressesFromMnemonic,
-    ERC20_TOKENS,
-    SPL_TOKENS,
-    resolveDomainHandle,
-    lockEscrowAssets,
-    lockRedPacketAssets,
-    decryptWalletWithBioKey,
-    generateShieldedProof,
-    getCrossChainRoute,
-    executeCrossChainBridge
-  } from '../lib/crypto/wallet.js';
+  import {
+    localStreamStore, remoteStreamStore, micMuted, cameraOff, remoteMicMuted, remoteCameraOff,
+    isScreenSharing, verificationWords, p2pFileTransferState, isScreenShareSupported, dataChannelReady,
+    startCall as webrtcStartCall, hangupCall as webrtcHangupCall,
+    toggleMic as webrtcToggleMic, toggleCamera as webrtcToggleCamera, toggleScreenShare, stopScreenShare,
+    startP2PFileSend as webrtcStartP2PFileSend
+  } from '../lib/webrtc.js';
 
   let messageText = '';
   let messagesContainer;
   let sendingMessage = false;
   let loading = false;
   let ttlMinutes = 1440; // Default 24h
-  let currentCallKey = null;
-  let verificationWords = '';
   let showTtlSelector = false;
   const initLocks = new Map();
 
@@ -69,247 +54,35 @@
   $: savedIdentityKey = $activePeer ? $verifiedPeers.get($activePeer.id) : null;
   $: hasKeyMismatch = currentRatchet && currentRatchet.peerIdentityKey && savedIdentityKey && savedIdentityKey !== currentRatchet.peerIdentityKey;
 
-  // WebRTC connection variables
-  let peerConnection = null;
-  let localStream = null;
-  let remoteStream = null;
   let hasCollision = false;
-  let initializingPeerConnection = false;
-  let peerConnectionPromise = null;
-  let localStreamPromise = null;
-  let iceCandidatesQueue = [];
   let remoteAudioElement = null;
 
   $: isCallActive = $activeCall && ($activeCall.status === 'ongoing' || $activeCall.status === 'ringing') && $activeCall.peerId === $activePeer?.id;
   $: callType = $activeCall ? $activeCall.type : null;
   $: callingPeer = $activeCall ? $activeCall.peerUsername : null;
 
-  // For incoming calls: when accepted by Chat.svelte, import the key and init peer connection
-  $: if ($activeCall && $activeCall.status === 'ongoing' && $activeCall.currentCallKey && !currentCallKey && $activeCall.direction === 'incoming') {
-    currentCallKey = $activeCall.currentCallKey;
-    initializePeerConnection($activeCall.peerId);
-  }
+  // Note: the incoming/outgoing connection-establishment flow (key import,
+  // peer connection init, offer negotiation, media acquisition) is driven
+  // from lib/webrtc.js itself via a store subscription — NOT from here.
+  // This component only mounts when a peer is selected, so it can't be the
+  // thing responsible for connecting a call (e.g. a call accepted while no
+  // conversation is open would never connect otherwise).
 
-  // For outgoing calls: when callee accepts (peerAccepted flag), start SDP negotiation
-  $: if ($activeCall && $activeCall.peerAccepted && $activeCall.direction === 'outgoing' && !peerConnection) {
-    (async () => {
-      try {
-        await startOfferNegotiation($activeCall.peerId);
-      } catch (err) {
-        sendClientDebugLog('Reactive block startOfferNegotiation failed', err);
-      }
-    })();
+  // Bind the remote/local streams to the <video>/<audio> elements whenever they change
+  $: if (remoteVideo) remoteVideo.srcObject = $remoteStreamStore;
+  $: if (callType !== 'video' && $remoteStreamStore) {
+    if (!remoteAudioElement) remoteAudioElement = new Audio();
+    remoteAudioElement.srcObject = $remoteStreamStore;
+    remoteAudioElement.play().catch(e => console.error('Failed to autoplay remote audio:', e));
   }
-
-  $: if ($activeCall && $activeCall.status === 'ongoing' && !localStream && $activeCall.direction === 'incoming') {
-    localStreamPromise = acquireMediaForIncomingCall();
-  }
-
-  $: if (!$activeCall && localStream) {
-    resetCallState();
-  }
+  $: if (localVideo) localVideo.srcObject = $localStreamStore;
 
   let showMembersModal = false;
-  let micMuted = false;
-  let cameraOff = false;
-  let isScreenSharing = false;
-  let screenStream = null;
-  let remoteMicMuted = false;
-  let remoteCameraOff = false;
-  let sentInitialMediaState = false;
-
-  let isScreenShareSupported = typeof navigator !== 'undefined' && 
-                               navigator.mediaDevices && 
-                               typeof navigator.mediaDevices.getDisplayMedia === 'function';
-
-  async function calculateVerificationWords() {
-    if (!currentCallKey) {
-      verificationWords = '';
-      return;
-    }
-    try {
-      const rawKey = await crypto.subtle.exportKey('raw', currentCallKey);
-      const hash = await crypto.subtle.digest('SHA-256', rawKey);
-      const hashArray = new Uint8Array(hash);
-      const wordList = [
-        'Amber', 'Bronze', 'Cobalt', 'Diamond', 'Emerald', 'Forest', 'Garnet', 'Hazel',
-        'Indigo', 'Jade', 'Krypton', 'Lemon', 'Magenta', 'Neon', 'Onyx', 'Pearl'
-      ];
-      const word1 = wordList[hashArray[0] % 16];
-      const word2 = wordList[hashArray[1] % 16];
-      const word3 = wordList[hashArray[2] % 16];
-      verificationWords = `${word1} ${word2} ${word3}`;
-    } catch (e) {
-      console.error('Failed to calculate call verification words:', e);
-      verificationWords = '';
-    }
-  }
-
-  $: if (currentCallKey) {
-    calculateVerificationWords();
-  } else {
-    verificationWords = '';
-  }
-
-  let fileDataChannel = null;
-  let p2pFileTransferState = {
-    role: null, // 'sender' | 'receiver'
-    filename: '',
-    mimeType: '',
-    size: 0,
-    progress: 0,
-    status: 'idle', // 'idle' | 'sending' | 'receiving' | 'completed' | 'failed'
-    error: ''
-  };
-  let p2pReceivedChunks = [];
-  let p2pReceivedSize = 0;
   let p2pFileInput;
 
-  function setupDataChannel(channel) {
-    if (!channel) return;
-    channel.binaryType = 'arraybuffer';
-    channel.bufferedAmountLowThreshold = 65536; // 64KB threshold
-    
-    channel.onopen = () => {
-      console.log('[P2P] DataChannel opened');
-    };
-    
-    channel.onclose = () => {
-      console.log('[P2P] DataChannel closed');
-      if (p2pFileTransferState.status === 'sending' || p2pFileTransferState.status === 'receiving') {
-        p2pFileTransferState.status = 'failed';
-        p2pFileTransferState.error = 'Connection closed';
-        p2pFileTransferState = { ...p2pFileTransferState };
-      }
-    };
-    
-    channel.onerror = (err) => {
-      console.error('[P2P] DataChannel error:', err);
-      p2pFileTransferState.status = 'failed';
-      p2pFileTransferState.error = 'Channel error';
-      p2pFileTransferState = { ...p2pFileTransferState };
-    };
-    
-    channel.onmessage = (event) => {
-      if (typeof event.data === 'string') {
-        try {
-          const meta = JSON.parse(event.data);
-          if (meta.type === 'start') {
-            p2pFileTransferState = {
-              role: 'receiver',
-              filename: meta.filename,
-              mimeType: meta.mimeType,
-              size: meta.size,
-              progress: 0,
-              status: 'receiving',
-              error: ''
-            };
-            p2pReceivedChunks = [];
-            p2pReceivedSize = 0;
-          } else if (meta.type === 'end') {
-            const blob = new Blob(p2pReceivedChunks, { type: p2pFileTransferState.mimeType });
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = p2pFileTransferState.filename;
-            a.click();
-            
-            p2pFileTransferState.status = 'completed';
-            p2pFileTransferState.progress = 100;
-            p2pFileTransferState = { ...p2pFileTransferState };
-            
-            setTimeout(() => {
-              URL.revokeObjectURL(url);
-              p2pFileTransferState.status = 'idle';
-              p2pFileTransferState = { ...p2pFileTransferState };
-            }, 3000);
-          }
-        } catch (e) {
-          console.error('[P2P] Failed to parse metadata:', e);
-        }
-      } else {
-        p2pReceivedChunks.push(event.data);
-        p2pReceivedSize += event.data.byteLength;
-        p2pFileTransferState.progress = Math.min(
-          99,
-          Math.round((p2pReceivedSize / p2pFileTransferState.size) * 100)
-        );
-        p2pFileTransferState = { ...p2pFileTransferState };
-      }
-    };
-  }
-
-  async function startP2PFileSend(e) {
+  function startP2PFileSend(e) {
     const file = e.target.files[0];
-    if (!file || !fileDataChannel || fileDataChannel.readyState !== 'open') {
-      alert('P2P connection is not ready for file transfer.');
-      return;
-    }
-    
-    p2pFileTransferState = {
-      role: 'sender',
-      filename: file.name,
-      mimeType: file.type,
-      size: file.size,
-      progress: 0,
-      status: 'sending',
-      error: ''
-    };
-    
-    // 1. Send start metadata
-    fileDataChannel.send(JSON.stringify({
-      type: 'start',
-      filename: file.name,
-      mimeType: file.type,
-      size: file.size
-    }));
-    
-    // 2. Read and send in chunks with WebRTC backpressure support
-    const chunkSize = 16384; // 16KB
-    let offset = 0;
-    const fileReader = new FileReader();
-    
-    const sendChunk = () => {
-      if (fileDataChannel.readyState !== 'open') return;
-      
-      if (fileDataChannel.bufferedAmount > 65536) {
-        fileDataChannel.onbufferedamountlow = () => {
-          fileDataChannel.onbufferedamountlow = null;
-          sendChunk();
-        };
-        return;
-      }
-      
-      if (offset < file.size) {
-        const slice = file.slice(offset, offset + chunkSize);
-        fileReader.readAsArrayBuffer(slice);
-      } else {
-        // Send end metadata
-        fileDataChannel.send(JSON.stringify({ type: 'end' }));
-        p2pFileTransferState.status = 'completed';
-        p2pFileTransferState = { ...p2pFileTransferState };
-        if (p2pFileInput) p2pFileInput.value = '';
-        
-        setTimeout(() => {
-          p2pFileTransferState.status = 'idle';
-          p2pFileTransferState = { ...p2pFileTransferState };
-        }, 3000);
-      }
-    };
-    
-    fileReader.onload = (event) => {
-      const buffer = event.target.result;
-      if (fileDataChannel && fileDataChannel.readyState === 'open') {
-        fileDataChannel.send(buffer);
-        offset += buffer.byteLength;
-        p2pFileTransferState.progress = Math.round((offset / file.size) * 100);
-        p2pFileTransferState = { ...p2pFileTransferState };
-        sendChunk();
-      }
-    };
-    
-    sendChunk();
+    webrtcStartP2PFileSend(file);
   }
 
   let callWindowSize = 'normal'; // 'normal' | 'large' | 'fullscreen'
@@ -368,47 +141,16 @@
     window.removeEventListener('touchend', handleTouchEnd);
   }
 
-  function sendMediaState() {
-    if ($activeCall && $activePeer) {
-      wsSend({
-        type: 'webrtc_media_state',
-        recipientId: $activePeer.id,
-        micMuted,
-        cameraOff
-      });
-    }
-  }
-
-  $: if (isCallActive && $activeCall && $activeCall.status === 'ongoing' && !sentInitialMediaState) {
-    sentInitialMediaState = true;
-    sendMediaState();
-  }
-
   function toggleMic() {
-    micMuted = !micMuted;
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => track.enabled = !micMuted);
-    }
-    sendMediaState();
+    webrtcToggleMic();
   }
 
   function toggleCamera() {
-    cameraOff = !cameraOff;
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => track.enabled = !cameraOff);
-    }
-    sendMediaState();
+    webrtcToggleCamera();
   }
 
   let localVideo;
   let remoteVideo;
-  $: if (localVideo && localStream) {
-    const targetSrc = isScreenSharing && screenStream ? screenStream : localStream;
-    if (localVideo.srcObject !== targetSrc) localVideo.srcObject = targetSrc;
-  }
-  $: if (remoteVideo && remoteStream) {
-    if (remoteVideo.srcObject !== remoteStream) remoteVideo.srcObject = remoteStream;
-  }
 
   const wsUnsubscribes = [];
   let prekeyRotationTimer;
@@ -572,110 +314,6 @@
       previousChain: header.previousChainLength,
       iv: iv
     };
-  }
-
-  async function encryptStaticSignalingPayload(payloadObj) {
-    if (!currentCallKey) throw new Error('No call session key active');
-    const plaintext = JSON.stringify(payloadObj);
-    const { iv, ciphertext } = await encryptSelf(currentCallKey, plaintext);
-    return { iv, ciphertext };
-  }
-
-  async function decryptStaticSignalingPayload(data) {
-    if (!currentCallKey) throw new Error('No call session key active');
-    const plaintext = await decryptSelf(currentCallKey, data.iv, data.ciphertext);
-    return JSON.parse(plaintext);
-  }
-
-  async function decryptSignalingPayload(senderId, data) {
-    if (!data.ciphertext) {
-      // Compatibility fallback
-      return data;
-    }
-
-    try {
-      const ephData = JSON.parse(data.ephemeralKey);
-      let sessions = get(ratchetSessions);
-      let ratchet = sessions.get(senderId);
-
-      // Protocol Healing: If the incoming message is an X3DH initiation,
-      // we must discard any existing session for the sender to establish a fresh one.
-      if (ephData.type === 'x3dh') {
-        if (ratchet) {
-          ratchet = null;
-          ratchetSessions.update(map => {
-            map.delete(senderId);
-            return new Map(map);
-          });
-        }
-      }
-
-      if (!ratchet) {
-        if (initLocks.has(senderId)) {
-          ratchet = await initLocks.get(senderId);
-        } else {
-          const initPromise = (async () => {
-            const ikp = get(identityKeyPair);
-            const spk = get(signedPrekeyPair);
-            const otps = get(oneTimePrekeyPairs);
-
-            if (!ikp || !spk) {
-              throw new Error('Identity or signed prekey not loaded');
-            }
-
-            let otpPair = null;
-            if (ephData.opk) {
-              const found = otps.find(kp => kp.pubKeyBase64 === ephData.opk);
-              if (found) {
-                otpPair = found.keyPair;
-              }
-            }
-
-            const { sharedSecret } = await x3dhRespond(
-              ikp,
-              spk,
-              otpPair,
-              ephData.ik,
-              ephData.ek
-            );
-
-            const { rootKey, chainKey } = await deriveInitialKeys(sharedSecret);
-
-            const newRatchet = new RatchetSession();
-            await newRatchet.initAsReceiver(rootKey, chainKey, spk, ephData.ik);
-
-            ratchetSessions.update(map => {
-              map.set(senderId, newRatchet);
-              return new Map(map);
-            });
-
-            return newRatchet;
-          })();
-
-          initLocks.set(senderId, initPromise);
-          try {
-            ratchet = await initPromise;
-          } finally {
-            initLocks.delete(senderId);
-          }
-        }
-      }
-
-      const jsonStr = atob(data.ciphertext);
-      const parsed = JSON.parse(jsonStr);
-
-      const header = {
-        publicKey: ephData.rk,
-        messageNumber: data.messageNumber,
-        previousChainLength: data.previousChain,
-      };
-
-      const plaintext = await ratchet.ratchetDecrypt(header, parsed.bob.iv, parsed.bob.ct);
-      return JSON.parse(plaintext);
-    } catch (err) {
-      console.error('Failed to decrypt E2EE signaling payload:', err);
-      return null;
-    }
   }
 
   async function encryptAndSend(text, isAttachment = false) {
@@ -1364,434 +1002,23 @@
 
   async function startCall(type) {
     if (!$activePeer) return;
-
-    // Generate static call key
-    const rawKeyBytes = crypto.getRandomValues(new Uint8Array(32));
-    const staticCallKeyBase64 = toBase64(rawKeyBytes);
-    currentCallKey = await importStaticKey(rawKeyBytes);
-
-    const callId = crypto.randomUUID();
-    
-    // Set activeCall first to prevent reactive resetCallState from clearing localStream!
-    activeCall.set({
-      id: callId,
-      status: 'ringing',
-      peerId: $activePeer.id,
-      peerUsername: $activePeer.username,
-      type: type,
-      direction: 'outgoing',
-      currentCallKey: currentCallKey
-    });
-
-    const audioConstraints = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true
-    };
-    const videoConstraints = type === 'video' ? {
-      width: { ideal: 1280, max: 1920 },
-      height: { ideal: 720, max: 1080 },
-      frameRate: { ideal: 30, max: 60 },
-      facingMode: "user"
-    } : false;
-
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints,
-        video: videoConstraints
-      });
-      localStreamPromise = Promise.resolve(localStream);
-      if (localVideo) localVideo.srcObject = localStream;
-    } catch (err) {
-      console.error('Failed to get media devices:', err);
-      alert('Could not access microphone/camera');
-      activeCall.set(null);
-      currentCallKey = null;
-      return;
-    }
-
-    try {
-      // Encrypt static key using Double Ratchet E2EE
-      const encryptedKey = await encryptSignalingPayload($activePeer.id, { key: staticCallKeyBase64 });
-
-      recentCalls.update(calls => [
-        {
-          id: callId,
-          peerId: $activePeer.id,
-          peerUsername: $activePeer.username,
-          type: type,
-          direction: 'outgoing',
-          status: 'ringing',
-          timestamp: new Date().toISOString()
-        },
-        ...calls
-      ]);
-
-      wsSend({
-        type: 'call_invite',
-        recipientId: $activePeer.id,
-        callType: type,
-        senderUsername: $currentUser.username,
-        encryptedKey
-      });
-    } catch (err) {
-      console.error('Failed to complete call initialization:', err);
-      alert('Failed to establish encrypted call session.');
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-      }
-      activeCall.set(null);
-      currentCallKey = null;
-    }
-  }
-
-  function initializePeerConnection(peerId) {
-    if (peerConnectionPromise) return peerConnectionPromise;
-
-    peerConnectionPromise = (async () => {
-      let iceServers = [
-        { urls: 'stun:stun.l.google.com:19302' }
-      ];
-
-      try {
-        const data = await fetchTurnCredentials();
-        if (data && data.iceServers) {
-          iceServers = data.iceServers;
-        }
-      } catch (e) {
-        console.warn('Failed to fetch ephemeral TURN credentials, falling back to public STUN:', e);
-        sendClientDebugLog('fetchTurnCredentials failed', e);
-      }
-
-      try {
-        peerConnection = new RTCPeerConnection({ iceServers });
-      } catch (e) {
-        sendClientDebugLog('RTCPeerConnection instantiation failed', e);
-        throw e;
-      }
-
-      if (localStream) {
-        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-      }
-
-      peerConnection.ondatachannel = (event) => {
-        if (event.channel.label === 'file-transfer') {
-          fileDataChannel = event.channel;
-          setupDataChannel(fileDataChannel);
-        }
-      };
-
-      peerConnection.ontrack = (event) => {
-        remoteStream = event.streams[0];
-        if (callType === 'video') {
-          if (remoteVideo) remoteVideo.srcObject = remoteStream;
-        } else {
-          // Reuse or create a single audio element
-          if (!remoteAudioElement) {
-            remoteAudioElement = new Audio();
-          }
-          remoteAudioElement.srcObject = remoteStream;
-          remoteAudioElement.play().catch(e => console.error("Failed to autoplay remote audio:", e));
-        }
-      };
-
-      // ICE connection state monitoring for auto-reconnection
-      peerConnection.oniceconnectionstatechange = () => {
-        const state = peerConnection?.iceConnectionState;
-        if (state === 'failed') {
-          // Attempt ICE restart
-          peerConnection.restartIce();
-        } else if (state === 'disconnected') {
-          // Give 5 seconds before considering it dead
-          setTimeout(() => {
-            if (peerConnection?.iceConnectionState === 'disconnected') {
-              peerConnection.restartIce();
-            }
-          }, 5000);
-        }
-      };
-
-      peerConnection.onicecandidate = async (event) => {
-        if (event.candidate) {
-          try {
-            const encrypted = await encryptStaticSignalingPayload(event.candidate);
-            wsSend({
-              type: 'webrtc_ice',
-              recipientId: peerId,
-              ...encrypted
-            });
-          } catch (e) {
-            console.error('Failed to encrypt ICE candidate:', e);
-            sendClientDebugLog('Failed to encrypt ICE candidate', e);
-          }
-        }
-      };
-    })();
-
-    return peerConnectionPromise;
-  }
-
-  async function startOfferNegotiation(peerId) {
-    try {
-      await initializePeerConnection(peerId);
-      if (!localStream) {
-        throw new Error('localStream is null inside startOfferNegotiation');
-      }
-      if (!peerConnection) {
-        throw new Error('peerConnection is null inside startOfferNegotiation');
-      }
-
-      fileDataChannel = peerConnection.createDataChannel('file-transfer', { ordered: true });
-      setupDataChannel(fileDataChannel);
-
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      
-      const encrypted = await encryptStaticSignalingPayload(offer);
-      wsSend({
-        type: 'webrtc_sdp',
-        recipientId: peerId,
-        ...encrypted
-      });
-    } catch (err) {
-      console.error('Failed to create offer:', err);
-      sendClientDebugLog('startOfferNegotiation failed error caught', err, { peerId });
-    }
-  }
-
-  async function acquireMediaForIncomingCall() {
-    const audioConstraints = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true
-    };
-    const videoConstraints = callType === 'video' ? {
-      width: { ideal: 1280, max: 1920 },
-      height: { ideal: 720, max: 1080 },
-      frameRate: { ideal: 30, max: 60 },
-      facingMode: "user"
-    } : false;
-
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints,
-        video: videoConstraints
-      });
-      if (localVideo) localVideo.srcObject = localStream;
-      if (peerConnection) {
-        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-      }
-      return localStream;
-    } catch (err) {
-      console.error('Failed to get media devices for incoming call:', err);
-      alert('Could not access microphone/camera');
-      hangupCall();
-      throw err;
-    }
-  }
-
-  async function ensureLocalStream() {
-    if (localStreamPromise) {
-      await localStreamPromise;
-    }
-  }
-
-  async function processQueuedIceCandidates() {
-    if (!peerConnection || !peerConnection.remoteDescription) return;
-    const candidates = [...iceCandidatesQueue];
-    iceCandidatesQueue = [];
-    for (const candidate of candidates) {
-      try {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (err) {
-        console.error('Failed to add queued ICE candidate:', err);
-      }
-    }
+    // Ratchet-based key exchange stays here (owned by the messaging layer);
+    // everything else (media, peer connection, signaling) lives in webrtc.js
+    // so the call keeps running even if the user navigates away afterward.
+    await webrtcStartCall($activePeer, type, encryptSignalingPayload);
   }
 
   function hangupCall() {
-    if ($activePeer) {
-      wsSend({ type: 'call_hangup', recipientId: $activePeer.id });
-    }
-    activeCall.set(null);
-    resetCallState();
-  }
-
-  async function toggleScreenShare() {
-    if (isScreenSharing) {
-      await stopScreenShare();
-    } else {
-      try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: "always"
-          },
-          audio: false
-        });
-        isScreenSharing = true;
-
-        const screenTrack = screenStream.getVideoTracks()[0];
-        if (screenTrack) {
-          // Listen to when screensharing is stopped via browser UI (e.g. "Stop sharing" button)
-          screenTrack.onended = () => {
-            stopScreenShare();
-          };
-        }
-
-        if (peerConnection) {
-          const senders = peerConnection.getSenders();
-          const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
-          if (videoSender) {
-            await videoSender.replaceTrack(screenTrack);
-          }
-        }
-
-        if (localVideo) {
-          localVideo.srcObject = screenStream;
-        }
-      } catch (err) {
-        console.error("Failed to start screen share:", err);
-      }
-    }
-  }
-
-  async function stopScreenShare() {
-    if (!isScreenSharing) return;
-    isScreenSharing = false;
-    if (screenStream) {
-      screenStream.getTracks().forEach(track => track.stop());
-      screenStream = null;
-    }
-    
-    // Restore camera track
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !cameraOff;
-        if (peerConnection) {
-          const senders = peerConnection.getSenders();
-          const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
-          if (videoSender) {
-            await videoSender.replaceTrack(videoTrack);
-          }
-        }
-      }
-    }
-
-    if (localVideo && localStream) {
-      localVideo.srcObject = localStream;
-    }
-  }
-
-  function resetCallState() {
-    if (fileDataChannel) {
-      try { fileDataChannel.close(); } catch (e) {}
-      fileDataChannel = null;
-    }
-    p2pFileTransferState = {
-      role: null,
-      filename: '',
-      mimeType: '',
-      size: 0,
-      progress: 0,
-      status: 'idle',
-      error: ''
-    };
-    p2pReceivedChunks = [];
-    p2pReceivedSize = 0;
-
-    if (screenStream) {
-      screenStream.getTracks().forEach(track => track.stop());
-      screenStream = null;
-    }
-    isScreenSharing = false;
-    remoteMicMuted = false;
-    remoteCameraOff = false;
-    sentInitialMediaState = false;
-    position = { x: 0, y: 0 };
-    callWindowSize = 'normal';
-
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-      localStream = null;
-    }
-    if (peerConnection) {
-      peerConnection.close();
-      peerConnection = null;
-    }
-    if (remoteAudioElement) {
-      try {
-        remoteAudioElement.pause();
-        remoteAudioElement.srcObject = null;
-      } catch (e) {}
-      remoteAudioElement = null;
-    }
-    remoteStream = null;
-    micMuted = false;
-    cameraOff = false;
-    currentCallKey = null;
-    initializingPeerConnection = false;
-    peerConnectionPromise = null;
-    localStreamPromise = null;
-    iceCandidatesQueue = [];
+    webrtcHangupCall();
   }
 
   onMount(() => {
+    // WebRTC signaling (webrtc_sdp/webrtc_ice/webrtc_media_state) is handled
+    // globally by lib/webrtc.js's registerCallSignaling(), so it keeps working
+    // even while this component isn't mounted (e.g. no chat open, or a
+    // different chat open than the call peer).
     wsUnsubscribes.push(onWsEvent('session_collision', () => {
       hasCollision = true;
-    }));
-
-    wsUnsubscribes.push(onWsEvent('webrtc_sdp', async (data) => {
-      try {
-        const decryptedSdp = await decryptStaticSignalingPayload(data);
-        if (!decryptedSdp) return;
-
-        await initializePeerConnection(data.senderId);
-        if (!peerConnection) return;
-
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(decryptedSdp));
-        await processQueuedIceCandidates();
-
-        if (decryptedSdp.type === 'offer') {
-          await ensureLocalStream();
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-          const encrypted = await encryptStaticSignalingPayload(answer);
-          wsSend({
-            type: 'webrtc_sdp',
-            recipientId: data.senderId,
-            ...encrypted
-          });
-        }
-      } catch (err) {
-        console.error('Failed to process incoming SDP:', err);
-      }
-    }));
-
-    wsUnsubscribes.push(onWsEvent('webrtc_ice', async (data) => {
-      try {
-        const decryptedCandidate = await decryptStaticSignalingPayload(data);
-        if (!decryptedCandidate) return;
-
-        await initializePeerConnection(data.senderId);
-        if (!peerConnection) return;
-
-        if (peerConnection.remoteDescription) {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(decryptedCandidate));
-        } else {
-          iceCandidatesQueue.push(decryptedCandidate);
-        }
-      } catch (err) {
-        console.error('Failed to process incoming ICE candidate:', err);
-      }
-    }));
-
-    wsUnsubscribes.push(onWsEvent('webrtc_media_state', (data) => {
-      if (data.senderId === $activePeer?.id) {
-        remoteMicMuted = data.micMuted;
-        remoteCameraOff = data.cameraOff;
-      }
     }));
 
     prekeyRotationTimer = setInterval(() => {
@@ -1802,7 +1029,10 @@
   onDestroy(() => {
     if (prekeyRotationTimer) clearInterval(prekeyRotationTimer);
     wsUnsubscribes.forEach(unsub => unsub());
-    resetCallState();
+    // Deliberately NOT calling resetCallState() here — an active call must
+    // survive this component unmounting (e.g. the user navigates to a
+    // different conversation or back to the empty state). Call teardown is
+    // driven entirely by the activeCall store inside lib/webrtc.js.
 
     if (typeof window !== 'undefined') {
       window.removeEventListener('mousemove', handleMouseMove);
@@ -1875,47 +1105,16 @@
   let isCrossChain = false;
   let crossChainRoute = null;
 
+  // Wallet functionality is coming soon — domain-handle resolution is disabled.
   $: {
-    if (payRecipient && (payRecipient.endsWith('.eth') || payRecipient.endsWith('.sol'))) {
-      const resolved = resolveDomainHandle(payRecipient);
-      if (resolved) {
-        resolvedAddress = resolved;
-        isResolved = true;
-      } else {
-        resolvedAddress = '';
-        isResolved = false;
-      }
-    } else {
-      resolvedAddress = '';
-      isResolved = false;
-    }
+    resolvedAddress = '';
+    isResolved = false;
   }
 
+  // Wallet functionality is coming soon — cross-chain routing is disabled.
   $: {
-    const recipientAddr = isResolved ? resolvedAddress : payRecipient;
-    if (recipientAddr && payAmount && parseFloat(payAmount) > 0) {
-      const isRecipientEVM = /^0x[a-fA-F0-9]{40}$/.test(recipientAddr);
-      const isRecipientSol = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(recipientAddr);
-      
-      const isSourceSol = payNetwork === 'solana-mainnet';
-      const isSourceEVM = !isSourceSol;
-
-      if ((isSourceEVM && isRecipientSol) || (isSourceSol && isRecipientEVM)) {
-        isCrossChain = true;
-        const fromToken = payAsset;
-        const fromChain = payNetwork;
-        const toToken = 'USDC';
-        const toChain = isRecipientEVM ? 'base' : 'solana-mainnet';
-        
-        crossChainRoute = getCrossChainRoute(payAmount, fromToken, fromChain, toToken, toChain);
-      } else {
-        isCrossChain = false;
-        crossChainRoute = null;
-      }
-    } else {
-      isCrossChain = false;
-      crossChainRoute = null;
-    }
+    isCrossChain = false;
+    crossChainRoute = null;
   }
   let payGasless = false;
   let payStatus = 'idle'; // 'idle' | 'loading_balance' | 'signing' | 'broadcasting' | 'success' | 'error'
@@ -1925,31 +1124,8 @@
   let isLoadingBalance = false;
 
   async function fetchPayBalance() {
-    if (!$walletState) {
-      payBalance = '0.00';
-      return;
-    }
-    isLoadingBalance = true;
-    try {
-      if (payNetwork !== 'solana-mainnet') {
-        if (payAsset === 'ETH' || payAsset === 'POL' || payAsset === 'BNB') {
-          payBalance = await getEVMBalance($walletState.evmAddress, payNetwork);
-        } else {
-          payBalance = await getERC20Balance($walletState.evmAddress, ERC20_TOKENS[payNetwork] || ERC20_TOKENS.base, payNetwork);
-        }
-      } else {
-        if (payAsset === 'SOL') {
-          payBalance = await getSolanaBalance($walletState.solAddress);
-        } else {
-          payBalance = await getSolanaTokenBalance($walletState.solAddress, SPL_TOKENS.USDC);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching pay balance:', err);
-      payBalance = '0.00';
-    } finally {
-      isLoadingBalance = false;
-    }
+    // Wallet functionality is coming soon — balances are not fetched; default remains displayed.
+    payBalance = '0.00';
   }
 
   // Auto-fetch balance when parameters change
@@ -2010,171 +1186,9 @@
     if (!payAmount) return;
     if (payMode !== 'redpacket' && !payRecipient) return;
 
-    const recipientAddr = isResolved ? resolvedAddress : payRecipient;
-    
-    if (payMode !== 'redpacket') {
-      if (payNetwork !== 'solana-mainnet') {
-        if (!/^0x[a-fA-F0-9]{40}$/.test(recipientAddr)) {
-          payError = 'Invalid EVM Address';
-          payStatus = 'error';
-          return;
-        }
-      } else {
-        if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(recipientAddr)) {
-          payError = 'Invalid Solana Address';
-          payStatus = 'error';
-          return;
-        }
-      }
-    }
-    
-    let password = $loginPassword;
-    let bioKey = null;
-
-    if ($walletBioEnabled) {
-      payStatus = 'signing';
-      try {
-        const credId = localStorage.getItem(`vault_wallet_bio_cred_id_${$currentUser.id}`);
-        const salt = $currentUser.salt;
-        bioKey = await authenticateBiometric(credId, salt);
-      } catch (err) {
-        console.error('Biometric authentication failed:', err);
-        payStatus = 'error';
-        payError = 'Biometric signature verification failed.';
-        return;
-      }
-    } else if (!password) {
-      password = prompt('Enter your Vault account password to sign this transaction:');
-      if (!password) return;
-    }
-    
-    payStatus = 'signing';
-    payError = '';
-    payTxHash = '';
-    
-    try {
-      let mnemonic = '';
-      if ($walletBioEnabled && bioKey) {
-        const { loadEncryptedBioWallet } = await import('../lib/db.js');
-        const bioWalletData = await loadEncryptedBioWallet($currentUser.id);
-        mnemonic = await decryptWalletWithBioKey(bioWalletData, bioKey);
-      } else {
-        const { loadEncryptedWallet } = await import('../lib/db.js');
-        const encryptedWallet = await loadEncryptedWallet($currentUser.id);
-        if (!encryptedWallet) {
-          throw new Error('No wallet backup found on this device.');
-        }
-        mnemonic = await decryptWallet(encryptedWallet, password);
-      }
-      payStatus = 'broadcasting';
-      
-      let hash = '';
-      let zkProofData = null;
-
-      if (payMode === 'transfer') {
-        if (payShielded) {
-          payStatus = 'signing';
-          zkProofData = await generateShieldedProof(payAmount, payAsset);
-          payStatus = 'broadcasting';
-          hash = await lockRedPacketAssets(mnemonic, payAmount, payAsset, payNetwork);
-        } else if (isCrossChain) {
-          hash = await executeCrossChainBridge(
-            mnemonic,
-            payAmount,
-            payAsset,
-            payNetwork,
-            payAsset,
-            payNetwork !== 'solana-mainnet' ? 'solana-mainnet' : 'base',
-            recipientAddr
-          );
-        } else {
-          if (payNetwork !== 'solana-mainnet') {
-            const tokenAddress = payAsset === 'USDC' ? (ERC20_TOKENS[payNetwork] || ERC20_TOKENS.base) : null;
-            if (payAsset === 'ETH' || payAsset === 'POL' || payAsset === 'BNB') {
-              hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount, null, payNetwork);
-            } else {
-              if (payGasless) {
-                hash = await sendGaslessEVMTransaction(mnemonic, recipientAddr, payAmount, tokenAddress);
-              } else {
-                hash = await sendEVMTransaction(mnemonic, recipientAddr, payAmount, tokenAddress, payNetwork);
-              }
-            }
-          } else {
-            if (payAsset === 'SOL') {
-              hash = await sendSolanaTransaction(mnemonic, recipientAddr, payAmount);
-            } else {
-              hash = await sendSolanaTransaction(mnemonic, recipientAddr, payAmount, SPL_TOKENS.USDC);
-            }
-          }
-        }
-      } else if (payMode === 'redpacket') {
-        hash = await lockRedPacketAssets(mnemonic, payAmount, payAsset, payNetwork);
-      } else if (payMode === 'escrow') {
-        hash = await lockEscrowAssets(mnemonic, payAmount, payAsset, payNetwork);
-      }
-      
-      payTxHash = hash;
-      payStatus = 'success';
-      
-      let paymentMsgPayload = '';
-      if (payMode === 'transfer') {
-        if (payShielded && zkProofData) {
-          paymentMsgPayload = JSON.stringify({
-            type: 'shielded-payment',
-            amount: payAmount,
-            tokenSymbol: payAsset,
-            zkProof: zkProofData.proof,
-            zkNullifier: zkProofData.nullifierHash
-          });
-        } else {
-          paymentMsgPayload = JSON.stringify({
-            type: 'crypto-payment',
-            network: payNetwork,
-            txHash: hash,
-            amount: payAmount,
-            tokenSymbol: payAsset,
-            status: 'pending',
-            isBridge: isCrossChain,
-            bridgeRoute: isCrossChain ? crossChainRoute.route : ''
-          });
-        }
-      } else if (payMode === 'redpacket') {
-        paymentMsgPayload = JSON.stringify({
-          type: 'red-packet',
-          packetId: 'pkt-' + Math.random().toString(36).substring(2, 11),
-          network: payNetwork,
-          totalAmount: payAmount,
-          tokenSymbol: payAsset,
-          totalClaims: parseInt(packetClaims) || 3,
-          claimedBy: []
-        });
-      } else if (payMode === 'escrow') {
-        paymentMsgPayload = JSON.stringify({
-          type: 'escrow-otc',
-          escrowId: 'esc-' + Math.random().toString(36).substring(2, 11),
-          sellerAddress: recipientAddr,
-          sellerUsername: isResolved ? payRecipient : ($activePeer?.username || 'Buyer'),
-          buyerAddress: payNetwork !== 'solana-mainnet' ? $walletState.evmAddress : $walletState.solAddress,
-          buyerUsername: $currentUser.username,
-          amount: payAmount,
-          tokenSymbol: payAsset,
-          description: escrowTerms,
-          network: payNetwork,
-          status: 'active'
-        });
-      }
-      
-      await encryptAndSend(paymentMsgPayload);
-      
-      setTimeout(() => {
-        closePaymentDrawer();
-      }, 2000);
-      
-    } catch (err) {
-      console.error('In-chat transfer failed:', err);
-      payError = err.message || 'Transaction failed';
-      payStatus = 'error';
-    }
+    // Wallet functionality is coming soon — no transaction is signed or broadcast.
+    payStatus = 'error';
+    payError = 'Wallet functionality is coming soon.';
   }
 
   async function shareMyAddressCard() {
@@ -2555,7 +1569,7 @@
             ? "absolute w-48 h-36 z-10 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-xl animate-fade-in" 
             : `relative ${callWindowSize === 'large' ? 'w-[288px] h-[216px]' : 'w-44 h-32'} bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner animate-fade-in`}
         >
-          <video bind:this={localVideo} autoplay playsinline muted class="w-full h-full object-cover {isScreenSharing ? '' : 'scale-x-[-1]'}"></video>
+          <video bind:this={localVideo} autoplay playsinline muted class="w-full h-full object-cover {$isScreenSharing ? '' : 'scale-x-[-1]'}"></video>
           <span class="absolute bottom-1.5 left-2 text-[8px] bg-vault-black/60 px-1.5 py-0.5 rounded text-vault-text font-medium uppercase tracking-wider">Self</span>
         </div>
 
@@ -2565,8 +1579,8 @@
             ? "absolute inset-0 w-full h-full z-0 bg-vault-black flex items-center justify-center" 
             : `relative ${callWindowSize === 'large' ? 'w-[288px] h-[216px]' : 'w-44 h-32'} bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner flex items-center justify-center animate-fade-in`}
         >
-          <video bind:this={remoteVideo} autoplay playsinline class="w-full h-full object-cover {remoteCameraOff ? 'hidden' : ''}"></video>
-          {#if remoteCameraOff}
+          <video bind:this={remoteVideo} autoplay playsinline class="w-full h-full object-cover {$remoteCameraOff ? 'hidden' : ''}"></video>
+          {#if $remoteCameraOff}
             <div class="absolute inset-0 flex flex-col items-center justify-center bg-vault-surface-subtle text-vault-text-dim text-xs gap-1.5">
               <svg class="w-8 h-8 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <line x1="1" y1="1" x2="23" y2="23" />
@@ -2577,7 +1591,7 @@
             </div>
           {/if}
           <span class="absolute bottom-1.5 left-2 text-[8px] bg-vault-black/60 px-1.5 py-0.5 rounded text-vault-text font-medium uppercase tracking-wider">{callingPeer}</span>
-          {#if remoteMicMuted}
+          {#if $remoteMicMuted}
             <span class="absolute top-1.5 right-2 bg-vault-danger/25 text-vault-danger border border-vault-danger/30 p-1 rounded-full animate-pulse z-10" title="Muted">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="1" y1="1" x2="23" y2="23" />
@@ -2595,20 +1609,20 @@
             ? "absolute left-1/2 -translate-x-1/2 z-10 flex flex-col gap-2.5 p-3 bg-vault-surface/85 backdrop-blur-md border border-vault-border rounded-2xl shadow-2xl w-60" 
             : "flex flex-col gap-2 w-full z-10"}
         >
-          {#if verificationWords}
+          {#if $verificationWords}
             <div class="text-[9px] bg-vault-black/30 border border-vault-border/50 text-vault-accent font-semibold px-2 py-0.5 rounded-lg text-center font-mono select-all w-full">
-              Verify Code: {verificationWords}
+              Verify Code: {$verificationWords}
             </div>
           {/if}
           <div class="flex gap-2 w-full">
             <button
               on:click={toggleMic}
               class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
-                {micMuted ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
-              title={micMuted ? "Unmute Mic" : "Mute Mic"}
+                {$micMuted ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
+              title={$micMuted ? "Unmute Mic" : "Mute Mic"}
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                {#if micMuted}
+                {#if $micMuted}
                   <line x1="1" y1="1" x2="23" y2="23" />
                 {/if}
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -2618,11 +1632,11 @@
             <button
               on:click={toggleCamera}
               class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
-                {cameraOff ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
-              title={cameraOff ? "Turn Video On" : "Turn Video Off"}
+                {$cameraOff ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
+              title={$cameraOff ? "Turn Video On" : "Turn Video Off"}
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                {#if cameraOff}
+                {#if $cameraOff}
                   <line x1="1" y1="1" x2="23" y2="23" />
                 {/if}
                 <path d="M23 7l-7 5 7 5V7z" />
@@ -2634,9 +1648,9 @@
               disabled={$activeCall?.status === 'ringing' || !isScreenShareSupported}
               class="flex-1 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-center gap-1.5 focus:outline-none cursor-pointer
                 {$activeCall?.status === 'ringing' || !isScreenShareSupported ? 'opacity-40 cursor-not-allowed bg-vault-elevated text-vault-text-dim border-vault-border-subtle' : ''}
-                {!isScreenSharing && $activeCall?.status !== 'ringing' && isScreenShareSupported ? 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text' : ''}
-                {isScreenSharing ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : ''}"
-              title={!isScreenShareSupported ? "Screen sharing not supported on this device" : ($activeCall?.status === 'ringing' ? "Waiting for call to connect..." : (isScreenSharing ? "Stop Sharing Screen" : "Share Screen"))}
+                {!$isScreenSharing && $activeCall?.status !== 'ringing' && isScreenShareSupported ? 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text' : ''}
+                {$isScreenSharing ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : ''}"
+              title={!isScreenShareSupported ? "Screen sharing not supported on this device" : ($activeCall?.status === 'ringing' ? "Waiting for call to connect..." : ($isScreenSharing ? "Stop Sharing Screen" : "Share Screen"))}
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
@@ -2657,11 +1671,11 @@
           </button>
 
           <!-- P2P Direct File Transfer -->
-          {#if fileDataChannel && $activeCall?.status === 'ongoing'}
+          {#if $dataChannelReady && $activeCall?.status === 'ongoing'}
             <div class="px-2.5 py-1.5 bg-vault-black/30 border border-vault-border/50 rounded-xl flex flex-col gap-1 w-full text-left mt-1.5">
               <span class="text-[8px] text-vault-text-dim uppercase tracking-wider font-bold">P2P File Transfer (Direct)</span>
               
-              {#if p2pFileTransferState.status === 'idle'}
+              {#if $p2pFileTransferState.status === 'idle'}
                 <input type="file" bind:this={p2pFileInput} on:change={startP2PFileSend} class="hidden" />
                 <button
                   on:click={() => p2pFileInput.click()}
@@ -2674,24 +1688,24 @@
                   </svg>
                   Send Direct File
                 </button>
-              {:else if p2pFileTransferState.status === 'sending' || p2pFileTransferState.status === 'receiving'}
+              {:else if $p2pFileTransferState.status === 'sending' || $p2pFileTransferState.status === 'receiving'}
                 <div class="flex flex-col gap-0.5 text-[8px] text-vault-text font-medium truncate w-full">
                   <span class="truncate block">
-                    {p2pFileTransferState.role === 'sender' ? 'Sending' : 'Receiving'}: {p2pFileTransferState.filename}
+                    {$p2pFileTransferState.role === 'sender' ? 'Sending' : 'Receiving'}: {$p2pFileTransferState.filename}
                   </span>
                   <div class="w-full bg-vault-border rounded-full h-1 overflow-hidden">
-                    <div class="bg-vault-accent h-full transition-all duration-150" style="width: {p2pFileTransferState.progress}%"></div>
+                    <div class="bg-vault-accent h-full transition-all duration-150" style="width: {$p2pFileTransferState.progress}%"></div>
                   </div>
-                  <span class="text-[7px] text-vault-text-dim text-right block">{p2pFileTransferState.progress}%</span>
+                  <span class="text-[7px] text-vault-text-dim text-right block">{$p2pFileTransferState.progress}%</span>
                 </div>
-              {:else if p2pFileTransferState.status === 'completed'}
+              {:else if $p2pFileTransferState.status === 'completed'}
                 <div class="text-[8px] text-vault-accent font-semibold flex items-center gap-1 justify-center py-0.5 animate-pulse">
                   <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="20 6 9 17 4 12" />
                   </svg>
                   Transfer Completed!
                 </div>
-              {:else if p2pFileTransferState.status === 'failed'}
+              {:else if $p2pFileTransferState.status === 'failed'}
                 <div class="text-[8px] text-vault-danger font-semibold flex items-center gap-1 justify-center py-0.5">
                   ⚠️ Transfer Failed
                 </div>
@@ -2707,7 +1721,7 @@
           <div class="w-2.5 h-2.5 rounded-full bg-vault-accent animate-pulse"></div>
           <span class="text-xs text-vault-text font-medium flex items-center gap-1.5">
             E2EE Audio: {callingPeer}
-            {#if remoteMicMuted}
+            {#if $remoteMicMuted}
               <span class="text-vault-danger text-[10px] font-medium flex items-center gap-0.5 ml-1 animate-pulse">
                 <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="1" y1="1" x2="23" y2="23" />
@@ -2719,19 +1733,19 @@
             {/if}
           </span>
         </div>
-        {#if verificationWords}
+        {#if $verificationWords}
           <div class="text-[9px] bg-vault-black/30 border border-vault-border/50 text-vault-accent font-semibold px-2 py-1 rounded-lg text-center font-mono select-all">
-            Verify: {verificationWords}
+            Verify: {$verificationWords}
           </div>
         {/if}
         <button
           on:click={toggleMic}
           class="p-2 rounded-xl border transition-all focus:outline-none cursor-pointer
-            {micMuted ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
-          title={micMuted ? "Unmute Mic" : "Mute Mic"}
+            {$micMuted ? 'bg-vault-danger/20 text-vault-danger border-vault-danger/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
+          title={$micMuted ? "Unmute Mic" : "Mute Mic"}
         >
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            {#if micMuted}
+            {#if $micMuted}
               <line x1="1" y1="1" x2="23" y2="23" />
             {/if}
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -2740,9 +1754,9 @@
         </button>
         
         <!-- P2P Direct File Transfer -->
-        {#if fileDataChannel && $activeCall?.status === 'ongoing'}
+        {#if $dataChannelReady && $activeCall?.status === 'ongoing'}
           <input type="file" bind:this={p2pFileInput} on:change={startP2PFileSend} class="hidden" />
-          {#if p2pFileTransferState.status === 'idle'}
+          {#if $p2pFileTransferState.status === 'idle'}
             <button
               on:click={() => p2pFileInput.click()}
               class="p-2 rounded-xl border bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text transition-all focus:outline-none cursor-pointer"
@@ -2754,16 +1768,16 @@
                 <line x1="12" y1="3" x2="12" y2="15" />
               </svg>
             </button>
-          {:else if p2pFileTransferState.status === 'sending' || p2pFileTransferState.status === 'receiving'}
+          {:else if $p2pFileTransferState.status === 'sending' || $p2pFileTransferState.status === 'receiving'}
             <div class="flex flex-col gap-0.5 text-[8px] text-vault-text font-medium min-w-[60px] truncate">
-              <span class="truncate block">{p2pFileTransferState.role === 'sender' ? 'Sending' : 'Receiving'} {p2pFileTransferState.progress}%</span>
+              <span class="truncate block">{$p2pFileTransferState.role === 'sender' ? 'Sending' : 'Receiving'} {$p2pFileTransferState.progress}%</span>
               <div class="w-full bg-vault-border rounded-full h-1 overflow-hidden">
-                <div class="bg-vault-accent h-full transition-all duration-150" style="width: {p2pFileTransferState.progress}%"></div>
+                <div class="bg-vault-accent h-full transition-all duration-150" style="width: {$p2pFileTransferState.progress}%"></div>
               </div>
             </div>
-          {:else if p2pFileTransferState.status === 'completed'}
+          {:else if $p2pFileTransferState.status === 'completed'}
             <span class="text-[8px] text-vault-accent font-semibold animate-pulse">Done</span>
-          {:else if p2pFileTransferState.status === 'failed'}
+          {:else if $p2pFileTransferState.status === 'failed'}
             <span class="text-[8px] text-vault-danger font-semibold">Failed</span>
           {/if}
         {/if}

@@ -1,0 +1,42 @@
+============================================================
+VAULT MESSAGING — DISCORD COMMUNITY RULES
+============================================================
+
+Welcome to the Vault Community. Vault is built on the principles of absolute privacy, cryptographic sovereignty, and open-source transparency. These rules ensure our space remains safe, productive, and aligned with these core values.
+
+1. PRIVACY FIRST (ZERO TELEMETRY, ZERO DOXXING)
+* Respect the privacy of others. Do not request, share, or store any Personally Identifiable Information (PII), real names, locations, or IP addresses of community members.
+* Treat all user discussions under the assumption of pseudonymous identity. 
+
+2. CONSTRUCTIVE CRITICISM & OPEN PITCHING
+* Critique the code, the architecture, and the tokenomics—not the person. Constructive criticism is essential for robust security and design.
+* Back up suggestions with logical reasoning, code examples, or research papers where possible.
+
+3. NO FINANCIAL ADVICE OR SPECULATION SCAMS
+* Vault is currently in development. Absolutely no promotion of external tokens, speculative pump-and-dump discussions, or unauthorized trading.
+* No one from the core development team will ever DM you to ask for funds, private keys, mnemonics, or testnet credentials. Report any suspicious accounts immediately.
+
+4. CODE & CONTRIBUTION GUIDELINES
+* When pasting code snippets, use appropriate markdown syntax.
+* Keep all technical discussions centered around open-source contributions, security auditing, and reproducible builds.
+
+============================================================
+RECOMMENDED CHANNEL STRUCTURE
+============================================================
+
+📢 INFO & ANNOUNCEMENTS
+* #announcements — Core project updates, releases, and milestones.
+* #rules — General guidelines (listed above).
+* #roadmap — Development phases and current focus.
+
+💬 GENERAL DISCUSSION
+* #lounge — Off-topic chat, getting to know community members.
+* #privacy-advocacy — News, updates, and debates on global privacy rights, cryptography, and Web3 infrastructure.
+
+💡 IDEAS & CRITICISM
+* #feedback-and-pitches — Suggest features or point out structural UI flaws.
+* #tokenomics-rfc — Open debate on the token design, distributions, incentives, and economic modeling.
+
+💻 DEVELOPMENT & AUDITING
+* #dev-chat — Low-level protocol conversations, API design, and WebSocket optimizations.
+* #security-bug-bounty — Reporting potential security vulnerabilities or code flaws.

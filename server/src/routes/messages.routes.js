@@ -39,6 +39,15 @@ async function messageRoutes(fastify) {
       return reply.code(404).send({ error: 'Recipient not found' });
     }
 
+    // If tagged with a group, the sender must actually be a member —
+    // otherwise anyone could spoof messages as belonging to a group they're not in.
+    if (groupId) {
+      const group = await fastify.store.getGroup(groupId);
+      if (!group || !group.members.some(m => m.id === senderId)) {
+        return reply.code(403).send({ error: 'Not a member of this group' });
+      }
+    }
+
     // Enforce 24h hard ceiling
     const ttl = Math.min(ttlMinutes || MAX_TTL_MINUTES, MAX_TTL_MINUTES);
     const expiresAt = new Date(Date.now() + ttl * 60 * 1000).toISOString();
