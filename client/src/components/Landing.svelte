@@ -619,18 +619,33 @@
 
   <!-- Real product screenshot — the simulator below is illustrative, this is the actual app -->
   <section class="w-full max-w-4xl mx-auto px-6 pb-4 z-10 reveal-section">
-    <div class="relative rounded-2xl overflow-hidden border border-vault-border/20 shadow-2xl glass">
-      <img
-        src="/landing-app-preview.png"
-        alt="Vault Messenger desktop app showing an encrypted conversation and an active E2EE call"
-        class="w-full h-auto block"
-        loading="lazy"
-        width="2600"
-        height="1553"
-      />
-      <span class="absolute top-3 left-3 text-[8px] font-mono font-bold uppercase tracking-wider px-2 py-1 rounded bg-vault-black/70 text-vault-accent border border-vault-accent/30 backdrop-blur-sm">
-        App Preview
-      </span>
+    <div class="flex flex-col sm:flex-row gap-4 items-start justify-center">
+      <div class="relative rounded-2xl overflow-hidden border border-vault-border/20 shadow-2xl glass w-full sm:w-[68%] shrink-0">
+        <img
+          src="/landing-app-preview.png"
+          alt="Vault Messenger desktop app showing an encrypted conversation and an active E2EE call"
+          class="w-full h-auto block"
+          loading="lazy"
+          width="2600"
+          height="1553"
+        />
+        <span class="absolute top-3 left-3 text-[8px] font-mono font-bold uppercase tracking-wider px-2 py-1 rounded bg-vault-black/70 text-vault-accent border border-vault-accent/30 backdrop-blur-sm">
+          Desktop
+        </span>
+      </div>
+      <div class="relative rounded-2xl overflow-hidden border border-vault-border/20 shadow-2xl glass w-[45%] sm:w-[27%] mx-auto sm:mx-0 shrink-0">
+        <img
+          src="/landing-mobile-preview.png"
+          alt="Vault Messenger mobile app showing an encrypted conversation"
+          class="w-full h-auto block"
+          loading="lazy"
+          width="900"
+          height="1948"
+        />
+        <span class="absolute top-3 left-3 text-[8px] font-mono font-bold uppercase tracking-wider px-2 py-1 rounded bg-vault-black/70 text-vault-accent border border-vault-accent/30 backdrop-blur-sm">
+          Mobile
+        </span>
+      </div>
     </div>
   </section>
 
