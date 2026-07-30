@@ -486,7 +486,13 @@
         throw new Error('Failed to send group message.');
       }
 
-      await syncCloudVault();
+      // Best-effort cloud backup — must never cause the message/attachment
+      // itself (already successfully sent above) to be reported as failed.
+      try {
+        await syncCloudVault();
+      } catch (syncErr) {
+        console.error('Cloud vault sync failed after send:', syncErr);
+      }
 
       confirmMessage($activePeer.id, tempId, {
         id: successResult.id,
@@ -548,7 +554,13 @@
         attachmentId
       });
 
-      await syncCloudVault();
+      // Best-effort cloud backup — must never cause the message/attachment
+      // itself (already successfully sent above) to be reported as failed.
+      try {
+        await syncCloudVault();
+      } catch (syncErr) {
+        console.error('Cloud vault sync failed after send:', syncErr);
+      }
 
       confirmMessage($activePeer.id, tempId, {
         id: result.id,
