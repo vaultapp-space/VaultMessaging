@@ -31,6 +31,9 @@ const fastify = Fastify({
       options: { colorize: true },
     },
   },
+  // Default (1 MiB) is too small for encrypted attachment chunks: a 1MB
+  // chunk becomes ~1.33MB after base64 encoding, plus JSON overhead.
+  bodyLimit: 6 * 1024 * 1024,
 });
 
 // ─── Global Plugins ─────────────────────────────────────────
