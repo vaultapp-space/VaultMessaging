@@ -4,7 +4,7 @@
 // ============================================================
 
 import {
-  generateKeyPair,
+  generateExportableKeyPair,
   exportPublicKeyBase64,
   importPublicKey,
   deriveSharedBits,
@@ -51,7 +51,7 @@ export class RatchetSession {
     this.peerIdentityKey = peerIdentityKey;
 
     // Generate our first sending ratchet key
-    this.sendRatchetKeyPair = await generateKeyPair();
+    this.sendRatchetKeyPair = await generateExportableKeyPair();
 
     // Perform DH ratchet step to derive sending chain key
     const peerPub = await importPublicKey(peerPublicKeyBase64);
@@ -167,7 +167,7 @@ export class RatchetSession {
     this.recvChainKey = recv.newChainKey;
 
     // Generate new sending key pair
-    this.sendRatchetKeyPair = await generateKeyPair();
+    this.sendRatchetKeyPair = await generateExportableKeyPair();
 
     // Derive sending chain
     const dhSend = await deriveSharedBits(this.sendRatchetKeyPair.privateKey, peerPub);
