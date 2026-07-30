@@ -77,12 +77,7 @@
     }
   ];
 
-  const resources = [
-    { label: 'Web Wallet', url: 'https://webwallet.vaultapp.space' },
-    { label: 'Block Explorer', url: 'https://explorer.vaultapp.space' },
-    { label: 'Source Code', url: 'https://github.com/vaultapp-space/VAULT' },
-    { label: 'GUI Wallets', url: 'https://github.com/vaultapp-space/vault-wallets' }
-  ];
+  const desktopWalletUrl = 'https://github.com/vaultapp-space/vault-wallets';
 </script>
 
 <div class="h-screen overflow-y-auto flex flex-col bg-vault-black text-vault-text font-sans selection:bg-vault-accent/20 selection:text-vault-accent">
@@ -110,23 +105,49 @@
       <span class="text-[8px] bg-vault-accent/10 text-vault-accent border border-vault-accent/25 px-1.5 py-0.5 rounded font-mono font-bold">VLT</span>
     </button>
 
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-1.5 sm:gap-2">
       <button
         on:click={goToLanding}
-        class="py-2 px-4 text-xs text-vault-text-dim hover:text-vault-text font-bold rounded-xl focus:outline-none transition-all cursor-pointer"
+        class="hidden sm:block py-2 px-4 text-xs text-vault-text-dim hover:text-vault-text font-bold rounded-xl focus:outline-none transition-all cursor-pointer"
       >
         ← Messenger
       </button>
       <a
+        href="https://explorer.vaultapp.space"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Block Explorer"
+        class="flex items-center gap-1.5 py-2 px-3 text-xs text-vault-text-dim hover:text-vault-accent border border-vault-border/30 hover:border-vault-accent/30 font-bold rounded-xl focus:outline-none transition-all cursor-pointer no-underline"
+      >
+        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.6 9h16.8M3.6 15h16.8M11.5 3a17 17 0 000 18M12.5 3a17 17 0 010 18" />
+          <circle cx="12" cy="12" r="9" stroke-linecap="round" />
+        </svg>
+        <span class="hidden md:inline">Explorer</span>
+      </a>
+      <a
+        href="https://github.com/vaultapp-space/VAULT"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Source on GitHub"
+        class="flex items-center gap-1.5 py-2 px-3 text-xs text-vault-text-dim hover:text-vault-accent border border-vault-border/30 hover:border-vault-accent/30 font-bold rounded-xl focus:outline-none transition-all cursor-pointer no-underline"
+      >
+        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.57.1.78-.25.78-.55 0-.27-.01-1.16-.02-2.11-3.2.7-3.87-1.36-3.87-1.36-.53-1.33-1.29-1.69-1.29-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.74.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.15 1.18a10.9 10.9 0 015.73 0c2.19-1.49 3.15-1.18 3.15-1.18.63 1.58.24 2.75.11 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.08.78 2.17 0 1.57-.01 2.83-.01 3.22 0 .3.2.66.79.55A10.51 10.51 0 0023.5 12C23.5 5.65 18.35.5 12 .5z" />
+        </svg>
+        <span class="hidden md:inline">GitHub</span>
+      </a>
+      <a
         href="https://webwallet.vaultapp.space"
         target="_blank"
         rel="noopener noreferrer"
-        class="flex items-center gap-1.5 py-2 px-5 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md btn-glow no-underline"
+        class="flex items-center gap-1.5 py-2 px-3 sm:px-5 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md btn-glow no-underline"
       >
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
         </svg>
-        Open Web Wallet
+        <span class="hidden sm:inline">Open Web Wallet</span>
+        <span class="sm:hidden">Wallet</span>
       </a>
     </div>
   </header>
@@ -158,19 +179,6 @@
     <p class="text-sm text-vault-text-secondary max-w-lg leading-relaxed opacity-90">
       An untraceable, privacy-first cryptocurrency built on an advanced CryptoNote core — Ring Confidential Transactions, dual-key stealth addresses, and ring signatures obfuscate every sender, receiver, and amount at the protocol level. Privacy isn't opt-in here; it's mandatory.
     </p>
-
-    <div class="flex flex-wrap justify-center gap-3 mt-1">
-      {#each resources as r}
-        <a
-          href={r.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase"
-        >
-          {r.label}
-        </a>
-      {/each}
-    </div>
 
     <!-- Hero stat strip -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-xl mt-4">
@@ -250,6 +258,17 @@
       <p class="text-[9px] font-mono font-bold uppercase tracking-widest text-vault-accent/70 mb-2">04 — Desktop</p>
       <h2 class="text-lg font-bold tracking-tight text-vault-text">VAULT Core Desktop Wallet</h2>
       <p class="text-[10px] text-vault-text-dim mt-0.5">Cross-platform (macOS &amp; Windows) — Electron shell over a native C++ daemon.</p>
+      <a
+        href={desktopWalletUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-xl border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase"
+      >
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+        Download Desktop Wallet
+      </a>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {#each desktopFeatures as f}
