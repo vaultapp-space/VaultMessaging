@@ -189,6 +189,11 @@
         </div>
       {/each}
     </div>
+
+    <div class="flex items-center gap-1.5 mt-3 text-[9px] font-mono font-bold uppercase tracking-wider text-vault-text-dim select-none">
+      <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-vault-warning"></span>
+      Not yet listed on any exchange — mainnet in active development
+    </div>
   </section>
 
   <!-- Why transparent ledgers fail -->
@@ -337,7 +342,9 @@
       <p class="text-[11.5px] text-vault-text-secondary leading-relaxed opacity-90 mt-3 relative">
         <strong class="text-vault-text">Today, these are two separate products.</strong> Vault Messenger does not currently have a built-in VLT wallet or in-chat payment feature — sending and receiving VLT happens through the dedicated
         <a href="https://webwallet.vaultapp.space" target="_blank" rel="noopener noreferrer" class="text-vault-accent hover:underline">web wallet</a>
-        or the desktop GUI wallet. Deeper integration between the two is on the roadmap, not shipped — this page won't claim otherwise.
+        or the desktop GUI wallet. Deeper integration between the two is on the
+        <a href="/roadmap.pdf" target="_blank" rel="noopener noreferrer" class="text-vault-accent hover:underline">roadmap</a>,
+        not shipped — this page won't claim otherwise.
       </p>
     </div>
   </section>

@@ -383,6 +383,15 @@
   }
 
   // FAQ Accordion State
+  // Honest comparison — only claims Vault can actually back up today, not marketing fluff.
+  const comparisonRows = [
+    { label: 'Forward-secret ratchet (new key per message)', vault: true, signal: true, telegram: 'secret-chats-only', whatsapp: true },
+    { label: 'E2EE by default (no opt-in required)', vault: true, signal: true, telegram: false, whatsapp: true },
+    { label: 'Server source code publicly viewable', vault: true, signal: true, telegram: false, whatsapp: false },
+    { label: 'Self-hostable / federated servers', vault: false, signal: false, telegram: false, whatsapp: false },
+    { label: 'Server-enforced message TTL', vault: true, signal: 'user-set', telegram: 'user-set', whatsapp: false }
+  ];
+
   let activeFaqIndex = null;
   const faqs = [
     {
@@ -396,6 +405,18 @@
     {
       q: 'What happens to my keys when I close the browser tab?',
       a: 'Your active decrypted keys live exclusively in volatile JS memory. Closing the tab immediately destroys these keys. When you return, you must re-authenticate (via master password or WebAuthn biometrics) to decrypt your local IndexDB database and resume messaging.'
+    },
+    {
+      q: 'Is Vault open source?',
+      a: 'The client and server source is publicly viewable on GitHub. A formal open-source license has not been applied yet, so treat it as source-available rather than fully open-source until that\'s finalized — we\'ll update this the moment it changes.'
+    },
+    {
+      q: 'Who runs the servers, and can I self-host?',
+      a: 'Today, a single set of servers operated by the Vault team relays signaling and encrypted payloads — it is not yet a federated or self-hostable network. The server design is zero-knowledge by architecture (it only ever sees ciphertext and routing metadata), but it is currently centralized.'
+    },
+    {
+      q: 'What happens if the server goes down?',
+      a: 'Real-time delivery and call signaling pause until the server is back — there is no peer-to-peer fallback for initial connection setup today. Your identity keys, message history, and local backups are unaffected, since none of that lives on the server; messages also carry a 24-hour TTL and are hard-deleted by a periodic reaper regardless of server uptime.'
     }
   ];
 
@@ -490,9 +511,9 @@
         <span class="text-vault-text font-bold">Network:</span>
         <span class="text-vault-accent">Operational</span>
       </div>
-      <div>Seed Relays: <span class="text-vault-text font-bold">{liveRelays}</span></div>
+      <div class="hidden sm:block">Seed Relays: <span class="text-vault-text font-bold">{liveRelays}</span></div>
       <div>Active Sockets: <span class="text-vault-text font-bold">{liveConnections}</span></div>
-      <div>P2P Latency: <span class="text-vault-text font-bold">{liveLatency}ms</span></div>
+      <div class="hidden sm:block">P2P Latency: <span class="text-vault-text font-bold">{liveLatency}ms</span></div>
     </div>
   </div>
   
@@ -593,6 +614,23 @@
           ✖️ Twitter
         </a>
       </div>
+    </div>
+  </section>
+
+  <!-- Real product screenshot — the simulator below is illustrative, this is the actual app -->
+  <section class="w-full max-w-4xl mx-auto px-6 pb-4 z-10 reveal-section">
+    <div class="relative rounded-2xl overflow-hidden border border-vault-border/20 shadow-2xl glass">
+      <img
+        src="/screenshot-desktop.png"
+        alt="Vault Messenger desktop app showing an encrypted conversation and an active E2EE call"
+        class="w-full h-auto block"
+        loading="lazy"
+        width="1024"
+        height="576"
+      />
+      <span class="absolute top-3 left-3 text-[8px] font-mono font-bold uppercase tracking-wider px-2 py-1 rounded bg-vault-black/70 text-vault-accent border border-vault-accent/30 backdrop-blur-sm">
+        App Preview
+      </span>
     </div>
   </section>
 
@@ -1225,6 +1263,47 @@
         </button>
       {/each}
     </div>
+  </section>
+
+  <!-- Honest Comparison Table -->
+  <section class="w-full max-w-4xl mx-auto px-6 py-12 z-10 border-t border-vault-border/20 reveal-section">
+    <div class="text-center mb-8">
+      <h2 class="text-lg font-bold tracking-tight text-vault-text">How Vault Compares</h2>
+      <p class="text-[10px] text-vault-text-dim mt-0.5">A plain look at where Vault stands next to the messengers you already know — including where it falls short.</p>
+    </div>
+
+    <div class="overflow-x-auto rounded-2xl border border-vault-border/20 glass">
+      <table class="w-full text-left border-collapse min-w-[560px]">
+        <thead>
+          <tr class="border-b border-vault-border/20 text-[9px] font-mono font-bold uppercase tracking-wider text-vault-text-dim">
+            <th class="py-3 pl-5 pr-3 font-bold">Capability</th>
+            <th class="py-3 px-3 text-center text-vault-accent">Vault</th>
+            <th class="py-3 px-3 text-center">Signal</th>
+            <th class="py-3 px-3 text-center">Telegram</th>
+            <th class="py-3 px-3 pr-5 text-center">WhatsApp</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each comparisonRows as row, i}
+            <tr class="{i % 2 === 0 ? 'bg-vault-surface/10' : ''} border-b border-vault-border/10 last:border-0">
+              <td class="py-3 pl-5 pr-3 text-[11px] text-vault-text-secondary">{row.label}</td>
+              {#each [row.vault, row.signal, row.telegram, row.whatsapp] as cell, ci}
+                <td class="py-3 px-3 {ci === 3 ? 'pr-5' : ''} text-center">
+                  {#if cell === true}
+                    <span class="text-vault-accent font-bold" title="Yes">✓</span>
+                  {:else if cell === false}
+                    <span class="text-vault-text-dim/50 font-bold" title="No">✕</span>
+                  {:else}
+                    <span class="text-[8px] font-mono font-bold uppercase text-vault-text-dim" title={cell}>{cell.replace(/-/g, ' ')}</span>
+                  {/if}
+                </td>
+              {/each}
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-[9px] text-vault-text-dim text-center mt-3 opacity-70">Self-hosting/federation is a gap we have too, not just something we're calling out in others.</p>
   </section>
 
   <!-- Collapsible FAQ Accordion Section -->
