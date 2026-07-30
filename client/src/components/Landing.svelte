@@ -564,6 +564,9 @@
       </div>
 
       <!-- Prominent Hero Social Links -->
+      <div class="flex items-center gap-1.5 text-[10px] font-bold text-vault-text-secondary font-mono select-none animate-fade-in">
+        JOIN THE COMMUNITY
+      </div>
       <div class="flex flex-wrap justify-center items-center gap-3 mt-1.5 select-none animate-fade-in text-[10px] font-mono font-bold uppercase">
         <a 
           href="https://discord.gg/VZyvTsJcFQ" 
@@ -1258,50 +1261,8 @@
 
   <footer class="w-full border-t border-vault-border/20 bg-vault-surface/40 py-8 z-10">
     <div class="max-w-5xl mx-auto px-6 flex flex-col items-center gap-5">
-      
-      <!-- Community Channels -->
-      <div class="flex flex-col items-center gap-2.5 p-4 bg-vault-elevated/80 border border-vault-border/10 rounded-2xl max-w-sm w-full text-center animate-fade-in glass">
-        <div class="flex items-center gap-1.5 text-[10px] font-bold text-vault-text-secondary font-mono">
-          JOIN THE COMMUNITY
-        </div>
-        <p class="text-[9px] text-vault-text-dim leading-relaxed font-medium">Connect, critique, and contribute to Vault's decentralization journey:</p>
-        <div class="flex justify-center gap-5 mt-1">
-          <a href="https://discord.gg/VZyvTsJcFQ" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 text-[10px] text-vault-text hover:text-vault-accent transition-colors font-bold no-underline focus:outline-none">
-            👾 Discord
-          </a>
-          <a href="https://t.me/Vault_Space" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 text-[10px] text-vault-text hover:text-vault-accent transition-colors font-bold no-underline focus:outline-none">
-            ✈️ Telegram
-          </a>
-          <a href="https://x.com/VaultMessenger" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 text-[10px] text-vault-text hover:text-vault-accent transition-colors font-bold no-underline focus:outline-none">
-            ✖️ Twitter
-          </a>
-        </div>
-      </div>
 
-      <!-- Support Us Section -->
-      <div class="flex flex-col items-center gap-2 p-4 bg-vault-elevated/80 border border-vault-border/10 rounded-2xl max-w-sm w-full text-center animate-fade-in glass">
-        <div class="flex items-center gap-1.5 text-[10px] font-bold text-vault-text-secondary font-mono">
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          DONATION RAILS
-        </div>
-        <p class="text-[9px] text-vault-text-dim leading-relaxed font-medium">Help support our seed node hosting. Copied address is BNB chain compatible:</p>
-        <div class="flex items-center gap-2 w-full p-1.5 bg-vault-surface/60 border border-vault-border/20 rounded-xl mt-0.5">
-          <span class="text-[9px] font-mono text-vault-text truncate flex-1 select-all">0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b</span>
-          <button
-            on:click={() => {
-              navigator.clipboard.writeText('0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b');
-              alert('BNB Address copied to clipboard!');
-            }}
-            class="text-[9px] text-vault-text hover:text-vault-accent transition-colors font-bold whitespace-nowrap focus:outline-none cursor-pointer bg-transparent border-none"
-          >
-            Copy
-          </button>
-        </div>
-      </div>
-
-      <div class="w-full flex flex-col sm:flex-row justify-between items-center gap-4 text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold border-t border-vault-border/10 pt-4">
+      <div class="w-full flex flex-col sm:flex-row justify-between items-center gap-4 text-[9px] text-vault-text-dim uppercase tracking-wider font-semibold">
         <div class="flex items-center gap-1.5">
           <span>© {new Date().getFullYear()} Vault Cryptosystems</span>
         </div>
