@@ -9,7 +9,7 @@ export const MIN_PASSWORD_LENGTH = 8;
 export const MAX_PREKEYS_PER_UPLOAD = 100;
 export const LOW_PREKEY_THRESHOLD = 10;
 export const MAX_MESSAGE_SIZE_BYTES = 64 * 1024; // 64 KB ciphertext limit
-export const MAX_MEDIA_CHUNK_SIZE = 256 * 1024;  // 256 KB per chunk
+export const MAX_MEDIA_CHUNK_SIZE = 1 * 1024 * 1024;  // 1 MB per chunk — must match the client's CHUNK_SIZE in ChatView.svelte
 export const WS_HEARTBEAT_INTERVAL_MS = 30_000;
 export const WS_HEARTBEAT_TIMEOUT_MS = 10_000;
 
