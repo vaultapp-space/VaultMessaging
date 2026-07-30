@@ -74,6 +74,7 @@
     if (!remoteAudioElement) remoteAudioElement = new Audio();
     remoteAudioElement.srcObject = $remoteStreamStore;
     remoteAudioElement.play().catch(e => console.error('Failed to autoplay remote audio:', e));
+    applySinkPreference();
   }
   $: if (localVideo) localVideo.srcObject = $localStreamStore;
 
@@ -147,6 +148,34 @@
 
   function toggleCamera() {
     webrtcToggleCamera();
+  }
+
+  // Speaker (audio output device) toggle for audio calls. setSinkId isn't
+  // universally supported (notably absent in Safari as of writing), so this
+  // degrades to a disabled button with an explanatory tooltip rather than
+  // failing silently.
+  const isSinkIdSupported = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
+  let speakerOn = false;
+
+  async function applySinkPreference() {
+    if (!isSinkIdSupported || !remoteAudioElement) return;
+    try {
+      if (!speakerOn) {
+        await remoteAudioElement.setSinkId('default');
+        return;
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      const speakerDevice = outputs.find(d => /speaker/i.test(d.label));
+      await remoteAudioElement.setSinkId(speakerDevice ? speakerDevice.deviceId : 'default');
+    } catch (e) {
+      console.error('Failed to switch audio output:', e);
+    }
+  }
+
+  async function toggleSpeaker() {
+    speakerOn = !speakerOn;
+    await applySinkPreference();
   }
 
   let localVideo;
@@ -1752,7 +1781,23 @@
             <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
           </svg>
         </button>
-        
+
+        <button
+          on:click={toggleSpeaker}
+          disabled={!isSinkIdSupported}
+          class="p-2 rounded-xl border transition-all focus:outline-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed
+            {speakerOn ? 'bg-vault-accent/20 text-vault-accent border-vault-accent/30' : 'bg-vault-elevated text-vault-text-dim border-vault-border-subtle hover:text-vault-text'}"
+          title={!isSinkIdSupported ? 'Speaker switching is not supported in this browser' : (speakerOn ? 'Switch to Default Output' : 'Switch to Speaker')}
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            {#if speakerOn}
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            {/if}
+          </svg>
+        </button>
+
         <!-- P2P Direct File Transfer -->
         {#if $dataChannelReady && $activeCall?.status === 'ongoing'}
           <input type="file" bind:this={p2pFileInput} on:change={startP2PFileSend} class="hidden" />
