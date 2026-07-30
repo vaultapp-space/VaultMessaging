@@ -17,18 +17,6 @@
   let statsInterval = null;
   let jitterInterval = null;
 
-  // Live Prices Ticker
-  let solPrice = 142.45;
-  let ethPrice = 3450.80;
-  let btcPrice = 64850.00;
-  let solPriceChange = 0.05;
-  let ethPriceChange = -0.12;
-  let btcPriceChange = 0.24;
-  let solPriceFlash = '';
-  let ethPriceFlash = '';
-  let btcPriceFlash = '';
-  let priceFeedInterval = null;
-
   async function fetchNetworkStats() {
     try {
       const res = await fetch('/api/network/stats');
@@ -59,27 +47,6 @@
       liveConnections = Math.max(1, liveConnections + connJitter);
     }, 2000);
 
-    // Live asset price tick intervals
-    priceFeedInterval = setInterval(() => {
-      const solMove = (Math.random() * 0.4 - 0.2);
-      solPrice = Math.max(10, solPrice + solMove);
-      solPriceChange = solMove;
-      solPriceFlash = solMove >= 0 ? 'up' : 'down';
-      setTimeout(() => solPriceFlash = '', 1000);
-
-      const ethMove = (Math.random() * 8.0 - 4.0);
-      ethPrice = Math.max(100, ethPrice + ethMove);
-      ethPriceChange = ethMove;
-      ethPriceFlash = ethMove >= 0 ? 'up' : 'down';
-      setTimeout(() => ethPriceFlash = '', 1000);
-
-      const btcMove = (Math.random() * 120.0 - 60.0);
-      btcPrice = Math.max(1000, btcPrice + btcMove);
-      btcPriceChange = btcMove;
-      btcPriceFlash = btcMove >= 0 ? 'up' : 'down';
-      setTimeout(() => btcPriceFlash = '', 1000);
-    }, 4000);
-
     // Ticking 24h decay timer
     timerInterval = setInterval(() => {
       ttlSeconds--;
@@ -102,14 +69,12 @@
       clearInterval(timerInterval);
       if (statsInterval) clearInterval(statsInterval);
       if (jitterInterval) clearInterval(jitterInterval);
-      if (priceFeedInterval) clearInterval(priceFeedInterval);
-      if (proverInterval) clearInterval(proverInterval);
       clearIntervals();
     };
   });
 
   // Unified Simulator Tab Switcher
-  let simTab = 'chat'; // 'chat' | 'wallet' | 'call'
+  let simTab = 'chat'; // 'chat' | 'call'
   let chatInspectorView = 'ratchet'; // 'ratchet' | 'x3dh'
 
   // E2EE Call Simulator state
@@ -337,204 +302,16 @@
     }, 800);
   }
 
-  // DeFi Wallet Simulator state
-  let selectedChain = 'solana';
-  let isShieldedRails = false;
-  let walletStatus = 'idle'; // 'idle' | 'routing' | 'signing' | 'broadcasting' | 'success'
-  let walletLogs = [
-    '[Init] Non-custodial keychain loaded. Seed phrase encrypted under local WebAuthn key.'
-  ];
-  let walletTab = 'send'; // 'send' | 'swap'
-  let fromToken = 'USDC';
-  let toToken = 'SOL';
-  let swapAmount = '50';
-  let sendRecipient = 'alice.vault';
-  let sendAmount = '20';
-  let txHash = '';
-
-  // WebAuthn Lock/Unlock state
-  let walletLocked = false;
-  let isBiometricScanning = false;
-  let biometricPercent = 0;
-  let biometricStatusText = 'INITIALIZING SCAN...';
-
-  // zk-SNARK Prover stream state
-  let proverStream = '';
-  let proverInterval = null;
-
-  function startProverStream() {
-    proverStream = '';
-    proverInterval = setInterval(() => {
-      const hex = Array.from({ length: 3 }, () => '0x' + Math.floor(Math.random() * 65536).toString(16).padStart(4, '0')).join(' ');
-      const constraints = Math.floor(Math.random() * 20000) + 28000;
-      proverStream = `[groth16] Proving constraints: ${constraints}/48204  Inputs: ${hex}`;
-    }, 80);
-  }
-
-  function stopProverStream() {
-    if (proverInterval) {
-      clearInterval(proverInterval);
-      proverInterval = null;
-    }
-  }
-
-  let solBalance = '12.45';
-  let solSecondary = '150.00 USDC';
-  let ethBalance = '0.84';
-  let ethSecondary = '1,200.00 USDT';
-  let baseBalance = '2.31';
-  let baseSecondary = '480.00 USDC';
-  let bscBalance = '4.25';
-  let bscSecondary = '1,250.00 USDT';
-  let btcBalance = '0.045';
-
-  function simulateWalletAction() {
-    if (walletStatus !== 'idle' || walletLocked) return;
-    walletLogs = [];
-    txHash = '';
-
-    if (walletTab === 'swap') {
-      walletStatus = 'routing';
-      walletLogs = [...walletLogs, `[Routing] Querying cross-chain liquidity paths for ${swapAmount} ${fromToken}...`];
-      
-      setTimeout(() => {
-        walletLogs = [...walletLogs, `[Routing] Best route found: Swap ${fromToken} ➔ Bridge (Li.Fi) ➔ ${toToken} (Est. fee: $0.12)`];
-        walletStatus = 'signing';
-        walletLogs = [...walletLogs, `[Signing] Local transaction request prompted. Waiting for signature...`];
-
-        setTimeout(() => {
-          walletStatus = 'broadcasting';
-          walletLogs = [...walletLogs, `[Broadcasting] Transaction signed using local private keys. Broadcasting payload...`];
-
-          setTimeout(() => {
-            walletStatus = 'success';
-            const randomHash = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-            txHash = '0x' + randomHash.substring(0, 16) + '...';
-            walletLogs = [...walletLogs, `[Success] Cross-chain exchange complete. Tx: ${txHash}`];
-            
-            if (selectedChain === 'solana') {
-              solBalance = '15.22';
-              solSecondary = '100.00 USDC';
-            } else if (selectedChain === 'ethereum') {
-              ethBalance = '1.02';
-              ethSecondary = '1,150.00 USDT';
-            } else if (selectedChain === 'bsc') {
-              bscBalance = '5.12';
-              bscSecondary = '1,100.00 USDT';
-            }
-          }, 1000);
-        }, 1000);
-      }, 1000);
-    } else if (walletTab === 'send') {
-      walletStatus = 'signing';
-      if (isShieldedRails) {
-        walletLogs = [...walletLogs, `[zk-SNARK] Initiating parameters for client-side confidential UTXO spend...`];
-        
-        setTimeout(() => {
-          walletLogs = [...walletLogs, `[zk-SNARK] Generating zero-knowledge input parameters...`];
-          walletStatus = 'proving';
-          startProverStream();
-          
-          setTimeout(() => {
-            stopProverStream();
-            walletLogs = [...walletLogs, `[zk-SNARK] Secret inputs generated. Hiding sender and recipient addresses.`];
-            walletStatus = 'broadcasting';
-            walletLogs = [...walletLogs, `[Broadcasting] Dispatching shielded proof payload to RPC provider...`];
-
-            setTimeout(() => {
-              walletStatus = 'success';
-              txHash = '0xzk' + Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-              walletLogs = [...walletLogs, `[Success] Zero-knowledge confidential transfer broadcasted. Tx: ${txHash}`];
-            }, 1000);
-          }, 1600);
-        }, 1000);
-      } else {
-        walletLogs = [...walletLogs, `[Signing] Requesting biometric confirmation for public address send...`];
-        setTimeout(() => {
-          walletStatus = 'broadcasting';
-          walletLogs = [...walletLogs, `[Broadcasting] Sending signed payload to JSON-RPC node provider...`];
-          setTimeout(() => {
-            walletStatus = 'success';
-            txHash = '0x' + Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-            walletLogs = [...walletLogs, `[Success] Public transfer confirmed. Tx: ${txHash}`];
-          }, 1000);
-        }, 1000);
-      }
-    }
-  }
-
-  function simulateBiometricUnlock() {
-    if (!walletLocked || isBiometricScanning) return;
-    isBiometricScanning = true;
-    biometricPercent = 0;
-    biometricStatusText = 'INITIALIZING BIOMETRIC SCAN...';
-    walletLogs = [...walletLogs, `[WebAuthn] Initializing credentials request via FaceID/TouchID...`];
-
-    const start = Date.now();
-    const duration = 2500;
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const progress = Math.min(100, Math.floor((elapsed / duration) * 100));
-      biometricPercent = progress;
-
-      if (progress < 25) {
-        biometricStatusText = 'READING BIOMETRIC SEED...';
-      } else if (progress < 50) {
-        if (!walletLogs.includes(`[WebAuthn] User successfully verified. PRF extension returned secret bits.`)) {
-          walletLogs = [...walletLogs, `[WebAuthn] User successfully verified. PRF extension returned secret bits.`];
-        }
-        biometricStatusText = 'VERIFYING SIGNATURE...';
-      } else if (progress < 75) {
-        if (!walletLogs.includes(`[KeyDerivation] Deriving DB Key: PBKDF2 (HMAC-SHA256, 100k iterations)`)) {
-          walletLogs = [...walletLogs, `[KeyDerivation] Deriving DB Key: PBKDF2 (HMAC-SHA256, 100k iterations)`];
-        }
-        biometricStatusText = 'DERIVING PRF KEY (PBKDF2)...';
-      } else if (progress < 100) {
-        if (!walletLogs.includes(`[KeyDerivation] Database key successfully derived.`)) {
-          walletLogs = [...walletLogs, `[KeyDerivation] Database key successfully derived.`];
-        }
-        biometricStatusText = 'DECRYPTING STORAGE VAULT...';
-      } else {
-        clearInterval(interval);
-        if (!walletLogs.includes(`[Database] Decrypted local database key. Session restored.`)) {
-          walletLogs = [...walletLogs, `[Database] Decrypted local database key. Session restored.`];
-        }
-        isBiometricScanning = false;
-        walletLocked = false;
-      }
-    }, 50);
-  }
-
-  function resetWalletDemo() {
-    walletStatus = 'idle';
-    walletLocked = false;
-    isBiometricScanning = false;
-    walletLogs = ['[Reset] Simulator reset. Non-custodial balances restored.'];
-    txHash = '';
-    solBalance = '12.45';
-    solSecondary = '150.00 USDC';
-    ethBalance = '0.84';
-    ethSecondary = '1,200.00 USDT';
-    baseBalance = '2.31';
-    baseSecondary = '480.00 USDC';
-    bscBalance = '4.25';
-    bscSecondary = '1,250.00 USDT';
-  }
-
   // FAQ Accordion State
   let activeFaqIndex = null;
   const faqs = [
     {
-      q: 'Is Vault truly non-custodial? How is my wallet secured?',
-      a: 'Yes. All mnemonic seed phrases and private keys are generated entirely client-side in browser memory and are never sent to our servers. They are stored locally in IndexedDB encrypted using AES-GCM-256 with a key derived from your master password or a secure WebAuthn PRF credential (biometrics). The server is completely zero-knowledge regarding your assets.'
+      q: 'Are my identity keys ever sent to the server?',
+      a: 'No. Your identity and prekey material are generated entirely client-side and never leave the browser except as a passphrase-encrypted backup. That backup is stored using AES-GCM-256 with a key derived from your master password or a secure WebAuthn PRF credential (biometrics). The server only ever sees the encrypted blob — it is completely zero-knowledge regarding your keys.'
     },
     {
       q: 'What is the Double Ratchet protocol, and why does it matter?',
       a: 'Double Ratchet is a protocol used to negotiate keys for every single message. It combines a DH ratchet (generating fresh secrets dynamically) and a KDF symmetric ratchet (generating single-use message keys). This ensures perfect forward secrecy: if an attacker compromises a single message key, they cannot read past messages or future messages.'
-    },
-    {
-      q: 'How does the zk-SNARK private payment system work?',
-      a: 'Standard blockchain transactions expose sender, recipient, and amount publicly. When you toggle private rails in Vault, the app generates a zero-knowledge proof client-side to shield the transaction details on-chain. The zero-knowledge proof verifies the validity of the transaction (inputs match outputs) without revealing the addresses or value on the public ledger.'
     },
     {
       q: 'What happens to my keys when I close the browser tab?',
@@ -559,43 +336,14 @@
     }
   }
 
-  // Security & DeFi features list (Updated with 3 new features)
+  // Security & privacy features list
   const features = [
-    {
-      icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-      </svg>`,
-      title: 'Multi-Chain DeFi Wallet',
-      desc: 'Native support for Bitcoin, Solana, Ethereum, Base, Arbitrum, Optimism, and Polygon mainnet balances fetched live from RPCs.'
-    },
-    {
-      icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-      </svg>`,
-      title: 'zk-SNARK Private Payments',
-      desc: 'Broadcast confidential transactions inside chat streams where addresses are completely hidden under zero-knowledge proofs.'
-    },
     {
       icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21.75c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94-3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
       </svg>`,
       title: 'E2EE Group Messaging',
       desc: 'Leverages the Signal Sender Keys Protocol to scale secure, encrypted group chat. Optimizes communication complexity from O(N) to O(1) client overhead.'
-    },
-    {
-      icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-      </svg>`,
-      title: 'WalletConnect dApp Gateway',
-      desc: 'Link securely with decentralized applications (e.g. Uniswap) and sign contract calls using local biometrics.'
-    },
-    {
-      icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-      </svg>`,
-      title: 'Optimized Cross-Chain Routing',
-      desc: 'Look up paths and swap tokens instantly between EVM and Solana chains via unified bridging protocols.'
     },
     {
       icon: `<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
@@ -665,7 +413,6 @@
       <div>Seed Relays: <span class="text-vault-text font-bold">{liveRelays}</span></div>
       <div>Active Sockets: <span class="text-vault-text font-bold">{liveConnections}</span></div>
       <div>P2P Latency: <span class="text-vault-text font-bold">{liveLatency}ms</span></div>
-      <div class="hidden md:inline">Shielded ZK Rail: <span class="text-vault-accent font-bold">Active</span></div>
     </div>
   </div>
   
@@ -705,17 +452,16 @@
     <div class="flex flex-wrap justify-center gap-1.5 mb-1.5 select-none animate-fade-in text-[9px] font-mono font-bold tracking-wider uppercase">
       <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">E2EE: Double Ratchet</span>
       <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">Handshake: X3DH</span>
-      <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">Proofs: zk-SNARK UTXO</span>
       <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">WebRTC: DTLS-SRTP</span>
       <span class="px-2 py-0.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary">Keys: WebAuthn PRF</span>
     </div>
 
     <h1 class="text-4xl sm:text-5xl font-black tracking-tight leading-[1.08] max-w-2xl bg-gradient-to-b from-vault-text to-vault-text-secondary bg-clip-text text-transparent">
-      Confidential Chat.<br/>Shielded Web3.
+      Confidential Chat.<br/>Zero Compromise.
     </h1>
-    
+
     <p class="text-xs sm:text-sm text-vault-text-secondary max-w-md leading-relaxed opacity-80">
-      A zero-knowledge communications hub pairing end-to-end double-ratcheted messaging, private WebRTC streams, and local biometric-encrypted DeFi payment rails.
+      A zero-knowledge communications hub pairing end-to-end double-ratcheted messaging with private, peer-to-peer encrypted voice and video.
     </p>
     
     <div class="mt-2 flex flex-col items-center gap-4">
@@ -765,7 +511,7 @@
       <div class="text-left flex items-center gap-4">
         <div>
           <h2 class="text-lg font-bold tracking-tight text-vault-text">Protocol Sandbox</h2>
-          <p class="text-[10px] text-vault-text-dim mt-0.5">Toggle between Alice's messaging tunnel, her local multi-chain wallet, and secure E2EE calls.</p>
+          <p class="text-[10px] text-vault-text-dim mt-0.5">Toggle between Alice's messaging tunnel and secure E2EE calls.</p>
         </div>
         <!-- Radar Map Status -->
         <div class="hidden md:flex items-center gap-2 px-2.5 py-1 bg-vault-surface/40 border border-vault-border/20 rounded-xl font-mono text-[8px] text-vault-text-dim select-none animate-fade-in">
@@ -792,13 +538,7 @@
         >
           💬 Chat
         </button>
-        <button 
-          on:click={() => simTab = 'wallet'}
-          class="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all focus:outline-none cursor-pointer {simTab === 'wallet' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text'}"
-        >
-          💳 Wallet
-        </button>
-        <button 
+        <button
           on:click={() => { simTab = 'call'; startSimCall(); }}
           class="px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all focus:outline-none cursor-pointer {simTab === 'call' ? 'bg-vault-elevated text-vault-text border border-vault-border/30 shadow' : 'text-vault-text-dim hover:text-vault-text'}"
         >
@@ -882,239 +622,6 @@
             </button>
           </form>
 
-        {:else if simTab === 'wallet'}
-          <!-- 💳 DEFI WALLET SIMULATOR INTERFACE -->
-          {#if isShieldedRails}
-            <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.03)_0%,transparent_75%)] pointer-events-none z-0"></div>
-          {/if}
-
-          <div class="px-4 py-2.5 border-b border-vault-border/20 bg-vault-surface/40 flex items-center justify-between z-10">
-            <div class="flex items-center gap-1.5">
-              <span class="text-[10px] font-bold font-mono uppercase tracking-wider text-vault-text">Keychain Balance</span>
-            </div>
-            <!-- Chain Select Dropdown -->
-            <select 
-              bind:value={selectedChain}
-              disabled={walletLocked}
-              class="bg-vault-black border border-vault-border/30 rounded px-1.5 py-0.5 text-[9px] font-mono text-vault-text focus:outline-none focus:border-vault-accent cursor-pointer disabled:opacity-50"
-            >
-              <option value="solana">Solana (SPL)</option>
-              <option value="ethereum">Ethereum (ERC20)</option>
-              <option value="base">Base L2</option>
-              <option value="bsc">BSC (BEP20)</option>
-              <option value="bitcoin">Bitcoin Native</option>
-            </select>
-          </div>
-
-          <div class="flex-1 p-4 flex flex-col justify-between overflow-y-auto z-10 relative">
-            
-            <!-- Sleek WebAuthn Lock/Unlock Overlay inside Card -->
-            {#if walletLocked}
-              <div class="absolute inset-0 bg-vault-black/85 backdrop-blur-md flex flex-col items-center justify-center p-4 z-20 animate-fade-in text-center">
-                {#if isBiometricScanning}
-                  <!-- Biometric Fingerprint Scan Animation with Laser effect -->
-                  <div class="relative w-24 h-24 mb-4 flex items-center justify-center p-3 select-none">
-                    <!-- Concentric Sci-Fi Rotating Rings -->
-                    <div class="absolute inset-0 rounded-full border border-dashed border-vault-accent/40 animate-hud-rotate"></div>
-                    <div class="absolute inset-2 rounded-full border border-double border-vault-accent/30 animate-hud-rotate-reverse"></div>
-                    <div class="absolute inset-4 rounded-full border border-vault-accent/20 animate-pulse"></div>
-
-                    <svg class="w-10 h-10 text-vault-accent z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 009 11a13.917 13.917 0 00-2.338-7.58l-.05-.09m3.06 18.06A14.12 14.12 0 0112 11c0-2.907-.874-5.612-2.382-7.87m6.764 11.73a14.178 14.178 0 00.562-3.86M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                    </svg>
-                    <!-- Laser Scanner Line -->
-                    <div class="absolute left-2 right-2 h-[2px] bg-vault-accent/80 shadow-[0_0_10px_rgba(16,185,129,0.9)] animate-scanner-scan z-10"></div>
-                  </div>
-                  <div class="text-[13px] font-mono text-vault-text font-bold mb-1 select-none">{biometricPercent}%</div>
-                  <div class="text-[9px] font-mono text-vault-accent animate-pulse tracking-wide select-none">{biometricStatusText}</div>
-                {:else}
-                  <!-- Fingerprint SVG Icon -->
-                  <div class="relative w-18 h-18 mb-3 flex items-center justify-center border border-vault-border/30 rounded-full p-3 bg-vault-surface/40 hover:border-vault-accent/40 transition-colors">
-                    <svg class="w-10 h-10 text-vault-text-dim" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.25">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 009 11a13.917 13.917 0 00-2.338-7.58l-.05-.09m3.06 18.06A14.12 14.12 0 0112 11c0-2.907-.874-5.612-2.382-7.87m6.764 11.73a14.178 14.178 0 00.562-3.86M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                    </svg>
-                  </div>
-                  <p class="text-[10px] text-vault-text-secondary leading-relaxed mb-3">Keychain encrypted locally in browser IndexedDB.</p>
-                  <button 
-                    on:click={simulateBiometricUnlock}
-                    class="py-2.5 px-5 text-[10px] bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl transition-all cursor-pointer shadow-md focus:outline-none btn-glow"
-                  >
-                    Unlock via Biometrics
-                  </button>
-                {/if}
-              </div>
-            {/if}
-
-            <!-- Balance display Card -->
-            <div class="p-3 bg-vault-elevated/70 border transition-all duration-300 rounded-xl flex flex-col gap-0.5 relative overflow-hidden {isShieldedRails ? 'border-vault-accent/40 shadow-[0_0_10px_rgba(16,185,129,0.05)]' : 'border-vault-border/20'} text-left">
-              <div class="flex items-center justify-between text-[9px] font-mono text-vault-text-dim">
-                <span>LOCAL KEYPAIR</span>
-                <span class="text-vault-accent/80 font-bold">{selectedChain === 'solana' ? '9xQd...3zPq' : selectedChain === 'ethereum' ? '0x71C...a1B2' : selectedChain === 'base' ? '0x94f...c123' : selectedChain === 'bsc' ? '0x3bB...e5C6' : 'bc1q...5xyz'}</span>
-              </div>
-              
-              <div class="flex items-baseline gap-1.5 mt-0.5">
-                {#if selectedChain === 'solana'}
-                  <span class="text-xl font-black text-vault-text">{solBalance}</span>
-                  <span class="text-[10px] font-bold text-vault-text-secondary">SOL</span>
-                {:else if selectedChain === 'ethereum'}
-                  <span class="text-xl font-black text-vault-text">{ethBalance}</span>
-                  <span class="text-[10px] font-bold text-vault-text-secondary">ETH</span>
-                {:else if selectedChain === 'base'}
-                  <span class="text-xl font-black text-vault-text">{baseBalance}</span>
-                  <span class="text-[10px] font-bold text-vault-text-secondary">ETH</span>
-                {:else if selectedChain === 'bsc'}
-                  <span class="text-xl font-black text-vault-text">{bscBalance}</span>
-                  <span class="text-[10px] font-bold text-vault-text-secondary">BNB</span>
-                {:else if selectedChain === 'bitcoin'}
-                  <span class="text-xl font-black text-vault-text">{btcBalance}</span>
-                  <span class="text-[10px] font-bold text-vault-text-secondary">BTC</span>
-                {/if}
-              </div>
-
-              <!-- Secondary token balances -->
-              {#if selectedChain === 'solana'}
-                <div class="text-[9px] text-vault-text-secondary font-mono">Secondary: {solSecondary}</div>
-              {:else if selectedChain === 'ethereum'}
-                <div class="text-[9px] text-vault-text-secondary font-mono">Secondary: {ethSecondary}</div>
-              {:else if selectedChain === 'base'}
-                <div class="text-[9px] text-vault-text-secondary font-mono">Secondary: {baseSecondary}</div>
-              {:else if selectedChain === 'bsc'}
-                <div class="text-[9px] text-vault-text-secondary font-mono">Secondary: {bscSecondary}</div>
-              {/if}
-
-              <!-- Live Asset Price Feeds (Oracle) -->
-              <div class="mt-2.5 pt-2 border-t border-vault-border/10 flex items-center justify-between select-none">
-                <div class="text-[8px] font-mono text-vault-text-dim font-bold uppercase tracking-wider">Oracle Feed</div>
-                <div class="flex items-center gap-1.5 font-mono text-[8px] tracking-tight">
-                  <div class="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-vault-border/15 bg-vault-surface/40 transition-colors {solPriceFlash === 'up' ? 'animate-flash-green' : solPriceFlash === 'down' ? 'animate-flash-red' : ''}">
-                    <span class="text-vault-text-dim">SOL:</span>
-                    <span class={solPriceChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}>${solPrice.toFixed(2)}</span>
-                  </div>
-                  <div class="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-vault-border/15 bg-vault-surface/40 transition-colors {ethPriceFlash === 'up' ? 'animate-flash-green' : ethPriceFlash === 'down' ? 'animate-flash-red' : ''}">
-                    <span class="text-vault-text-dim">ETH:</span>
-                    <span class={ethPriceChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}>${ethPrice.toFixed(2)}</span>
-                  </div>
-                  <div class="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-vault-border/15 bg-vault-surface/40 transition-colors {btcPriceFlash === 'up' ? 'animate-flash-green' : btcPriceFlash === 'down' ? 'animate-flash-red' : ''}">
-                    <span class="text-vault-text-dim">BTC:</span>
-                    <span class={btcPriceChange >= 0 ? 'text-vault-accent' : 'text-vault-danger'}>${btcPrice.toFixed(0)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- zk-SNARK rails toggle button -->
-              <div class="mt-2.5 pt-2 border-t border-vault-border/20 flex items-center justify-between">
-                <span class="text-[9px] font-mono font-bold text-vault-text-secondary flex items-center gap-1">
-                  🛡️ Shielded UTXO Proofs
-                </span>
-                <button 
-                  on:click={() => isShieldedRails = !isShieldedRails}
-                  class="w-9 h-4.5 rounded-full p-0.5 transition-colors cursor-pointer {isShieldedRails ? 'bg-vault-accent' : 'bg-vault-border/50'}"
-                  aria-label="Toggle Shielded Rails"
-                >
-                  <div class="w-3.5 h-3.5 bg-vault-black rounded-full shadow transition-transform {isShieldedRails ? 'translate-x-4.5' : ''}"></div>
-                </button>
-              </div>
-            </div>
-
-            <!-- Forms tabs -->
-            <div class="mt-3 flex-1 flex flex-col justify-end">
-              
-              <!-- Tab operations and Lock selector -->
-              <div class="flex items-center justify-between border-b border-vault-border/20 mb-2.5">
-                <div class="flex text-[10px] font-bold font-mono">
-                  <button 
-                    on:click={() => walletTab = 'send'}
-                    class="pb-1.5 px-2 border-b-2 {walletTab === 'send' ? 'border-vault-text text-vault-text' : 'border-transparent text-vault-text-dim'} cursor-pointer focus:outline-none"
-                  >
-                    Send Assets
-                  </button>
-                  <button 
-                    on:click={() => walletTab = 'swap'}
-                    class="pb-1.5 px-2 border-b-2 {walletTab === 'swap' ? 'border-vault-text text-vault-text' : 'border-transparent text-vault-text-dim'} cursor-pointer focus:outline-none"
-                  >
-                    DEX Swap
-                  </button>
-                </div>
-                <button 
-                  on:click={() => { walletLocked = true; walletLogs = [...walletLogs, '[Lock] Vault credentials locked. Decryption keys cleared from memory.']; }}
-                  class="pb-1 text-[8px] font-mono text-vault-text-dim hover:text-vault-text cursor-pointer focus:outline-none flex items-center gap-1 bg-transparent border-none"
-                >
-                  🔒 Lock Card
-                </button>
-              </div>
-
-              <!-- Tab content: Send -->
-              {#if walletTab === 'send'}
-                <div class="flex flex-col gap-2 text-left">
-                  <div class="flex gap-2">
-                    <div class="flex-grow">
-                      <label for="send-recipient" class="text-[8px] font-bold text-vault-text-dim uppercase tracking-wider block mb-0.5">To Address</label>
-                      <input 
-                        id="send-recipient"
-                        type="text" 
-                        bind:value={sendRecipient} 
-                        placeholder="e.g. alice.vault"
-                        class="input bg-vault-black text-[10px] h-8 rounded-xl border border-vault-border/20 focus:border-vault-accent"
-                      />
-                    </div>
-                    <div class="w-20">
-                      <label for="send-amount" class="text-[8px] font-bold text-vault-text-dim uppercase tracking-wider block mb-0.5">Amount</label>
-                      <input 
-                        id="send-amount"
-                        type="number" 
-                        bind:value={sendAmount} 
-                        class="input bg-vault-black text-[10px] h-8 rounded-xl border border-vault-border/20 focus:border-vault-accent"
-                      />
-                    </div>
-                  </div>
-                  <button 
-                    on:click={simulateWalletAction}
-                    disabled={walletStatus !== 'idle'}
-                    class="w-full py-2 text-[10px] font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 focus:outline-none {isShieldedRails ? 'bg-vault-accent text-vault-black hover:bg-vault-accent-hover btn-glow-accent' : 'bg-vault-text text-vault-black hover:bg-vault-text-secondary btn-glow'}"
-                  >
-                    {#if isShieldedRails}
-                      🛡️ Send Shielded UTXO
-                    {:else}
-                      Send Broadcast
-                    {/if}
-                  </button>
-                </div>
-              {:else}
-                <!-- Tab content: Swap -->
-                <div class="flex flex-col gap-2 text-left">
-                  <div class="grid grid-cols-3 gap-2">
-                    <div>
-                      <label for="from-token" class="text-[8px] font-bold text-vault-text-dim uppercase tracking-wider block mb-0.5">From</label>
-                      <select id="from-token" bind:value={fromToken} class="input bg-vault-black text-[10px] h-8 rounded-xl border border-vault-border/20 focus:border-vault-accent cursor-pointer">
-                        <option>USDC</option>
-                        <option>SOL</option>
-                        <option>ETH</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label for="to-token" class="text-[8px] font-bold text-vault-text-dim uppercase tracking-wider block mb-0.5">To</label>
-                      <select id="to-token" bind:value={toToken} class="input bg-vault-black text-[10px] h-8 rounded-xl border border-vault-border/20 focus:border-vault-accent cursor-pointer">
-                        <option>SOL</option>
-                        <option>USDC</option>
-                        <option>ETH</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label for="swap-amount" class="text-[8px] font-bold text-vault-text-dim uppercase tracking-wider block mb-0.5">Amount</label>
-                      <input id="swap-amount" type="number" bind:value={swapAmount} class="input bg-vault-black text-[10px] h-8 rounded-xl border border-vault-border/20 focus:border-vault-accent"/>
-                    </div>
-                  </div>
-                  <button 
-                    on:click={simulateWalletAction}
-                    disabled={walletStatus !== 'idle'}
-                    class="w-full py-2 text-[10px] font-bold bg-vault-text text-vault-black hover:bg-vault-text-secondary rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 focus:outline-none btn-glow"
-                  >
-                    🔄 Execute Bridge Swap
-                  </button>
-                </div>
-              {/if}
-            </div>
-          </div>
         {:else if simTab === 'call'}
           <!-- 📞 CALL SIMULATOR INTERFACE -->
           <div class="px-4 py-2.5 border-b border-vault-border/20 bg-vault-surface/40 flex items-center justify-between z-10">
@@ -1216,18 +723,9 @@
           <!-- Title & Controls -->
           <div class="flex items-center justify-between border-b border-vault-border/20 pb-3 mb-4 text-left">
             <h3 class="text-xs font-bold text-vault-text tracking-wider uppercase flex items-center gap-1.5 font-mono">
-              <span>⚡</span> {simTab === 'chat' ? 'Double Ratchet state' : 'Node RPC & zk-SNARK Prover'}
+              <span>⚡</span> {simTab === 'chat' ? 'Double Ratchet state' : 'WebRTC signaling state'}
             </h3>
-            {#if simTab === 'wallet'}
-              <button 
-                on:click={resetWalletDemo}
-                class="text-[8px] font-mono text-vault-text-secondary border border-vault-border/50 bg-vault-surface/40 px-2 py-0.5 rounded cursor-pointer hover:bg-vault-elevated focus:outline-none"
-              >
-                Reset balances
-              </button>
-            {:else}
-              <span class="text-[9px] font-mono text-vault-text-dim">Epoch: {dhStepCount}</span>
-            {/if}
+            <span class="text-[9px] font-mono text-vault-text-dim">Epoch: {dhStepCount}</span>
           </div>
 
           {#if simTab === 'chat'}
@@ -1433,70 +931,11 @@
             {/if}
 
           {:else}
-            <!-- 💳 WALLET PROTOCOL METRICS & zk-SNARK PROVER STACK -->
+            <!-- 📞 CALL SIGNALING DETAILS -->
             <div class="text-[11px] text-vault-text-secondary leading-relaxed mb-4 flex flex-col gap-3">
               <p class="leading-relaxed text-[10px]">
-                Vault computes zero-knowledge proofs client-side when **Shielded UTXO** transfers are enabled. This verifies ledger state transitions without exposing public keys or token amounts.
+                Voice/video streams are symmetric-key encrypted using a key negotiated over the same Double Ratchet session as your messages, then carried peer-to-peer over WebRTC (DTLS-SRTP) — the server only relays SDP/ICE signaling, never media.
               </p>
-
-              <!-- zk-SNARK Prover Execution Stack -->
-              <div class="p-3 bg-vault-surface/20 border border-vault-border/10 rounded-xl flex flex-col gap-2.5 font-mono select-none">
-                <div class="text-[9px] font-bold text-vault-text border-b border-vault-border/10 pb-1.5 flex items-center justify-between">
-                  <span>zk-SNARK Prover Stack (groth16)</span>
-                  <span class="text-[8px] px-1.5 py-0.5 rounded font-normal {isShieldedRails ? 'bg-vault-accent/15 text-vault-accent' : 'bg-vault-surface border border-vault-border text-vault-text-dim'}">
-                    {isShieldedRails ? '🛡️ Shielded ZK Mode' : 'Transparent Broadcast Mode'}
-                  </span>
-                </div>
-
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[8.5px] font-bold">
-                  <!-- Step 1: Inputs -->
-                  <div class="p-2 rounded-lg border flex flex-col gap-1 transition-all duration-300
-                    {walletStatus === 'signing' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 
-                     walletStatus !== 'idle' ? 'bg-vault-accent/5 border-vault-accent/20 text-vault-accent/70' : 
-                     'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}"
-                  >
-                    <div>1. SECRETS</div>
-                    <div class="text-[7.5px] font-normal leading-tight opacity-75">
-                      {walletStatus === 'signing' ? '🔍 Scanning UTXOs...' : 'UTXO Witnesses'}
-                    </div>
-                  </div>
-
-                  <!-- Step 2: Constraints -->
-                  <div class="p-2 rounded-lg border flex flex-col gap-1 transition-all duration-300
-                    {walletStatus === 'proving' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 
-                     (walletStatus === 'broadcasting' || walletStatus === 'success') ? 'bg-vault-accent/5 border-vault-accent/20 text-vault-accent/70' : 
-                     'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}"
-                  >
-                    <div>2. CIRCUIT</div>
-                    <div class="text-[7.5px] font-normal leading-tight opacity-75">
-                      {walletStatus === 'proving' ? '⚙️ Proving constraints...' : 'R1CS Constraints'}
-                    </div>
-                  </div>
-
-                  <!-- Step 3: Proof Generation -->
-                  <div class="p-2 rounded-lg border flex flex-col gap-1 transition-all duration-300
-                    {walletStatus === 'broadcasting' ? 'bg-vault-accent/10 border-vault-accent/30 text-vault-accent animate-pulse' : 
-                     walletStatus === 'success' ? 'bg-vault-accent/5 border-vault-accent/20 text-vault-accent/70' : 
-                     'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}"
-                  >
-                    <div>3. PROOF</div>
-                    <div class="text-[7.5px] font-normal leading-tight opacity-75">
-                      {walletStatus === 'broadcasting' ? '⚡ Broadcast proof...' : 'pi_A, pi_B, pi_C'}
-                    </div>
-                  </div>
-
-                  <!-- Step 4: Verification -->
-                  <div class="p-2 rounded-lg border flex flex-col gap-1 transition-all duration-300
-                    {walletStatus === 'success' ? 'bg-vault-accent/15 border-vault-accent text-vault-accent' : 
-                     'bg-vault-surface/30 border-vault-border/20 text-vault-text-dim'}"
-                  >
-                    <div>4. VERIFY</div>
-                    <div class="text-[7.5px] font-normal leading-tight opacity-75">
-                      {walletStatus === 'success' ? '✅ zk-Proof VALID' : 'Verifier Contract'}
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           {/if}
         </div>
@@ -1512,27 +951,6 @@
                   <span class="break-all">{log}</span>
                 </div>
               {/each}
-            {:else if simTab === 'wallet'}
-              {#each walletLogs as log}
-                <div class="flex items-start gap-1">
-                  <span class="text-vault-accent/70">▶</span>
-                  <span class="break-all">{log}</span>
-                </div>
-              {/each}
-              {#if walletStatus === 'routing'}
-                <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Querying liquidity routing...</div>
-              {:else if walletStatus === 'signing'}
-                <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Awaiting credential verification...</div>
-              {:else if walletStatus === 'proving'}
-                <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Proving circuit parameters (zk-SNARK)...</div>
-                {#if proverStream}
-                  <div class="text-vault-accent/75 font-mono text-[8.5px] pl-3.5 leading-tight select-none truncate">
-                    {proverStream}
-                  </div>
-                {/if}
-              {:else if walletStatus === 'broadcasting'}
-                <div class="text-vault-accent/80 animate-pulse font-bold mt-0.5">● Transferring payload to nodes...</div>
-              {/if}
             {:else}
               {#each callLogs as log}
                 <div class="flex items-start gap-1">
@@ -1548,14 +966,6 @@
             {/if}
           </div>
         </div>
-
-        <!-- Tx hash status (Only shown on Wallet tab) -->
-        {#if simTab === 'wallet' && txHash}
-          <div class="mt-3.5 p-2.5 bg-vault-accent/5 border border-vault-accent/20 text-vault-accent rounded-xl flex items-center justify-between text-[10px] font-mono animate-fade-in">
-            <span class="truncate">Mined: {txHash}</span>
-            <span class="text-[8px] bg-vault-accent/20 text-vault-accent px-1 py-0.5 rounded font-bold uppercase tracking-wider">Mined</span>
-          </div>
-        {/if}
 
       </div>
     </div>
