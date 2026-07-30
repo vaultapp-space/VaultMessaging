@@ -80,6 +80,11 @@
   const desktopWalletUrl = 'https://github.com/vaultapp-space/vault-wallets';
 </script>
 
+<svelte:head>
+  <title>VAULT (VLT) — Untraceable Privacy Cryptocurrency</title>
+  <meta name="description" content="VAULT (VLT) is an untraceable, privacy-first cryptocurrency built on ring signatures, RingCT, and dual-key stealth addresses — mandatory protocol-level privacy for every transaction." />
+</svelte:head>
+
 <div class="h-screen overflow-y-auto flex flex-col bg-vault-black text-vault-text font-sans selection:bg-vault-accent/20 selection:text-vault-accent">
 
   <!-- Ambient background glow -->
@@ -238,6 +243,75 @@
           <p class="text-[11px] text-vault-text-secondary leading-relaxed opacity-90">{item.desc}</p>
         </div>
       {/each}
+    </div>
+
+    <!-- Transaction anonymization flow diagram -->
+    <div class="mt-8 glass border border-vault-border/20 rounded-2xl p-5 flex flex-col items-center gap-3">
+      <p class="text-[9px] font-mono font-bold uppercase tracking-widest text-vault-text-dim self-start">How a transaction gets anonymized</p>
+      <svg class="w-full max-w-[820px] h-[160px]" viewBox="0 0 820 160" fill="none">
+        <defs>
+          <marker id="vlt-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 2 L 8 5 L 0 8 z" fill="var(--color-vault-accent)" opacity="0.6" />
+          </marker>
+          <filter id="vlt-glow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        <!-- Connecting spine -->
+        <line x1="80" y1="80" x2="740" y2="80" stroke="var(--color-vault-accent)" stroke-opacity="0.25" stroke-width="1.5" marker-end="url(#vlt-arrow)" />
+
+        <!-- Sender -->
+        <g transform="translate(50, 80)">
+          <circle r="26" class="fill-vault-surface stroke-vault-border" stroke-width="1.5" />
+          <text y="4" text-anchor="middle" class="text-[16px]" fill="currentColor">🧑</text>
+          <text y="46" text-anchor="middle" class="text-[9px] font-mono font-bold fill-vault-text-dim">SENDER</text>
+        </g>
+
+        <!-- Ring Signature: decoy ring around a central node -->
+        <g transform="translate(240, 80)">
+          {#each Array.from({ length: 6 }, (_, i) => i) as i}
+            <circle
+              cx={26 * Math.cos((i / 6) * 2 * Math.PI)}
+              cy={26 * Math.sin((i / 6) * 2 * Math.PI)}
+              r="4"
+              class="fill-vault-border stroke-vault-border-subtle"
+              opacity={i === 0 ? '0' : '0.7'}
+            />
+          {/each}
+          <circle r="22" class="fill-vault-accent/10 stroke-vault-accent animate-pulse" stroke-width="1.5" filter="url(#vlt-glow)" />
+          <text y="4" text-anchor="middle" class="text-[15px]" fill="currentColor">🔏</text>
+          <text y="48" text-anchor="middle" class="text-[9px] font-mono font-bold fill-vault-accent">RING SIG</text>
+          <text y="60" text-anchor="middle" class="text-[7.5px] font-mono fill-vault-text-dim">sender hidden</text>
+        </g>
+
+        <!-- RingCT: hidden amount -->
+        <g transform="translate(420, 80)">
+          <circle r="22" class="fill-vault-accent/10 stroke-vault-accent" stroke-width="1.5" filter="url(#vlt-glow)" />
+          <text y="4" text-anchor="middle" class="text-[15px]" fill="currentColor">🔒</text>
+          <text y="48" text-anchor="middle" class="text-[9px] font-mono font-bold fill-vault-accent">RINGCT</text>
+          <text y="60" text-anchor="middle" class="text-[7.5px] font-mono fill-vault-text-dim">amount hidden</text>
+        </g>
+
+        <!-- Stealth address: one-time derived address -->
+        <g transform="translate(600, 80)">
+          <circle r="22" class="fill-vault-accent/10 stroke-vault-accent" stroke-width="1.5" filter="url(#vlt-glow)" />
+          <text y="4" text-anchor="middle" class="text-[15px]" fill="currentColor">🕶️</text>
+          <text y="48" text-anchor="middle" class="text-[9px] font-mono font-bold fill-vault-accent">STEALTH</text>
+          <text y="60" text-anchor="middle" class="text-[7.5px] font-mono fill-vault-text-dim">receiver hidden</text>
+        </g>
+
+        <!-- Receiver -->
+        <g transform="translate(770, 80)">
+          <circle r="26" class="fill-vault-surface stroke-vault-border" stroke-width="1.5" />
+          <text y="4" text-anchor="middle" class="text-[16px]" fill="currentColor">🧑</text>
+          <text y="46" text-anchor="middle" class="text-[9px] font-mono font-bold fill-vault-text-dim">RECEIVER</text>
+        </g>
+      </svg>
+      <p class="text-[9.5px] text-vault-text-dim text-center max-w-lg leading-relaxed">
+        Every field an outside observer would normally read off-chain — sender, amount, receiver — is obfuscated by a distinct primitive before the transaction is broadcast.
+      </p>
     </div>
   </section>
 

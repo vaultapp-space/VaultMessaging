@@ -7,18 +7,15 @@
   import { fromBase64 } from './lib/crypto/utils.js';
   import { RatchetSession } from './lib/crypto/ratchet.js';
   import { SenderKeySession } from './lib/crypto/senderkeys.js';
-  import Auth from './components/Auth.svelte';
-  import Chat from './components/Chat.svelte';
   import Landing from './components/Landing.svelte';
-  import VaultCoin from './components/VaultCoin.svelte';
+  import { applyTheme } from './lib/theme.js';
+
+  // Auth/Chat/VaultCoin are lazy-loaded (see {#await import(...)} below) so a
+  // first-time visitor landing on the marketing page isn't also downloading
+  // the full chat client before it's needed.
 
   // Initialize theme from localStorage immediately (no flicker)
-  const initialTheme = localStorage.getItem('vault_theme') || 'dark';
-  if (initialTheme === 'light') {
-    document.documentElement.classList.add('light');
-  } else {
-    document.documentElement.classList.remove('light');
-  }
+  applyTheme(localStorage.getItem('vault_theme') || 'dark');
 
   let mounted = false;
   let wakeLock = null;
@@ -207,15 +204,21 @@
         </div>
       {:else if $activeView === 'auth'}
         <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
-          <Auth />
+          {#await import('./components/Auth.svelte') then m}
+            <svelte:component this={m.default} />
+          {/await}
         </div>
       {:else if $activeView === 'vaultcoin'}
         <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
-          <VaultCoin />
+          {#await import('./components/VaultCoin.svelte') then m}
+            <svelte:component this={m.default} />
+          {/await}
         </div>
       {:else}
         <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
-          <Chat />
+          {#await import('./components/Chat.svelte') then m}
+            <svelte:component this={m.default} />
+          {/await}
         </div>
       {/if}
     </div>

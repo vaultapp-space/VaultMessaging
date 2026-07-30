@@ -1,6 +1,7 @@
 <script>
   import { activeView } from '../lib/stores/session.js';
   import { onMount } from 'svelte';
+  import { applyTheme } from '../lib/theme.js';
 
   // Force dark mode on landing page and initialize countdown timer
   let ttlTimer = '23:59:59';
@@ -34,12 +35,7 @@
   onMount(() => {
     // Respect the visitor's previously-chosen theme (same logic as App.svelte's
     // initial-theme handling) instead of always forcing dark mode.
-    const storedTheme = localStorage.getItem('vault_theme') || 'dark';
-    if (storedTheme === 'light') {
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
-    }
+    applyTheme(localStorage.getItem('vault_theme') || 'dark');
 
     // Retrieve initial stats and start polling every 10 seconds
     fetchNetworkStats();
@@ -497,6 +493,11 @@
     }
   ];
 </script>
+
+<svelte:head>
+  <title>Vault — Secure Anonymous Messaging</title>
+  <meta name="description" content="Vault — End-to-end encrypted anonymous messaging. Zero PII, zero persistence, 24-hour auto-delete. Privacy without compromise." />
+</svelte:head>
 
 <div class="h-screen overflow-y-auto flex flex-col justify-between relative bg-vault-black text-vault-text font-sans selection:bg-vault-accent/20 selection:text-vault-accent">
 

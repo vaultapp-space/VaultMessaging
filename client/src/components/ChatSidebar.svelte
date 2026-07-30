@@ -12,6 +12,7 @@
   import { syncCloudVault } from '../lib/crypto/sync.js';
   import { encryptSyncPayload } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
+  import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
   import WalletSettings from './WalletSettings.svelte';
 
   let showBackupModal = false;
@@ -108,11 +109,7 @@
   function applyTheme(newTheme) {
     theme = newTheme;
     localStorage.setItem('vault_theme', newTheme);
-    if (newTheme === 'light') {
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
-    }
+    applyThemeGlobal(newTheme);
   }
 
   const dispatch = createEventDispatcher();
