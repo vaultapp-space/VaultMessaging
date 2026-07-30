@@ -16,6 +16,7 @@
   import {
     localStreamStore, remoteStreamStore, micMuted, cameraOff, remoteMicMuted, remoteCameraOff,
     isScreenSharing, verificationWords, p2pFileTransferState, isScreenShareSupported, dataChannelReady,
+    forceTurnRelay,
     startCall as webrtcStartCall, hangupCall as webrtcHangupCall,
     toggleMic as webrtcToggleMic, toggleCamera as webrtcToggleCamera, toggleScreenShare, stopScreenShare,
     startP2PFileSend as webrtcStartP2PFileSend
@@ -1363,12 +1364,21 @@
         </button>
 
         <div class="relative group">
-          <div class="p-1 text-[10px] text-vault-warning bg-vault-warning/10 border border-vault-warning/20 rounded-md cursor-help font-semibold">
-            ⚠️ P2P Call
-          </div>
-          <div class="absolute right-0 top-7 hidden group-hover:block z-50 w-48 p-2.5 bg-vault-surface border border-vault-border rounded-xl text-[9px] text-vault-text-dim leading-relaxed shadow-xl text-left">
-            🔒 Calls are E2EE but establish direct P2P connections, which may expose your IP address. Route calls through a TURN proxy for full anonymity.
-          </div>
+          {#if $forceTurnRelay}
+            <div class="p-1 text-[10px] text-vault-accent bg-vault-accent/10 border border-vault-accent/20 rounded-md cursor-help font-semibold">
+              🔒 Relayed Call
+            </div>
+            <div class="absolute right-0 top-7 hidden group-hover:block z-50 w-48 p-2.5 bg-vault-surface border border-vault-border rounded-xl text-[9px] text-vault-text-dim leading-relaxed shadow-xl text-left">
+              Media is always routed through the TURN relay — your real IP is never exposed to the other party. Disable "Always Relay Calls Through TURN" in Settings to prefer lower-latency direct connections instead.
+            </div>
+          {:else}
+            <div class="p-1 text-[10px] text-vault-warning bg-vault-warning/10 border border-vault-warning/20 rounded-md cursor-help font-semibold">
+              ⚠️ P2P Call
+            </div>
+            <div class="absolute right-0 top-7 hidden group-hover:block z-50 w-48 p-2.5 bg-vault-surface border border-vault-border rounded-xl text-[9px] text-vault-text-dim leading-relaxed shadow-xl text-left">
+              🔒 Calls are E2EE but establish direct P2P connections, which may expose your IP address. Enable "Always Relay Calls Through TURN" in Settings for full anonymity.
+            </div>
+          {/if}
         </div>
       {/if}
     </div>
