@@ -213,7 +213,26 @@ async function authRoutes(fastify) {
   });
 
   // ─── CLIENT DEBUG LOG ──────────────────────────────────────
-  fastify.post('/api/debug/log', async (request, reply) => {
+  // Intentionally unauthenticated (errors can happen before login), but
+  // tightly bounded so it can't be used to flood the server's logs.
+  fastify.post('/api/debug/log', {
+    config: {
+      rateLimit: {
+        max: 20,
+        timeWindow: '1 minute',
+      },
+    },
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', maxLength: 1000 },
+          error:   { type: 'string', maxLength: 2000 },
+          context: { type: 'object', additionalProperties: true, maxProperties: 20 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { message, error, context } = request.body;
     fastify.log.error({ clientMessage: message, clientError: error, clientContext: context }, 'Client-side error log received');
     return { ok: true };

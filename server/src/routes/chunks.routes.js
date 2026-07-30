@@ -2,6 +2,12 @@
 // Vault — E2EE Ephemeral Attachment Chunks Router
 // ============================================================
 
+import { MAX_MEDIA_CHUNK_SIZE } from '../utils/constants.js';
+
+const UUID_PATTERN = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+// Base64 inflates size by ~4/3; add headroom for the AES-GCM auth tag.
+const MAX_CHUNK_CIPHERTEXT_BASE64_LENGTH = Math.ceil(MAX_MEDIA_CHUNK_SIZE * 4 / 3) + 1024;
+
 async function chunkRoutes(fastify) {
 
   // ─── INIT chunked upload session ────────────────────────
@@ -36,7 +42,7 @@ async function chunkRoutes(fastify) {
         type: 'object',
         required: ['id', 'index'],
         properties: {
-          id:    { type: 'string' },
+          id:    { type: 'string', pattern: UUID_PATTERN },
           index: { type: 'integer', minimum: 0 }
         }
       },
@@ -44,7 +50,7 @@ async function chunkRoutes(fastify) {
         type: 'object',
         required: ['ciphertext'],
         properties: {
-          ciphertext: { type: 'string' }
+          ciphertext: { type: 'string', maxLength: MAX_CHUNK_CIPHERTEXT_BASE64_LENGTH }
         }
       }
     }
@@ -88,7 +94,7 @@ async function chunkRoutes(fastify) {
         type: 'object',
         required: ['id', 'index'],
         properties: {
-          id:    { type: 'string' },
+          id:    { type: 'string', pattern: UUID_PATTERN },
           index: { type: 'integer', minimum: 0 }
         }
       }

@@ -2,6 +2,8 @@
 // Vault — E2EE Ephemeral Attachments Router
 // ============================================================
 
+const UUID_PATTERN = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+
 async function attachmentRoutes(fastify) {
 
   // ─── UPLOAD attachment ──────────────────────────────
@@ -43,7 +45,7 @@ async function attachmentRoutes(fastify) {
         type: 'object',
         required: ['id'],
         properties: {
-          id: { type: 'string' }
+          id: { type: 'string', pattern: UUID_PATTERN }
         }
       }
     }
