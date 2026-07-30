@@ -619,8 +619,8 @@
 
   <!-- Real product screenshot — the simulator below is illustrative, this is the actual app -->
   <section class="w-full max-w-4xl mx-auto px-6 pb-4 z-10 reveal-section">
-    <div class="flex flex-col sm:flex-row gap-4 items-center sm:items-start justify-center">
-      <div class="relative rounded-2xl overflow-hidden border border-vault-border/20 shadow-2xl glass shrink-0 h-auto sm:h-[380px]">
+    <div class="flex flex-col sm:flex-row gap-4 items-center sm:items-start justify-center bg-[#0c0c0e] rounded-3xl border border-white/[0.06] shadow-2xl p-4 sm:p-6">
+      <div class="relative rounded-2xl overflow-hidden border border-white/10 shadow-xl shrink-0 h-auto sm:h-[380px]">
         <img
           src="/landing-app-preview.png"
           alt="Vault Messenger desktop app showing an encrypted conversation and an active E2EE call"
@@ -633,7 +633,7 @@
           Desktop
         </span>
       </div>
-      <div class="relative rounded-2xl overflow-hidden border border-vault-border/20 shadow-2xl glass shrink-0 h-auto sm:h-[380px] w-[60%] sm:w-auto mx-auto sm:mx-0">
+      <div class="relative rounded-2xl overflow-hidden border border-white/10 shadow-xl shrink-0 h-auto sm:h-[380px] w-[60%] sm:w-auto mx-auto sm:mx-0">
         <img
           src="/landing-mobile-preview.png"
           alt="Vault Messenger mobile app showing an encrypted conversation"
