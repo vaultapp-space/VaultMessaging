@@ -1,5 +1,5 @@
 <script>
-  import { currentUser, setUser, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { currentUser, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { register, login, updateKeys, fetchSalt, saveEncryptedVault } from '../lib/api/http.js';
   import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, encryptIdentityVault, decryptIdentityVault } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
@@ -9,6 +9,7 @@
   let mode = 'register'; // 'register' | 'login'
   let username = '';
   let password = '';
+  let confirmPassword = '';
   let error = '';
   let loading = false;
   let showPassword = false;
@@ -16,6 +17,45 @@
   if ($currentUser) {
     username = $currentUser.username;
     mode = 'login';
+  }
+
+  // Rough client-side strength estimate — not a substitute for the 12-char
+  // minimum enforced below, just extra signal to steer people away from
+  // weak-but-long passwords (e.g. "aaaaaaaaaaaa") since this password is
+  // what the whole key hierarchy is derived from.
+  function estimatePasswordStrength(pw) {
+    if (!pw) return { score: 0, label: '', color: '' };
+
+    let variety = 0;
+    if (/[a-z]/.test(pw)) variety++;
+    if (/[A-Z]/.test(pw)) variety++;
+    if (/[0-9]/.test(pw)) variety++;
+    if (/[^a-zA-Z0-9]/.test(pw)) variety++;
+
+    let score = 0;
+    if (pw.length >= 12) score++;
+    if (pw.length >= 16) score++;
+    if (pw.length >= 24) score++;
+    if (variety >= 3) score++;
+
+    const uniqueRatio = new Set(pw).size / pw.length;
+    if (uniqueRatio < 0.4) score = Math.max(0, score - 2); // heavily repetitive
+
+    score = Math.min(score, 4);
+    const levels = [
+      { label: 'Too short', color: 'bg-vault-danger' },
+      { label: 'Weak', color: 'bg-vault-danger' },
+      { label: 'Fair', color: 'bg-vault-warning' },
+      { label: 'Good', color: 'bg-vault-accent/70' },
+      { label: 'Strong', color: 'bg-vault-accent' },
+    ];
+    return { score, ...levels[score] };
+  }
+
+  $: passwordStrength = mode === 'register' ? estimatePasswordStrength(password) : null;
+
+  function goToLanding() {
+    activeView.set('landing');
   }
 
   async function handleRegister() {
@@ -27,6 +67,10 @@
     }
     if (password.length < 12) {
       error = 'Password must be at least 12 characters for strong end-to-end encryption';
+      return;
+    }
+    if (password !== confirmPassword) {
+      error = 'Passwords do not match';
       return;
     }
 
@@ -227,6 +271,7 @@
     mode = mode === 'register' ? 'login' : 'register';
     error = '';
     showPassword = false;
+    confirmPassword = '';
   }
 </script>
 
@@ -234,12 +279,18 @@
   <div class="w-full max-w-md animate-fade-in-scale">
     <!-- Logo & Branding -->
     <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-vault-surface border border-vault-border/50 mb-4 animate-pulse-glow">
+      <button
+        type="button"
+        on:click={goToLanding}
+        class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-vault-surface border border-vault-border/50 mb-4 animate-pulse-glow cursor-pointer focus:outline-none"
+        aria-label="Back to home"
+        title="Back to home"
+      >
         <svg class="w-8 h-8 text-vault-text hover:text-vault-accent transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z" />
           <path d="M12 22V12" stroke-dasharray="3 3" />
         </svg>
-      </div>
+      </button>
       <h1 class="text-2xl font-semibold text-vault-text tracking-tight">Vault</h1>
       <p class="text-vault-text-dim text-sm mt-1">End-to-end encrypted messaging</p>
     </div>
@@ -255,6 +306,13 @@
           {mode === 'register' ? 'Zero-Knowledge Registration' : 'Encrypted Session'}
         </div>
       </div>
+
+      {#if mode === 'register'}
+        <div class="mb-5 flex gap-2 text-[11px] leading-relaxed text-vault-warning bg-vault-warning/10 border border-vault-warning/25 rounded-lg px-3 py-2.5">
+          <span class="shrink-0">⚠️</span>
+          <span><strong class="font-semibold">There is no password recovery.</strong> Vault stores no email or phone number, so if you lose this password your account and message history are gone permanently. Write it down and keep it somewhere safe.</span>
+        </div>
+      {/if}
 
       <form on:submit|preventDefault={handleSubmit} class="space-y-4">
         <!-- Username -->
@@ -308,7 +366,38 @@
               {/if}
             </button>
           </div>
+          {#if mode === 'register' && password}
+            <div class="mt-1.5 flex items-center gap-2">
+              <div class="flex-1 h-1 rounded-full bg-vault-border/40 overflow-hidden flex gap-0.5">
+                {#each Array(4) as _, i}
+                  <div class="flex-1 h-full rounded-full transition-colors {i < passwordStrength.score ? passwordStrength.color : 'bg-transparent'}"></div>
+                {/each}
+              </div>
+              <span class="text-[10px] font-medium text-vault-text-dim w-14 text-right">{passwordStrength.label}</span>
+            </div>
+          {/if}
         </div>
+
+        {#if mode === 'register'}
+          <!-- Confirm Password -->
+          <div>
+            <label for="auth-confirm-password" class="block text-xs font-medium text-vault-text-secondary mb-1.5 uppercase tracking-wider">
+              Confirm Password
+            </label>
+            <input
+              id="auth-confirm-password"
+              type={showPassword ? 'text' : 'password'}
+              bind:value={confirmPassword}
+              placeholder="Re-enter your password"
+              class="input"
+              disabled={loading}
+              autocomplete="new-password"
+            />
+            {#if confirmPassword && confirmPassword !== password}
+              <p class="text-[10px] text-vault-danger mt-1">Passwords don't match yet</p>
+            {/if}
+          </div>
+        {/if}
 
         <!-- Error -->
         {#if error}

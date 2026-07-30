@@ -32,8 +32,14 @@
   }
 
   onMount(() => {
-    // Force dark mode
-    document.documentElement.classList.remove('light');
+    // Respect the visitor's previously-chosen theme (same logic as App.svelte's
+    // initial-theme handling) instead of always forcing dark mode.
+    const storedTheme = localStorage.getItem('vault_theme') || 'dark';
+    if (storedTheme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
 
     // Retrieve initial stats and start polling every 10 seconds
     fetchNetworkStats();
@@ -432,7 +438,10 @@
         <path d="M12 22V12" stroke-dasharray="3 3" />
       </svg>
       <span class="text-base font-bold tracking-wider uppercase font-sans">Vault</span>
-      <span class="text-[8px] bg-vault-border/50 text-vault-text-secondary border border-vault-border px-1.5 py-0.5 rounded font-mono">BETA</span>
+      <span
+        class="text-[8px] bg-vault-border/50 text-vault-text-secondary border border-vault-border px-1.5 py-0.5 rounded font-mono cursor-default"
+        title="Vault is under active development — features and protocols may change without notice."
+      >BETA</span>
     </div>
 
     <div>
@@ -1174,5 +1183,18 @@
   :global(.glow-card:hover) {
     border-color: rgba(16, 185, 129, 0.3) !important;
     box-shadow: 0 0 20px rgba(16, 185, 129, 0.05) !important;
+  }
+
+  /* Respect OS-level reduced-motion preference — this page runs a lot of
+     concurrent decorative animation (radar sweep, pulses, live diagrams). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 </style>
