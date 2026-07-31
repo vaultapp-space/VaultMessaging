@@ -4,7 +4,7 @@
 // Server is a BLIND RELAY — never decrypts anything
 // ============================================================
 
-import { MAX_TTL_MINUTES, MAX_MESSAGE_SIZE_BYTES } from '../utils/constants.js';
+import { MAX_TTL_MINUTES, MAX_MESSAGE_SIZE_BYTES, UUID_PATTERN } from '../utils/constants.js';
 import config from '../config.js';
 
 async function messageRoutes(fastify) {
@@ -17,15 +17,15 @@ async function messageRoutes(fastify) {
         type: 'object',
         required: ['recipientId', 'ciphertext', 'ephemeralKey', 'messageNumber'],
         properties: {
-          recipientId:    { type: 'string', maxLength: 100 },
+          recipientId:    { type: 'string', pattern: UUID_PATTERN },
           ciphertext:     { type: 'string', maxLength: MAX_MESSAGE_SIZE_BYTES },
           ephemeralKey:   { type: 'string', maxLength: 2000 },
           messageNumber:  { type: 'integer', minimum: 0 },
           previousChain:  { type: 'integer', minimum: 0, default: 0 },
           ttlMinutes:     { type: 'integer', minimum: 1, maximum: MAX_TTL_MINUTES, default: MAX_TTL_MINUTES },
           iv:             { type: 'string', maxLength: 100 },
-          groupId:        { type: 'string', maxLength: 100 },
-          attachmentId:   { type: 'string', maxLength: 100 },
+          groupId:        { type: 'string', pattern: UUID_PATTERN },
+          attachmentId:   { type: 'string', pattern: UUID_PATTERN },
         },
       },
     },
@@ -167,7 +167,7 @@ async function messageRoutes(fastify) {
       params: {
         type: 'object',
         required: ['peerId'],
-        properties: { peerId: { type: 'string' } },
+        properties: { peerId: { type: 'string', pattern: UUID_PATTERN } },
       },
       querystring: {
         type: 'object',

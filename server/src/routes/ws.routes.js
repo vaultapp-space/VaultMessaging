@@ -4,7 +4,9 @@
 // Auth via HTTP-only cookie during WebSocket upgrade
 // ============================================================
 
-import { WS_EVENTS, WS_HEARTBEAT_INTERVAL_MS } from '../utils/constants.js';
+import { WS_EVENTS, WS_HEARTBEAT_INTERVAL_MS, UUID_PATTERN } from '../utils/constants.js';
+
+const UUID_RE = new RegExp(UUID_PATTERN);
 import config from '../config.js';
 
 /**
@@ -140,6 +142,19 @@ async function wsRoutes(fastify) {
         return;
       }
 
+      try {
+        await handleMessage(data);
+      } catch (err) {
+        // Last-resort safety net: an uncaught error here would otherwise
+        // become an unhandled promise rejection and, depending on Node's
+        // configuration, can crash the entire process for every connected
+        // user — a single malformed message must never do that.
+        fastify.log.error({ err, userId, type: data?.type }, 'Unhandled error processing WebSocket message');
+        try { socket.send(JSON.stringify({ type: 'error', message: 'Internal error' })); } catch {}
+      }
+    });
+
+    async function handleMessage(data) {
       // ─── AUTH message (fallback if cookie auth failed) ─────────
       if (data.type === 'auth' && !authenticated) {
         if (authTimeout) clearTimeout(authTimeout);
@@ -197,6 +212,11 @@ async function wsRoutes(fastify) {
       // ─── WebRTC Signaling Relay ────────────────────────────────
       const callEventTypes = ['call_invite', 'call_accept', 'call_reject', 'call_hangup', 'webrtc_sdp', 'webrtc_ice', 'webrtc_media_state'];
       if (callEventTypes.includes(data.type) && data.recipientId) {
+        if (!UUID_RE.test(data.recipientId)) {
+          socket.send(JSON.stringify({ type: 'error', message: 'Invalid call recipient' }));
+          return;
+        }
+
         fastify.log.info({ type: data.type, userId, recipientId: data.recipientId }, 'WebRTC signaling event received');
 
         // Validate recipientId is a real user
@@ -257,6 +277,7 @@ async function wsRoutes(fastify) {
 
       // ─── DELIVERED acknowledgment ──────────────────────────────
       if (data.type === WS_EVENTS.DELIVERED && data.messageId) {
+        if (!UUID_RE.test(data.messageId)) return;
         const msg = await fastify.store.getMessage(data.messageId);
         if (msg && msg.recipient_id === userId) {
           await fastify.store.markDelivered(data.messageId);
@@ -275,6 +296,7 @@ async function wsRoutes(fastify) {
 
       // ─── READ acknowledgment ───────────────────────────────────
       if (data.type === 'read' && data.messageId) {
+        if (!UUID_RE.test(data.messageId)) return;
         const msg = await fastify.store.getMessage(data.messageId);
         if (msg && msg.recipient_id === userId) {
           await fastify.store.markRead(data.messageId);
@@ -290,7 +312,7 @@ async function wsRoutes(fastify) {
         }
         return;
       }
-    });
+    }
 
     // ─── Cleanup on disconnect ───────────────────────────────
     socket.on('close', () => {

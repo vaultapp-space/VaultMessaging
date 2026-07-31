@@ -2,6 +2,7 @@
 // Vault — Shared Constants
 // ============================================================
 
+export const UUID_PATTERN = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 export const MAX_TTL_MINUTES = 1440; // 24 hours hard ceiling
 export const MAX_USERNAME_LENGTH = 32;
 export const MIN_USERNAME_LENGTH = 3;
