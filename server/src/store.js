@@ -128,6 +128,11 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
     subscription    TEXT NOT NULL,
     PRIMARY KEY (user_id, subscription)
 );
+
+CREATE TABLE IF NOT EXISTS server_config (
+    key             TEXT PRIMARY KEY,
+    value           TEXT NOT NULL
+);
 `;
 
 class DataStore {
@@ -139,9 +144,9 @@ class DataStore {
     this.pendingInvites = new Map(); // inviteeId -> callerId, cleared on accept/reject/hangup
 
     // Initialize Schema
-    this.pool.query(initSchemaSQL)
+    this.schemaReady = this.pool.query(initSchemaSQL)
       .then(() => console.log('[DB] Schema initialized successfully'))
-      .catch((err) => console.error('[DB] Schema initialization failed:', err));
+      .catch((err) => { console.error('[DB] Schema initialization failed:', err); throw err; });
   }
 
   // ─── Users ────────────────────────────────────────────────
@@ -484,6 +489,47 @@ class DataStore {
 
   async deleteSyncSession(syncId) {
     await this.redis.del(`sync:${syncId}`);
+  }
+
+  // ─── Server Config (persisted key/value, e.g. VAPID keys) ──
+
+  // Generates a pair of related config values (e.g. VAPID public/private
+  // keys) exactly once and persists both together, atomically — avoids
+  // ever ending up with a mismatched public/private pair across restarts
+  // or a race between concurrent processes.
+  async getOrSetConfigPair(publicKeyName, privateKeyName, generatePairFn) {
+    const existing = await this.pool.query(
+      `SELECT key, value FROM server_config WHERE key IN ($1, $2)`,
+      [publicKeyName, privateKeyName]
+    );
+    if (existing.rows.length === 2) {
+      const byKey = Object.fromEntries(existing.rows.map(r => [r.key, r.value]));
+      return { publicValue: byKey[publicKeyName], privateValue: byKey[privateKeyName] };
+    }
+
+    const { publicValue, privateValue } = await generatePairFn();
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO server_config (key, value) VALUES ($1, $2), ($3, $4)
+         ON CONFLICT (key) DO NOTHING`,
+        [publicKeyName, publicValue, privateKeyName, privateValue]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const final = await this.pool.query(
+      `SELECT key, value FROM server_config WHERE key IN ($1, $2)`,
+      [publicKeyName, privateKeyName]
+    );
+    const byKey = Object.fromEntries(final.rows.map(r => [r.key, r.value]));
+    return { publicValue: byKey[publicKeyName], privateValue: byKey[privateKeyName] };
   }
 
   // ─── User Search ──────────────────────────────────────────
