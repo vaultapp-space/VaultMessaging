@@ -14,6 +14,7 @@
   import { toBase64 } from '../lib/crypto/utils.js';
   import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
   import WalletSettings from './WalletSettings.svelte';
+  import QRCode from 'qrcode';
 
   let showBackupModal = false;
   let theme = localStorage.getItem('vault_theme') || 'dark';
@@ -80,8 +81,15 @@
       });
       
       if (res.ok) {
-        syncLink = `${window.location.origin}/?syncId=${syncId}&key=${encodeURIComponent(keyBase64)}`;
-        syncQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(syncLink)}`;
+        // The key lives in the URL fragment, never the query string: fragments
+        // are a browser-only concept and are never sent in any HTTP request
+        // (not this page load, not the /sync/retrieve call below), so it never
+        // reaches nginx access logs. syncId alone is a single-use, 120s-TTL
+        // capability token and is useless without the fragment key.
+        syncLink = `${window.location.origin}/?syncId=${syncId}#key=${encodeURIComponent(keyBase64)}`;
+        // Rendered locally — never hand the link (with the key) to a third
+        // party like api.qrserver.com to generate the QR image.
+        syncQrUrl = await QRCode.toDataURL(syncLink, { width: 200, margin: 1 });
         showSyncModal = true;
       } else {
         alert('Failed to initiate sync session on server');

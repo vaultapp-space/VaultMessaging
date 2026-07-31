@@ -74,10 +74,14 @@
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
-    // Check for QR Sync params in URL
+    // Check for QR Sync params in URL. syncId is a single-use, short-TTL
+    // capability token and travels in the query string (fine — it's useless
+    // without the key). The key itself is only ever in the URL fragment,
+    // which browsers never transmit in any HTTP request, so it never reaches
+    // server access logs.
     const urlParams = new URLSearchParams(window.location.search);
     const syncId = urlParams.get('syncId');
-    const keyMatch = window.location.search.match(/[&?]key=([^&]+)/);
+    const keyMatch = window.location.hash.match(/[&#]key=([^&]+)/);
     const keyParam = keyMatch ? keyMatch[1] : null;
     if (syncId && keyParam) {
       isLoading.set(true);
