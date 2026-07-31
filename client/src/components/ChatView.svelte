@@ -257,6 +257,18 @@
     hasMore = true; // Reset pagination state on peer change
     try {
       await loadMessagesData();
+      // Explicit scroll-to-bottom for the initial open of a conversation —
+      // more deterministic than relying on the shared afterUpdate path,
+      // since `loading` and the message list can flip in the same tick.
+      await tick();
+      if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          });
+        });
+      }
     } catch (err) {
       console.error('Failed to load messages:', err);
     } finally {
