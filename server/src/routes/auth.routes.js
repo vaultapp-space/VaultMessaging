@@ -259,7 +259,7 @@ async function authRoutes(fastify) {
     }
   }, async (request, reply) => {
     const { syncId, payload } = request.body;
-    await fastify.store.createSyncSession(syncId, payload);
+    await fastify.store.createSyncSession(syncId, payload, request.user.id);
     return { success: true };
   });
 
@@ -281,12 +281,36 @@ async function authRoutes(fastify) {
     }
   }, async (request, reply) => {
     const { syncId } = request.params;
-    const payload = await fastify.store.getSyncSession(syncId);
-    if (!payload) {
+    const session = await fastify.store.getSyncSession(syncId);
+    if (!session) {
       return reply.code(404).send({ error: 'Sync session not found or expired' });
     }
     await fastify.store.deleteSyncSession(syncId);
-    return { payload };
+
+    const { payload, userId } = session;
+    const user = await fastify.store.getUserById(userId);
+    if (!user) {
+      return reply.code(404).send({ error: 'Account no longer exists' });
+    }
+
+    // Issue a real session for the syncing device, same as register/login,
+    // so it isn't left making authenticated API calls with no cookie.
+    const jti = uuidv4();
+    const token = fastify.jwt.sign(
+      { id: user.id, username: user.username, jti },
+      { expiresIn: config.jwtExpiresIn }
+    );
+    await fastify.store.createSession(jti, user.id);
+
+    reply.setCookie(config.cookieName, token, {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'strict',
+      secure: config.cookieSecure,
+      maxAge: 24 * 60 * 60, // 24h
+    });
+
+    return { payload, id: user.id, username: user.username };
   });
 }
 

@@ -472,12 +472,14 @@ class DataStore {
 
   // ─── Sync Sessions (Redis) ────────────────────────────────
 
-  async createSyncSession(syncId, payload) {
-    await this.redis.set(`sync:${syncId}`, payload, 'EX', 120); // Expires in 2 minutes
+  async createSyncSession(syncId, payload, userId) {
+    await this.redis.set(`sync:${syncId}`, JSON.stringify({ payload, userId }), 'EX', 120); // Expires in 2 minutes
   }
 
   async getSyncSession(syncId) {
-    return await this.redis.get(`sync:${syncId}`);
+    const raw = await this.redis.get(`sync:${syncId}`);
+    if (!raw) return null;
+    return JSON.parse(raw);
   }
 
   async deleteSyncSession(syncId) {
