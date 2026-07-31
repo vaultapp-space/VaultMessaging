@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, clearSession, activePeer, sidebarOpen, oneTimePrekeyPairs, activeCall, recentCalls } from '../lib/stores/session.js';
+  import { currentUser, clearSession, activePeer, sidebarOpen, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients } from '../lib/stores/session.js';
   import { conversations, messagesByPeer, addMessage, addMessages, setTyping, typingUsers, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
   import { fetchConversations, fetchPendingMessages, logout, searchUsers, getPrekeyCount, replenishPrekeys, fetchGroups } from '../lib/api/http.js';
   import { connectWebSocket, disconnectWebSocket, onWsEvent, wsConnected, wsError, wsSend } from '../lib/api/ws.js';
@@ -239,6 +239,16 @@
       if (peer && peer.id === threadId) peer.members = data.group.members;
       return peer;
     });
+
+    // Someone left or was removed — rotate our Sender Key so their
+    // already-derived copy of the old key can't decrypt anything we
+    // encrypt from now on. Dropping our session forces encryptAndSend to
+    // mint a fresh one and redistribute it to the remaining members.
+    if (data.membershipChange === 'departed') {
+      const mySessionKey = `${threadId}:${get(currentUser)?.id}`;
+      groupSenderKeys.update(m => { m.delete(mySessionKey); return m; });
+      groupKeyRecipients.update(m => { m.delete(mySessionKey); return m; });
+    }
   }
 
   // We were removed from (or left) a group — drop it locally.

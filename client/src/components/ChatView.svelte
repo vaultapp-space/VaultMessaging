@@ -1,7 +1,7 @@
 <script>
   import { onMount, afterUpdate, onDestroy, tick } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls, vaultMasterKey } from '../lib/stores/session.js';
+  import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, groupKeyRecipients, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls, vaultMasterKey } from '../lib/stores/session.js';
   import { messagesByPeer, addMessage, addMessages, addOptimisticMessage, confirmMessage, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
   import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, leaveGroup, removeGroupMember } from '../lib/api/http.js';
   import { sendTyping, wsConnected, onWsEvent } from '../lib/api/ws.js';
@@ -425,18 +425,21 @@
       // 1. Get or create our own Sender Key for this group
       const mySessionKey = `${$activePeer.id}:${$currentUser.id}`;
       let mySession = $groupSenderKeys.get(mySessionKey);
-      let isNewSessionKey = false;
       if (!mySession) {
         mySession = new SenderKeySession($currentUser.id, $activePeer.id);
         await mySession.initSelf();
         groupSenderKeys.update(m => { m.set(mySessionKey, mySession); return m; });
-        isNewSessionKey = true;
       }
 
       const otherMembers = $activePeer.members.filter(m => m.id !== $currentUser.id);
 
-      // 2. If it is a new session key, distribute it to all group members pairwise
-      if (isNewSessionKey) {
+      // 2. Distribute our Sender Key to any current member who doesn't have it yet
+      // (new session, or a member who joined after we last distributed) — not just
+      // the first time we ever create a session for this group.
+      const alreadySent = $groupKeyRecipients.get(mySessionKey) || new Set();
+      const pendingMembers = otherMembers.filter(m => !alreadySent.has(m.id));
+
+      if (pendingMembers.length > 0) {
         const pack = await mySession.exportDistributionPackage();
         const distributionPayload = JSON.stringify({
           type: 'senderkey_distribution',
@@ -444,7 +447,7 @@
           pack
         });
 
-        await Promise.all(otherMembers.map(async (member) => {
+        await Promise.all(pendingMembers.map(async (member) => {
           try {
             const { ratchet, isNew, x3dhParams } = await getOrCreateRatchetForUser(member.id, member.username);
             const { header, iv, ciphertext } = await ratchet.ratchetEncrypt(distributionPayload);
@@ -483,6 +486,13 @@
               ttlMinutes,
               iv: iv,
               groupId: $activePeer.id.replace('group-', '')
+            });
+
+            groupKeyRecipients.update(m => {
+              const set = m.get(mySessionKey) || new Set();
+              set.add(member.id);
+              m.set(mySessionKey, set);
+              return m;
             });
           } catch (e) {
             console.error(`Failed to distribute group Sender Key to ${member.username}:`, e);

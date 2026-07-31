@@ -7,10 +7,10 @@ import { UUID_PATTERN } from '../utils/constants.js';
 // Tells a user's other active connections that group membership changed,
 // so their client can refresh its cached member list (used for E2EE
 // group fan-out) instead of only finding out on the next message.
-function notifyGroupMembersChanged(fastify, memberIds, groupId, group) {
+function notifyGroupMembersChanged(fastify, memberIds, groupId, group, membershipChange = null) {
   for (const memberId of memberIds) {
     const sockets = fastify.store.getConnections(memberId);
-    const payload = JSON.stringify({ type: 'group_updated', groupId, group });
+    const payload = JSON.stringify({ type: 'group_updated', groupId, group, membershipChange });
     for (const s of sockets) {
       try { s.send(payload); } catch {}
     }
@@ -126,12 +126,11 @@ async function groupRoutes(fastify) {
     const remainingMemberIds = group.members.map(m => m.id).filter(id => id !== request.user.id);
     await fastify.store.removeGroupMember(id, request.user.id);
 
-    // Note: this removes the departing member from future server-side
-    // fan-out, but does not rotate the group's E2EE sender key — anyone
-    // who already derived it (including a removed member) could still
-    // decrypt messages encrypted with it going forward until each
-    // remaining member's client independently starts a fresh session.
-    notifyGroupMembersChanged(fastify, remainingMemberIds, id, { ...group, members: group.members.filter(m => m.id !== request.user.id) });
+    // membershipChange: 'departed' tells remaining members' clients to
+    // rotate their E2EE Sender Key and redistribute it to the reduced
+    // member set, so the departing member's copy of the old key stops
+    // being useful for anything encrypted after this point.
+    notifyGroupMembersChanged(fastify, remainingMemberIds, id, { ...group, members: group.members.filter(m => m.id !== request.user.id) }, 'departed');
 
     return reply.send({ success: true });
   });
@@ -170,8 +169,8 @@ async function groupRoutes(fastify) {
 
     const updatedMembers = group.members.filter(m => m.id !== userId);
     const remainingMemberIds = updatedMembers.map(m => m.id);
-    // Notify remaining members (same forward-secrecy caveat as leaving above).
-    notifyGroupMembersChanged(fastify, remainingMemberIds, id, { ...group, members: updatedMembers });
+    // Same key-rotation signal as leaving above.
+    notifyGroupMembersChanged(fastify, remainingMemberIds, id, { ...group, members: updatedMembers }, 'departed');
     // Also tell the removed member directly, so their client drops the group.
     notifyRemovedFromGroup(fastify, userId, id);
 

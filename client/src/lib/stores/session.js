@@ -30,6 +30,7 @@ export const verifiedPeers = writable(new Map()); // Map<peerId, identityKeyBase
 
 export const ratchetSessions = writable(new Map());
 export const groupSenderKeys = writable(new Map()); // Map<"groupId:senderId", SenderKeySession>
+export const groupKeyRecipients = writable(new Map()); // Map<"groupId:senderId", Set<memberId>> — who already has our Sender Key
 
 // ─── UI State ───────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export function clearSession() {
   }
   ratchetSessions.set(new Map());
   groupSenderKeys.set(new Map());
+  groupKeyRecipients.set(new Map());
   verifiedPeers.set(new Map());
   localBackupEnabled.set(false);
   localBackupPassphrase.set('');
