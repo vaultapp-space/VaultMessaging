@@ -58,13 +58,6 @@ async function chunkRoutes(fastify) {
     const { id, index } = request.params;
     const { ciphertext } = request.body;
 
-    const chunkSize = Math.round(ciphertext.length * 0.75);
-    try {
-      await fastify.store.checkAndIncrementUploadUsage(request.user.id, chunkSize);
-    } catch (err) {
-      return reply.code(400).send({ error: err.message });
-    }
-
     const attachment = await fastify.store.getAttachment(id);
     if (!attachment) {
       return reply.code(404).send({ error: 'Upload session not found' });
@@ -78,9 +71,27 @@ async function chunkRoutes(fastify) {
       return reply.code(400).send({ error: 'Index out of bounds' });
     }
 
+    // Only charge quota once we know this chunk will actually be persisted —
+    // otherwise a request that 404s/403s on ownership or bounds still burns
+    // the user's monthly allowance for nothing.
+    const chunkSize = Math.round(ciphertext.length * 0.75);
+    try {
+      await fastify.store.checkAndIncrementUploadUsage(request.user.id, chunkSize);
+    } catch (err) {
+      return reply.code(400).send({ error: err.message });
+    }
+
     // Save chunk to disk
-    await fastify.store.saveChunk(id, index, ciphertext);
-    
+    try {
+      await fastify.store.saveChunk(id, index, ciphertext);
+    } catch (err) {
+      // Quota was already charged above but the chunk never landed —
+      // give the user their allowance back rather than losing it silently.
+      await fastify.store.refundUploadUsage(request.user.id, chunkSize);
+      fastify.log.error({ err, attachmentId: id, index }, 'Failed to save chunk to disk, refunded upload quota');
+      return reply.code(500).send({ error: 'Failed to save chunk' });
+    }
+
     // Fetch updated count
     const updatedAttachment = await fastify.store.getAttachment(id);
     return reply.send({ success: true, uploadedChunks: updatedAttachment.uploadedChunks });

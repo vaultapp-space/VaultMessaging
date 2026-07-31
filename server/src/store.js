@@ -866,6 +866,15 @@ class DataStore {
       throw new Error('Monthly upload limit of 50MB exceeded');
     }
   }
+
+  // Refunds previously-charged upload usage when the chunk was never
+  // actually persisted (e.g. a disk write failure after the quota check).
+  async refundUploadUsage(userId, size) {
+    const now = new Date();
+    const yearMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+    const redisKey = `user:upload_limit:${userId}:${yearMonth}`;
+    await this.redis.decrby(redisKey, size);
+  }
 }
 
 // Singleton instance
