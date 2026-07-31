@@ -255,6 +255,8 @@
           peerUsername: res.name,
           isGroup: true,
           members: res.members,
+          joinKey: res.joinKey,
+          createdBy: res.createdBy,
           lastMessageAt: null,
           hasUndelivered: false
         });
@@ -265,7 +267,9 @@
         id: `group-${res.id}`,
         username: res.name,
         isGroup: true,
-        members: res.members
+        members: res.members,
+        joinKey: res.joinKey,
+        createdBy: res.createdBy
       });
 
       showGroupModal = false;

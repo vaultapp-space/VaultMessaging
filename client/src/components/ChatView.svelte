@@ -548,7 +548,7 @@
       const results = await Promise.all(sendPromises);
       const successResult = results.find(r => r !== undefined);
 
-      if (!successResult) {
+      if (!successResult && otherMembers.length > 0) {
         throw new Error('Failed to send group message.');
       }
 
@@ -560,17 +560,21 @@
         console.error('Cloud vault sync failed after send:', syncErr);
       }
 
+      // No other members to deliver to (e.g. you're the sole remaining
+      // member of the group) — confirm locally using the optimistic values
+      // instead of a server-assigned id/timestamp.
+      const confirmedAt = successResult ? successResult.sentAt : new Date().toISOString();
       confirmMessage($activePeer.id, tempId, {
-        id: successResult.id,
-        sentAt: successResult.sentAt,
-        expiresAt: successResult.expiresAt,
+        id: successResult ? successResult.id : tempId,
+        sentAt: confirmedAt,
+        expiresAt: successResult ? successResult.expiresAt : new Date(Date.now() + ttlMinutes * 60000).toISOString(),
         delivered: true
       });
 
       conversations.update(convs => {
         const existing = convs.find(c => c.peerId === $activePeer.id);
         if (existing) {
-          existing.lastMessageAt = successResult.sentAt;
+          existing.lastMessageAt = confirmedAt;
           const idx = convs.indexOf(existing);
           if (idx > 0) {
             convs.splice(idx, 1);
