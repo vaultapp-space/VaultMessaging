@@ -117,13 +117,15 @@ const reaperInterval = setInterval(async () => {
 fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // ─── Network Stats ─────────────────────────────────────────
+// Only ever report real, measured values here — no invented "relay count"
+// or "latency" figures. Both used to be hardcoded constants dressed up
+// with client-side random jitter to look live, which is exactly the kind
+// of misleading stat this app's zero-knowledge claims should not tolerate.
 fastify.get('/api/network/stats', async () => {
   const activeConnections = fastify.websocketServer?.clients?.size || 0;
   return {
     status: 'ok',
     activeConnections: Math.max(activeConnections, 1),
-    relays: 4,
-    latency: 24,
     timestamp: new Date().toISOString()
   };
 });

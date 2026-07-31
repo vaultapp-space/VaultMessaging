@@ -11,12 +11,11 @@
   let timerInterval;
   let isDestructing = false;
 
-  // Live Network Stats State
+  // Live Network Stats State — real data only, polled from the server.
+  // No fabricated relay counts or invented latency numbers, and no
+  // artificial jitter on top of the real socket count either.
   let liveConnections = 1;
-  let liveLatency = 24;
-  let liveRelays = 4;
   let statsInterval = null;
-  let jitterInterval = null;
 
   async function fetchNetworkStats() {
     try {
@@ -24,8 +23,6 @@
       if (res.ok) {
         const data = await res.json();
         liveConnections = data.activeConnections || 1;
-        liveLatency = data.latency || 24;
-        liveRelays = data.relays || 4;
       }
     } catch (err) {
       console.error('Failed to fetch live network stats', err);
@@ -40,14 +37,6 @@
     // Retrieve initial stats and start polling every 10 seconds
     fetchNetworkStats();
     statsInterval = setInterval(fetchNetworkStats, 10000);
-
-    // Network stats micro-jitter
-    jitterInterval = setInterval(() => {
-      const latJitter = Math.floor(Math.random() * 5) - 2; // -2 to +2
-      const connJitter = Math.floor(Math.random() * 3) - 1; // -1 to +1
-      liveLatency = Math.max(15, Math.min(50, liveLatency + latJitter));
-      liveConnections = Math.max(1, liveConnections + connJitter);
-    }, 2000);
 
     // Ticking 24h decay timer
     timerInterval = setInterval(() => {
@@ -70,7 +59,6 @@
     return () => {
       clearInterval(timerInterval);
       if (statsInterval) clearInterval(statsInterval);
-      if (jitterInterval) clearInterval(jitterInterval);
       clearIntervals();
     };
   });
@@ -512,9 +500,7 @@
         <span class="text-vault-text font-bold">Network:</span>
         <span class="text-vault-accent">Operational</span>
       </div>
-      <div class="hidden sm:block">Seed Relays: <span class="text-vault-text font-bold">{liveRelays}</span></div>
       <div>Active Sockets: <span class="text-vault-text font-bold">{liveConnections}</span></div>
-      <div class="hidden sm:block">P2P Latency: <span class="text-vault-text font-bold">{liveLatency}ms</span></div>
     </div>
   </div>
   

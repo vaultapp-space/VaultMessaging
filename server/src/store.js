@@ -535,11 +535,15 @@ class DataStore {
   // ─── User Search ──────────────────────────────────────────
 
   async searchUsers(query, excludeUserId) {
+    // Prefix match only (not "contains anywhere") — a substring match on a
+    // short query returns most of the user table, effectively letting
+    // anyone enumerate the entire userbase.
+    const escaped = query.replace(/[%_\\]/g, '\\$&');
     const res = await this.pool.query(
       `SELECT id, username FROM users
-       WHERE username ILIKE $1 AND id <> $2
+       WHERE username ILIKE $1 ESCAPE '\\' AND id <> $2
        LIMIT 20`,
-      [`%${query}%`, excludeUserId]
+      [`${escaped}%`, excludeUserId]
     );
     return res.rows;
   }

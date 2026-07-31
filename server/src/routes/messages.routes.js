@@ -4,7 +4,7 @@
 // Server is a BLIND RELAY — never decrypts anything
 // ============================================================
 
-import { MAX_TTL_MINUTES, MAX_MESSAGE_SIZE_BYTES, UUID_PATTERN } from '../utils/constants.js';
+import { MAX_TTL_MINUTES, MAX_MESSAGE_SIZE_BYTES, UUID_PATTERN, MAX_USERNAME_LENGTH } from '../utils/constants.js';
 import config from '../config.js';
 
 async function messageRoutes(fastify) {
@@ -210,12 +210,23 @@ async function messageRoutes(fastify) {
   // ─── SEARCH users ────────────────────────────────────────
   fastify.get('/api/users/search', {
     preValidation: [fastify.authenticate],
+    config: {
+      rateLimit: {
+        max: 20,
+        timeWindow: '1 minute',
+      },
+    },
     schema: {
       querystring: {
         type: 'object',
         required: ['q'],
         properties: {
-          q: { type: 'string', minLength: 1 },
+          // A short substring query (e.g. a single letter) matches most of
+          // the user table, turning search into a full user-enumeration
+          // tool. Requiring a longer, prefix-anchored query (see
+          // searchUsers) means a caller has to already know most of a
+          // real username rather than being able to sweep the userbase.
+          q: { type: 'string', minLength: 3, maxLength: MAX_USERNAME_LENGTH },
         },
       },
     },
