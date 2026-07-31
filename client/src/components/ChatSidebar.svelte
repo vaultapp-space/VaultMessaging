@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, loginPassword, identityKeyPair, signedPrekeyPair, activeCall, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, activeCall, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, joinGroup } from '../lib/api/http.js';
   import { wsConnected } from '../lib/api/ws.js';
@@ -63,7 +63,7 @@
           publicKey: await crypto.subtle.exportKey('jwk', $signedPrekeyPair.publicKey),
           privateKey: await crypto.subtle.exportKey('jwk', $signedPrekeyPair.privateKey)
         },
-        loginPassword: $loginPassword,
+        vaultMasterKey: $vaultMasterKey,
         currentUser: $currentUser,
         localBackupKeyBase64,
         localBackupPassphrase: $localBackupPassphrase,
@@ -167,9 +167,9 @@
   }
 
   async function syncVault() {
-    const password = get(loginPassword);
-    if (!password) {
-      console.warn('Login password not available for ZK vault sync.');
+    const masterKey = get(vaultMasterKey);
+    if (!masterKey) {
+      console.warn('Vault master key not available for ZK vault sync.');
       return;
     }
     if (!$identityKeyPair || !$signedPrekeyPair) return;
@@ -187,7 +187,7 @@
         signedPrekeyPair: $signedPrekeyPair,
         localBackupKeyBase64,
         localBackupPassphrase: $localBackupPassphrase
-      }, password);
+      }, masterKey);
 
       await saveEncryptedVault(encryptedVault);
       console.log('[Sync] Zero-knowledge identity vault synchronized.');

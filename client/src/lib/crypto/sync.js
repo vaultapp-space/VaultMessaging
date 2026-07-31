@@ -4,16 +4,16 @@
 // ============================================================
 
 import { get } from 'svelte/store';
-import { identityKeyPair, signedPrekeyPair, localBackupKey, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys } from '../stores/session.js';
+import { identityKeyPair, signedPrekeyPair, localBackupKey, localBackupPassphrase, vaultMasterKey, ratchetSessions, groupSenderKeys } from '../stores/session.js';
 import { saveEncryptedVault } from '../api/http.js';
 import { encryptIdentityVault } from './keys.js';
 
 export async function syncCloudVault() {
   try {
-    const password = get(loginPassword);
+    const masterKey = get(vaultMasterKey);
     const ikp = get(identityKeyPair);
     const spk = get(signedPrekeyPair);
-    if (!password || !ikp || !spk) return;
+    if (!masterKey || !ikp || !spk) return;
 
     // Serialize ratchet sessions
     const serializedRatchets = {};
@@ -43,7 +43,7 @@ export async function syncCloudVault() {
       localBackupPassphrase: get(localBackupPassphrase),
       ratchetSessions: serializedRatchets,
       groupSenderKeys: serializedGroupKeys
-    }, password);
+    }, masterKey);
 
     await saveEncryptedVault(vault);
     console.log('[Sync] Cloud vault successfully updated.');

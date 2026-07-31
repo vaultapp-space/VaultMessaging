@@ -229,6 +229,51 @@ export async function signData(privateKey, data) {
 }
 
 /**
+ * Derive a strong 256-bit master key from the user's real password via
+ * PBKDF2. This is the ONE place the real password is stretched; everywhere
+ * else in the app (vault encryption, sync payloads, server authentication)
+ * derives from this master key rather than the password directly, so that
+ * no single derived value sent elsewhere (especially the server) is enough
+ * to reconstruct any of the others.
+ */
+export async function deriveMasterKeyBits(password, saltBase64) {
+  const encoder = new TextEncoder();
+  const passwordKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const salt = fromBase64(saltBase64);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
+    passwordKey,
+    256
+  );
+  return new Uint8Array(bits);
+}
+
+/**
+ * One-way derivation of the value sent to the server for authentication.
+ * The server (and anyone who compromises it) only ever sees this — it
+ * cannot be reversed back into masterKeyBits, so it can't be used to
+ * decrypt the vault, sync payloads, or anything else derived from the
+ * master key.
+ */
+export async function deriveServerAuthSecret(masterKeyBits) {
+  const hmacKey = await crypto.subtle.importKey(
+    'raw',
+    masterKeyBits,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', hmacKey, new TextEncoder().encode('vault-server-auth-v1'));
+  return toBase64(new Uint8Array(sig));
+}
+
+/**
  * Derive a history encryption key from username and password using PBKDF2.
  */
 export async function deriveHistoryKey(password, saltBase64) {

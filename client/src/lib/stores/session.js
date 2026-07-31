@@ -22,7 +22,7 @@ export const historyKey = writable(null);          // CryptoKey
 export const localBackupKey = writable(null);          // Cached PBKDF2 CryptoKey
 export const localBackupEnabled = writable(false);
 export const localBackupPassphrase = writable('');
-export const loginPassword = writable('');          // Volatile login password for cloud vault syncs
+export const vaultMasterKey = writable('');          // Base64 master key (derived from password) for vault/sync encryption — never the raw password, never sent to the server
 
 // ─── Active Ratchet Sessions ────────────────────────────────
 // Map<peerId, RatchetSession>
@@ -60,7 +60,7 @@ export function clearSession() {
   oneTimePrekeyPairs.set([]);
   historyKey.set(null);
   localBackupKey.set(null);
-  loginPassword.set('');
+  vaultMasterKey.set('');
 
   // Destroy all ratchet sessions
   const sessions = get(ratchetSessions);

@@ -1,7 +1,7 @@
 <script>
-  import { currentUser, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, loginPassword, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { currentUser, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, vaultMasterKey, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { register, login, updateKeys, fetchSalt, saveEncryptedVault } from '../lib/api/http.js';
-  import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, encryptIdentityVault, decryptIdentityVault } from '../lib/crypto/keys.js';
+  import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, deriveMasterKeyBits, deriveServerAuthSecret, encryptIdentityVault, decryptIdentityVault } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
   import { RatchetSession } from '../lib/crypto/ratchet.js';
   import { SenderKeySession } from '../lib/crypto/senderkeys.js';
@@ -82,9 +82,16 @@
       const saltBytes = crypto.getRandomValues(new Uint8Array(16));
       const saltBase64 = toBase64(saltBytes);
 
+      // Stretch the real password ONCE into a master key. Everything else
+      // (history key, vault encryption, server auth) derives from this —
+      // the real password itself is never sent anywhere past this point.
+      const masterKeyBits = await deriveMasterKeyBits(password, saltBase64);
+      const masterKeyBase64 = toBase64(masterKeyBits);
+      const authSecret = await deriveServerAuthSecret(masterKeyBits);
+
       // Parallelize independent key generation operations
       const [hk, ikp_ecdh, ikp_ecdsa, spk] = await Promise.all([
-        deriveHistoryKey(password, saltBase64),
+        deriveHistoryKey(masterKeyBase64, saltBase64),
         generateExportableKeyPair(),
         generateSigningKeyPair(),
         generateExportableKeyPair(),
@@ -110,12 +117,14 @@
         signedPrekeyPair: spk,
         localBackupKeyBase64: null,
         localBackupPassphrase: null
-      }, password);
+      }, masterKeyBase64);
 
-      // Register with server atomically with vault backup
+      // Register with server atomically with vault backup. The server only
+      // ever sees authSecret, a one-way derivation of the master key it
+      // cannot reverse — never the real password.
       const user = await register({
         username,
-        password,
+        password: authSecret,
         identityKey: identityKeyBase64,
         signedPrekey: signedPrekeyBase64,
         prekeySig: prekeySigBase64,
@@ -133,7 +142,7 @@
         pubKeyBase64: prekeys.publicKeys[idx]
       }));
       oneTimePrekeyPairs.set(otpPairsWithPub);
-      loginPassword.set(password);
+      vaultMasterKey.set(masterKeyBase64);
 
       // Set user session
       setUser(user);
@@ -155,19 +164,25 @@
       // Fetch user salt from server
       const { salt } = await fetchSalt(username);
 
-      // Derive history key from password and retrieved salt
-      const hk = await deriveHistoryKey(password, salt);
+      // Same one-time stretch as registration: the real password never
+      // leaves the client past this point.
+      const masterKeyBits = await deriveMasterKeyBits(password, salt);
+      const masterKeyBase64 = toBase64(masterKeyBits);
+      const authSecret = await deriveServerAuthSecret(masterKeyBits);
+
+      // Derive history key from the master key and retrieved salt
+      const hk = await deriveHistoryKey(masterKeyBase64, salt);
       historyKey.set(hk);
 
-      const user = await login(username, password);
-      loginPassword.set(password);
+      const user = await login(username, authSecret);
+      vaultMasterKey.set(masterKeyBase64);
 
       let ikp_ecdh, ikp_ecdsa, spk;
       let isRestored = false;
 
       if (user.encryptedVault) {
         try {
-          const vault = await decryptIdentityVault(user.encryptedVault, password);
+          const vault = await decryptIdentityVault(user.encryptedVault, masterKeyBase64);
           ikp_ecdh = vault.identityKeyPair.ecdh;
           ikp_ecdsa = vault.identityKeyPair.ecdsa;
           spk = vault.signedPrekeyPair;
@@ -222,7 +237,7 @@
           signedPrekeyPair: spk,
           localBackupKeyBase64: null,
           localBackupPassphrase: null
-        }, password);
+        }, masterKeyBase64);
         await saveEncryptedVault(initialVault);
       }
 

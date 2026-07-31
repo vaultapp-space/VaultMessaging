@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, loginPassword, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
+  import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, vaultMasterKey, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
   import { getMe, replenishPrekeys } from './lib/api/http.js';
   import { decryptSyncPayload, generateOneTimePrekeys } from './lib/crypto/keys.js';
   import { fromBase64 } from './lib/crypto/utils.js';
@@ -103,7 +103,7 @@
             ecdsa: { privateKey: ikpEcdsaPrivate, publicKey: ikpEcdsaPublic }
           });
           signedPrekeyPair.set({ privateKey: spkPrivate, publicKey: spkPublic });
-          loginPassword.set(decrypted.loginPassword);
+          vaultMasterKey.set(decrypted.vaultMasterKey);
 
           if (decrypted.localBackupKeyBase64) {
             const rawBackupKey = new Uint8Array(atob(decrypted.localBackupKeyBase64).split('').map(c => c.charCodeAt(0)));

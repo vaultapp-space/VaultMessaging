@@ -22,9 +22,11 @@ async function authPlugin(fastify) {
     try {
       await request.jwtVerify();
 
-      // Verify session still exists in store
+      // Verify session still exists in store AND actually belongs to the
+      // user the token claims to be — otherwise a forged token (id: victim,
+      // jti: attacker's own valid session) would pass just on jti existing.
       const session = await fastify.store.getSession(request.user.jti);
-      if (!session) {
+      if (!session || session.userId !== request.user.id) {
         return reply.code(401).send({ error: 'Session expired' });
       }
 
