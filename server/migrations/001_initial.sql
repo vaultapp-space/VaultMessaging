@@ -1,6 +1,13 @@
 -- ============================================================
 -- Vault — Initial Database Schema
 -- Zero PII · Encrypted Blobs · 24h Hard Deletion Ceiling
+--
+-- This file is not executed by the app — server/src/store.js runs the
+-- same CREATE TABLE IF NOT EXISTS statements itself on every boot, so
+-- the running schema is always self-migrating from that single source
+-- of truth. This file exists purely as documentation of the schema and
+-- for anyone who wants to provision the database without booting the
+-- app first; keep it in sync with the initSchemaSQL block in store.js.
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -19,6 +26,8 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username));
 
 -- ─── ONE-TIME PREKEYS ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS one_time_prekeys (
@@ -54,8 +63,10 @@ CREATE INDEX IF NOT EXISTS idx_msg_recipient_undelivered
     ON encrypted_messages (recipient_id, delivered, sent_at)
     WHERE delivered = FALSE;
 
-CREATE INDEX IF NOT EXISTS idx_msg_expires
-    ON encrypted_messages (expires_at);
+CREATE INDEX IF NOT EXISTS idx_msg_expires ON encrypted_messages (expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_msg_conversation ON encrypted_messages (sender_id, recipient_id, sent_at);
+CREATE INDEX IF NOT EXISTS idx_msg_conversation_rev ON encrypted_messages (recipient_id, sender_id, sent_at);
 
 -- ─── GROUPS ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS groups (
@@ -71,15 +82,36 @@ CREATE TABLE IF NOT EXISTS group_members (
     PRIMARY KEY (group_id, user_id)
 );
 
--- ─── ENCRYPTED MEDIA METADATA ──────────────────────────────
-CREATE TABLE IF NOT EXISTS encrypted_media (
+-- ─── ATTACHMENTS (disk-backed chunks, DB tracks metadata only) ──
+CREATE TABLE IF NOT EXISTS attachments (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    message_id      UUID REFERENCES encrypted_messages(id) ON DELETE CASCADE,
-    chunk_index     INTEGER NOT NULL,
-    total_chunks    INTEGER NOT NULL,
-    file_path       TEXT NOT NULL,
+    filename        TEXT NOT NULL,
+    mime_type       TEXT NOT NULL,
+    total_chunks    INTEGER NOT NULL DEFAULT 1,
+    uploaded_chunks INTEGER NOT NULL DEFAULT 0,
+    burn_on_read    BOOLEAN DEFAULT FALSE,
+    owner_id        UUID REFERENCES users(id) ON DELETE SET NULL,
     expires_at      TIMESTAMPTZ NOT NULL,
-    UNIQUE (message_id, chunk_index)
+    created_at      TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_media_expires ON encrypted_media (expires_at);
+CREATE TABLE IF NOT EXISTS attachment_allowed_users (
+    attachment_id   UUID NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (attachment_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_expires ON attachments (expires_at);
+
+-- ─── PUSH SUBSCRIPTIONS ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subscription    TEXT NOT NULL,
+    PRIMARY KEY (user_id, subscription)
+);
+
+-- ─── SERVER CONFIG (persisted key/value, e.g. VAPID keys) ──
+CREATE TABLE IF NOT EXISTS server_config (
+    key             TEXT PRIMARY KEY,
+    value           TEXT NOT NULL
+);

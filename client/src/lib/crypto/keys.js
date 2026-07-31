@@ -1,7 +1,10 @@
 // ============================================================
 // Vault — Web Crypto Key Management
-// ⚠️ SECTION 0 COMPLIANCE: All keys exist ONLY in volatile JS memory.
-// No localStorage, sessionStorage, IndexedDB, or any persistence API.
+// Keys live in volatile JS memory for the lifetime of a session. They can
+// optionally be persisted encrypted-at-rest — via the local IndexedDB
+// backup (localBackupKey) or the server-side encrypted cloud vault — but
+// in both cases only as ciphertext under a key derived from the user's
+// password; the server and disk never see a plaintext private key.
 // ============================================================
 
 import { toBase64, fromBase64 } from './utils.js';

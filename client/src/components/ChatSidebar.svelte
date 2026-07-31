@@ -577,7 +577,7 @@
           {@const isActive = $activePeer?.id === conv.peerId}
           {@const isTyping = $typingUsers.has(conv.peerId)}
           <button
-            on:click={() => selectPeer({ id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup, members: conv.members, joinKey: conv.joinKey })}
+            on:click={() => selectPeer({ id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup, members: conv.members, joinKey: conv.joinKey, createdBy: conv.createdBy })}
             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left mb-0.5 group
               {isActive ? 'bg-vault-accent/10 border border-vault-accent/20' : 'hover:bg-vault-elevated border border-transparent'}"
           >

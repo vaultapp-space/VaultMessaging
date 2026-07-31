@@ -139,6 +139,14 @@ export async function joinGroup(joinKey) {
   return request('POST', '/groups/join', { joinKey });
 }
 
+export async function leaveGroup(groupId) {
+  return request('POST', `/groups/${groupId}/leave`);
+}
+
+export async function removeGroupMember(groupId, userId) {
+  return request('DELETE', `/groups/${groupId}/members/${userId}`);
+}
+
 export async function fetchTurnCredentials() {
   return request('GET', '/turn/credentials');
 }

@@ -94,8 +94,11 @@ CREATE TABLE IF NOT EXISTS groups (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
     join_key        TEXT UNIQUE,
+    created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS group_members (
     group_id        UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
@@ -683,15 +686,15 @@ class DataStore {
 
   // ─── Groups (PostgreSQL) ──────────────────────────────────
 
-  async createGroup(name, memberIds) {
+  async createGroup(name, memberIds, creatorId = null) {
     const id = uuidv4();
     const joinKey = uuidv4();
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       await client.query(
-        `INSERT INTO groups (id, name, join_key) VALUES ($1, $2, $3)`,
-        [id, name, joinKey]
+        `INSERT INTO groups (id, name, join_key, created_by) VALUES ($1, $2, $3, $4)`,
+        [id, name, joinKey, creatorId]
       );
       for (const mId of memberIds) {
         await client.query(
@@ -729,6 +732,7 @@ class DataStore {
       id: group.id,
       name: group.name,
       joinKey: group.join_key,
+      createdBy: group.created_by,
       members: membersRes.rows
     };
   }
@@ -740,6 +744,22 @@ class DataStore {
     );
     if (res.rows.length === 0) return null;
     return await this.getGroup(res.rows[0].id);
+  }
+
+  async removeGroupMember(groupId, userId) {
+    await this.pool.query(
+      `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2`,
+      [groupId, userId]
+    );
+    const remaining = await this.pool.query(
+      `SELECT COUNT(*)::int AS count FROM group_members WHERE group_id = $1`,
+      [groupId]
+    );
+    if (remaining.rows[0].count === 0) {
+      await this.pool.query(`DELETE FROM groups WHERE id = $1`, [groupId]);
+      return { deleted: true };
+    }
+    return { deleted: false };
   }
 
   async addGroupMember(groupId, userId) {

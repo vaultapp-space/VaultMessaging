@@ -42,6 +42,7 @@
         isGroup: true,
         members: g.members,
         joinKey: g.joinKey,
+        createdBy: g.createdBy,
         lastMessageAt: null,
         hasUndelivered: false
       }));
@@ -72,6 +73,8 @@
       onWsEvent('call_accept', handleGlobalCallAccept),
       onWsEvent('call_reject', handleGlobalCallReject),
       onWsEvent('call_hangup', handleGlobalCallHangup),
+      onWsEvent('group_updated', handleGroupUpdated),
+      onWsEvent('group_removed', handleGroupRemoved),
     );
   });
 
@@ -186,10 +189,29 @@
           peerUsername: data.groupName || data.senderUsername,
           isGroup: !!data.groupId,
           members: data.groupMembers || [],
-          joinKey: data.groupJoinKey,
+          joinKey: null,
           lastMessageAt: data.sentAt,
           hasUndelivered: !isCurrentlyActive,
         });
+        // The join key isn't sent with individual messages (it's a bearer
+        // secret that lets anyone into the group, so it shouldn't ride
+        // along with every message payload) — backfill it from the
+        // authoritative group list for a conversation we're seeing for
+        // the first time (e.g. just added to a new group).
+        if (data.groupId) {
+          fetchGroups().then(groups => {
+            const g = groups.find(g => g.id === data.groupId);
+            if (!g) return;
+            conversations.update(cs => {
+              const conv = cs.find(c => c.peerId === threadId);
+              if (conv) {
+                conv.joinKey = g.joinKey;
+                conv.createdBy = g.createdBy;
+              }
+              return [...cs];
+            });
+          }).catch(err => console.error('Failed to backfill group join key:', err));
+        }
       }
       return [...convs];
     });
@@ -197,6 +219,35 @@
 
   function handleTyping(data) {
     setTyping(data.senderId);
+  }
+
+  // Membership changed (someone joined/left/was removed) — refresh the
+  // cached member list so E2EE group fan-out and the members UI stay
+  // accurate instead of only updating on the next message.
+  function handleGroupUpdated(data) {
+    if (!data.group) return;
+    const threadId = `group-${data.groupId}`;
+    conversations.update(convs => {
+      const conv = convs.find(c => c.peerId === threadId);
+      if (conv) {
+        conv.members = data.group.members;
+        conv.joinKey = data.group.joinKey;
+      }
+      return [...convs];
+    });
+    activePeer.update(peer => {
+      if (peer && peer.id === threadId) peer.members = data.group.members;
+      return peer;
+    });
+  }
+
+  // We were removed from (or left) a group — drop it locally.
+  function handleGroupRemoved(data) {
+    const threadId = `group-${data.groupId}`;
+    conversations.update(convs => convs.filter(c => c.peerId !== threadId));
+    if (get(activePeer)?.id === threadId) {
+      activePeer.set(null);
+    }
   }
 
   async function handleGlobalCallInvite(data) {

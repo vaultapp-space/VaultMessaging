@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls, vaultMasterKey } from '../lib/stores/session.js';
   import { messagesByPeer, addMessage, addMessages, addOptimisticMessage, confirmMessage, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
-  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey } from '../lib/api/http.js';
+  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, leaveGroup, removeGroupMember } from '../lib/api/http.js';
   import { sendTyping, wsConnected, onWsEvent } from '../lib/api/ws.js';
   import { RatchetSession } from '../lib/crypto/ratchet.js';
   import { x3dhInitiate, deriveInitialKeys } from '../lib/crypto/x3dh.js';
@@ -80,6 +80,38 @@
 
   let showMembersModal = false;
   let p2pFileInput;
+
+  async function handleLeaveGroup() {
+    if (!$activePeer?.isGroup) return;
+    const groupId = $activePeer.id.replace(/^group-/, '');
+    if (!confirm(`Leave "${$activePeer.username}"? You won't receive future messages from this group.`)) return;
+    try {
+      await leaveGroup(groupId);
+      showMembersModal = false;
+      conversations.update(cs => cs.filter(c => c.peerId !== $activePeer.id));
+      activePeer.set(null);
+    } catch (err) {
+      alert(`Failed to leave group: ${err.message}`);
+    }
+  }
+
+  async function handleRemoveMember(memberId, memberUsername) {
+    if (!$activePeer?.isGroup) return;
+    const groupId = $activePeer.id.replace(/^group-/, '');
+    if (!confirm(`Remove ${memberUsername} from "${$activePeer.username}"?`)) return;
+    try {
+      await removeGroupMember(groupId, memberId);
+      const updatedMembers = $activePeer.members.filter(m => m.id !== memberId);
+      activePeer.update(peer => peer ? { ...peer, members: updatedMembers } : peer);
+      conversations.update(cs => {
+        const conv = cs.find(c => c.peerId === $activePeer.id);
+        if (conv) conv.members = updatedMembers;
+        return [...cs];
+      });
+    } catch (err) {
+      alert(`Failed to remove member: ${err.message}`);
+    }
+  }
 
   function startP2PFileSend(e) {
     const file = e.target.files[0];
@@ -1960,14 +1992,31 @@
             >
               {member.username[0].toUpperCase()}
             </div>
-            <div>
+            <div class="flex-1">
               <div class="text-xs font-semibold text-vault-text">{member.username}</div>
               {#if member.id === $currentUser?.id}
                 <div class="text-[9px] text-vault-accent">You</div>
               {/if}
             </div>
+            {#if $activePeer.createdBy === $currentUser?.id && member.id !== $currentUser?.id}
+              <button
+                on:click={() => handleRemoveMember(member.id, member.username)}
+                class="text-[10px] text-vault-danger hover:underline focus:outline-none cursor-pointer flex-shrink-0"
+              >
+                Remove
+              </button>
+            {/if}
           </div>
         {/each}
+      </div>
+
+      <div class="border-t border-vault-border mt-4 pt-4">
+        <button
+          on:click={handleLeaveGroup}
+          class="w-full text-xs text-vault-danger hover:bg-vault-danger/10 border border-vault-danger/20 rounded-xl py-2 font-semibold transition-colors cursor-pointer focus:outline-none"
+        >
+          Leave Group
+        </button>
       </div>
 
       <!-- Group Invite Key Section -->
