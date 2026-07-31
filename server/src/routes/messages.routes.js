@@ -109,25 +109,30 @@ async function messageRoutes(fastify) {
       }
     }
 
-    // If not delivered, enqueue for later delivery
+    // If not delivered, enqueue for later delivery. The message itself is
+    // already persisted above, so a failure here (bad push subscription,
+    // transient store error) must never fail the send for the caller.
     if (!delivered) {
-      await fastify.store.enqueuePending(recipientId, msg.id);
-      
-      // Dispatch Web Push notification
-      let groupName = null;
-      if (groupId) {
-        try {
-          const groupObj = await fastify.store.getGroup(groupId);
-          if (groupObj) {
-            groupName = groupObj.name;
-          }
-        } catch {}
-      }
+      try {
+        await fastify.store.enqueuePending(recipientId, msg.id);
 
-      await fastify.sendPushNotification(recipientId, {
-        title: groupName ? `@${groupName}` : `@${request.user.username}`,
-        body: groupName ? `@${request.user.username}: Sent an encrypted message` : 'Sent an encrypted message'
-      });
+        let groupName = null;
+        if (groupId) {
+          try {
+            const groupObj = await fastify.store.getGroup(groupId);
+            if (groupObj) {
+              groupName = groupObj.name;
+            }
+          } catch {}
+        }
+
+        await fastify.sendPushNotification(recipientId, {
+          title: groupName ? `@${groupName}` : `@${request.user.username}`,
+          body: groupName ? `@${request.user.username}: Sent an encrypted message` : 'Sent an encrypted message'
+        });
+      } catch (err) {
+        fastify.log.warn({ err }, 'Failed to enqueue/notify offline recipient');
+      }
     } else {
       await fastify.store.markDelivered(msg.id);
     }

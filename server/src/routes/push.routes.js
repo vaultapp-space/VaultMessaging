@@ -76,10 +76,10 @@ async function pushRoutes(fastify) {
     const payload = JSON.stringify(payloadObj);
 
     for (const subStr of subscriptions) {
-      const sub = JSON.parse(subStr);
       try {
+        const sub = JSON.parse(subStr);
         fastify.log.info({ endpoint: sub.endpoint }, 'Dispatching E2EE push notification...');
-        
+
         await webpush.sendNotification(sub, payload);
       } catch (err) {
         if (err.statusCode === 410 || err.statusCode === 404) {
