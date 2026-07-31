@@ -23,6 +23,10 @@ export const remoteCameraOff = writable(false);
 export const isScreenSharing = writable(false);
 export const verificationWords = writable('');
 export const dataChannelReady = writable(false);
+// Set with a human-readable reason whenever a call cannot be established at
+// all (no TURN relay available, or ICE never connects) so the UI can tell
+// the user instead of silently showing "on call" over a dead connection.
+export const callFailureStore = writable(null);
 export const p2pFileTransferState = writable({
   role: null, // 'sender' | 'receiver'
   filename: '',
@@ -228,20 +232,39 @@ async function decryptStaticSignalingPayload(data) {
   return JSON.parse(plaintext);
 }
 
+// Every call is forced through TURN (iceTransportPolicy: 'relay') so a peer
+// never learns the other's real IP. That means a STUN-only server list is
+// useless here — it cannot yield a single relay candidate, so ICE gathering
+// completes empty and the connection fails without ever calling anyone's
+// attention to it. Fail fast instead so callers can end the call cleanly.
+function hasTurnServer(iceServers) {
+  return iceServers.some(s => {
+    const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+    return urls.some(u => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')));
+  });
+}
+
 function initializePeerConnection(peerId) {
   if (peerConnectionPromise) return peerConnectionPromise;
 
   peerConnectionPromise = (async () => {
-    let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+    let iceServers;
 
     try {
       const data = await fetchTurnCredentials();
-      if (data && data.iceServers) {
-        iceServers = data.iceServers;
+      if (!data || !data.iceServers || !hasTurnServer(data.iceServers)) {
+        throw new Error('TURN credentials response contained no relay servers');
       }
+      iceServers = data.iceServers;
     } catch (e) {
-      console.warn('Failed to fetch ephemeral TURN credentials, falling back to public STUN:', e);
+      console.error('Failed to fetch TURN relay credentials — cannot start a privacy-preserving call:', e);
       sendClientDebugLog('fetchTurnCredentials failed', e);
+      peerConnectionPromise = null;
+      const message = 'Could not reach the relay server needed for a private call. Please try again shortly.';
+      callFailureStore.set(message);
+      alert(message);
+      if (get(activeCall)) hangupCall();
+      throw e;
     }
 
     try {
@@ -271,9 +294,24 @@ function initializePeerConnection(peerId) {
       remoteStreamStore.set(event.streams[0]);
     };
 
+    let iceRestartAttempts = 0;
     peerConnection.oniceconnectionstatechange = () => {
       const state = peerConnection?.iceConnectionState;
-      if (state === 'failed') {
+      if (state === 'connected' || state === 'completed') {
+        iceRestartAttempts = 0;
+      } else if (state === 'failed') {
+        iceRestartAttempts += 1;
+        if (iceRestartAttempts > 3) {
+          // Restarting ICE hasn't recovered the connection after several
+          // tries — stop looping silently and let the user know the call
+          // could not be established, instead of leaving the UI stuck on
+          // "on call" over a connection that will never carry media.
+          const message = 'Call connection failed. Please check your network and try again.';
+          callFailureStore.set(message);
+          alert(message);
+          hangupCall();
+          return;
+        }
         peerConnection.restartIce();
       } else if (state === 'disconnected') {
         setTimeout(() => {
@@ -653,6 +691,9 @@ activeCall.subscribe((call) => {
       resetCallState();
     }
     return;
+  }
+  if (!hadCall) {
+    callFailureStore.set(null);
   }
   hadCall = true;
 
