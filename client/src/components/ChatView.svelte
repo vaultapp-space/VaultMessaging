@@ -204,11 +204,14 @@
     });
   }
 
-  // Track when new messages arrive → trigger scroll
+  // Track when new messages arrive → trigger scroll. lastMessageCount === 0
+  // also covers the initial load of a freshly-opened conversation, which
+  // should always land at the bottom regardless of who sent the last message.
   $: if (peerMessages.length > lastMessageCount) {
     const lastMsg = peerMessages[peerMessages.length - 1];
     const isOwn = lastMsg?.senderId === $currentUser?.id;
-    if (isOwn || !isScrolledUp) {
+    const isInitialLoad = lastMessageCount === 0;
+    if (isInitialLoad || isOwn || !isScrolledUp) {
       shouldAutoScroll = true;
     } else {
       shouldAutoScroll = false;
@@ -217,10 +220,19 @@
     lastMessageCount = peerMessages.length;
   }
 
-  // Auto-scroll only when new messages arrive, not on every reactive update
+  // Auto-scroll only when new messages arrive, not on every reactive update.
+  // Scrolls after this update AND on the next frame, since a just-appended
+  // message bubble (images, multi-line text, transitions) can still grow
+  // after the initial layout pass, leaving scrollHeight measured too early.
   afterUpdate(() => {
     if (shouldAutoScroll && messagesContainer) {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      const el = messagesContainer;
+      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      });
       shouldAutoScroll = false;
     }
   });
