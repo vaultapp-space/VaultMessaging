@@ -34,6 +34,13 @@ const fastify = Fastify({
   // Default (1 MiB) is too small for encrypted attachment chunks: a 1MB
   // chunk becomes ~1.33MB after base64 encoding, plus JSON overhead.
   bodyLimit: 6 * 1024 * 1024,
+  // Behind nginx (127.0.0.1 -> this process), so req.ip reflects the real
+  // client via X-Forwarded-For instead of always being the proxy's own
+  // address — otherwise every client buckets under one IP for rate
+  // limiting, making per-attacker limits useless and enabling a trivial
+  // self-DoS. Safe only because port 3001 is not reachable directly from
+  // the internet (verified: no path to Fastify except through nginx).
+  trustProxy: true,
 });
 
 // ─── Global Plugins ─────────────────────────────────────────

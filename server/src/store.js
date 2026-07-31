@@ -136,6 +136,7 @@ class DataStore {
     this.redis = new Redis(redisConfig);
     this.wsConnections = new Map(); // userId -> Set of socket objects
     this.activeCalls = new Map();   // userId -> peerId
+    this.pendingInvites = new Map(); // inviteeId -> callerId, cleared on accept/reject/hangup
 
     // Initialize Schema
     this.pool.query(initSchemaSQL)
@@ -729,6 +730,30 @@ class DataStore {
   }
 
   // ─── Calls (Volatile RAM) ─────────────────────────────────
+
+  // Tracks an outstanding call_invite so call_accept can be verified against
+  // it — otherwise any authenticated user could send call_accept for an
+  // arbitrary recipientId and hijack/overwrite that person's active call.
+  setPendingInvite(inviteeId, callerId) {
+    this.pendingInvites.set(inviteeId, callerId);
+  }
+
+  getPendingInvite(inviteeId) {
+    return this.pendingInvites.get(inviteeId);
+  }
+
+  clearPendingInvite(inviteeId) {
+    this.pendingInvites.delete(inviteeId);
+  }
+
+  // Clears a pending invite regardless of whether `id` is the invitee (the
+  // usual key) or the caller cancelling before the invitee ever accepted.
+  clearPendingInvitesInvolving(id) {
+    this.pendingInvites.delete(id);
+    for (const [inviteeId, callerId] of this.pendingInvites.entries()) {
+      if (callerId === id) this.pendingInvites.delete(inviteeId);
+    }
+  }
 
   registerCall(userId, peerId) {
     this.activeCalls.set(userId, peerId);

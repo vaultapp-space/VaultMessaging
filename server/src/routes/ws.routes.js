@@ -217,12 +217,30 @@ async function wsRoutes(fastify) {
           }
         }
 
-        if (data.type === 'call_accept') {
+        if (data.type === 'call_invite') {
+          // Record who this invite is FROM so a later call_accept can be
+          // verified against it, rather than trusting an arbitrary recipientId.
+          fastify.store.setPendingInvite(data.recipientId, userId);
+        } else if (data.type === 'call_accept') {
+          // Only honor call_accept if it actually corresponds to a pending
+          // invite from that recipient — otherwise any authenticated user
+          // could send call_accept for an arbitrary recipientId and hijack
+          // or overwrite that person's active call mapping.
+          const inviter = fastify.store.getPendingInvite(userId);
+          if (inviter !== data.recipientId) {
+            fastify.log.warn({ userId, recipientId: data.recipientId }, 'WebRTC call_accept rejected: no matching pending invite');
+            socket.send(JSON.stringify({ type: 'error', message: 'No pending call invite from this user' }));
+            return;
+          }
+          fastify.store.clearPendingInvite(userId);
           fastify.log.info({ userId, recipientId: data.recipientId }, 'WebRTC call_accept: Registering call mapping');
           fastify.store.registerCall(userId, data.recipientId);
+        } else if (data.type === 'call_reject') {
+          fastify.store.clearPendingInvitesInvolving(userId);
         } else if (data.type === 'call_hangup') {
           fastify.log.info({ userId }, 'WebRTC call_hangup: Unregistering call mapping');
           fastify.store.unregisterCall(userId);
+          fastify.store.clearPendingInvitesInvolving(userId);
         }
 
         const recipientSockets = fastify.store.getConnections(data.recipientId);
@@ -292,6 +310,7 @@ async function wsRoutes(fastify) {
           }
           fastify.store.unregisterCall(userId);
         }
+        fastify.store.clearPendingInvitesInvolving(userId);
 
         fastify.store.unregisterConnection(userId, socket);
         fastify.log.info({ userId }, 'WebSocket disconnected');
