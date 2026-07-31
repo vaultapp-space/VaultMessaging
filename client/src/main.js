@@ -15,4 +15,11 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Suppress the browser's automatic "Add to Home Screen" / install mini-infobar.
+// There's no in-app install button today, so there's nothing constructive for
+// the deferred prompt to do — this just stops it popping up unprompted.
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+});
+
 export default app
