@@ -48,20 +48,6 @@ export const isScreenShareSupported = typeof navigator !== 'undefined' &&
   navigator.mediaDevices &&
   typeof navigator.mediaDevices.getDisplayMedia === 'function';
 
-// Forces ICE to only use TURN relay candidates, so neither party's real IP
-// is ever exposed to the other — trades away the lower latency of a direct
-// path. Persisted so the choice survives reloads, same pattern as theme.
-export const forceTurnRelay = writable(
-  typeof localStorage !== 'undefined' && localStorage.getItem('vault_force_turn_relay') === 'true'
-);
-
-export function setForceTurnRelay(value) {
-  forceTurnRelay.set(value);
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('vault_force_turn_relay', value ? 'true' : 'false');
-  }
-}
-
 function resetP2pState() {
   p2pFileTransferState.set({
     role: null, filename: '', mimeType: '', size: 0, progress: 0, status: 'idle', error: ''
@@ -259,9 +245,11 @@ function initializePeerConnection(peerId) {
     }
 
     try {
+      // Always relay through TURN — never let a direct/host or srflx candidate
+      // pair win, since that would expose each party's real IP to the other.
       peerConnection = new RTCPeerConnection({
         iceServers,
-        iceTransportPolicy: get(forceTurnRelay) ? 'relay' : 'all'
+        iceTransportPolicy: 'relay'
       });
     } catch (e) {
       sendClientDebugLog('RTCPeerConnection instantiation failed', e);

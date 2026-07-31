@@ -13,7 +13,6 @@
   import { encryptSyncPayload } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
   import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
-  import { forceTurnRelay, setForceTurnRelay } from '../lib/webrtc.js';
   import WalletSettings from './WalletSettings.svelte';
 
   let showBackupModal = false;
@@ -846,22 +845,6 @@
 
         <div class="text-[10px] text-vault-text-dim leading-relaxed bg-vault-elevated p-3 border border-vault-border rounded-xl">
           🔒 **Zero-Knowledge Security:** Your backup is encrypted on your client using PBKDF2/AES-GCM before writing to storage. The server never receives your passphrase or decrypted message logs.
-        </div>
-
-        <div class="border-t border-vault-border pt-4 flex items-center justify-between">
-          <div>
-            <span class="text-xs font-semibold text-vault-text block">Always Relay Calls Through TURN</span>
-            <span class="text-[10px] text-vault-text-dim">Hides your IP from the other party on every call. Direct P2P connections are lower-latency but expose it.</span>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
-            <input
-              type="checkbox"
-              checked={$forceTurnRelay}
-              on:change={(e) => setForceTurnRelay(e.target.checked)}
-              class="sr-only peer"
-            />
-            <div class="w-9 h-5 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-vault-accent"></div>
-          </label>
         </div>
 
         <div class="border-t border-vault-border pt-4 space-y-3">
