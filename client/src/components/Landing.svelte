@@ -742,14 +742,14 @@
                     <span class="text-[9px] font-bold text-vault-text-secondary">{msg.sender}</span>
                     <span class="text-[8px] text-vault-text-dim">{msg.time}</span>
                   </div>
-                  <div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl text-[11px] leading-relaxed transition-all duration-300 {msg.sender === 'Alice' ? 'bg-vault-text text-vault-black rounded-tr-none' : 'bg-vault-elevated/80 border border-vault-border/25 text-vault-text rounded-tl-none'}">
+                  <div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl text-[11px] leading-relaxed transition-all duration-300 {msg.sender === 'Alice' ? 'bg-vault-accent/15 border border-vault-accent/20 text-vault-text rounded-tr-none' : 'bg-vault-elevated/80 border border-vault-border/25 text-vault-text rounded-tl-none'}">
                     {msg.text}
                     {#if msg.status === 'encrypting'}
-                      <div class="text-[8px] text-vault-black/50 font-mono mt-0.5 animate-pulse">🔒 Encrypting cipher...</div>
+                      <div class="text-[8px] text-vault-text-dim font-mono mt-0.5 animate-pulse">🔒 Encrypting cipher...</div>
                     {:else if msg.status === 'sending'}
-                      <div class="text-[8px] text-vault-black/50 font-mono mt-0.5 animate-pulse">📡 Dispatching to Bob...</div>
+                      <div class="text-[8px] text-vault-text-dim font-mono mt-0.5 animate-pulse">📡 Dispatching to Bob...</div>
                     {:else if msg.sender === 'Alice'}
-                      <div class="text-[8px] text-vault-black/40 font-mono mt-0.5">✓ Decrypted & Verified by Bob</div>
+                      <div class="text-[8px] text-vault-text-dim font-mono mt-0.5">✓ Decrypted & Verified by Bob</div>
                     {/if}
                   </div>
                 </div>

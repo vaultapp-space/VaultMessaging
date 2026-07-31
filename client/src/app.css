@@ -44,6 +44,12 @@
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 }
 
+/* Raw RGB channels of --color-vault-surface, for rgba() alpha blends
+   (e.g. .glass) that can't reference a hex custom property directly. */
+:root {
+  --vault-surface-rgb: 17, 17, 19;
+}
+
 /* Light Theme overrides */
 :root.light {
   --color-vault-black: #fafafa;
@@ -60,6 +66,7 @@
   --color-vault-accent-dim: #047857;
   --color-vault-accent-glow: rgba(5, 150, 105, 0.08);
   --color-vault-accent-glow-strong: rgba(5, 150, 105, 0.15);
+  --vault-surface-rgb: 255, 255, 255;
 }
 
 /* ─── Base Reset ────────────────────────────────────────── */
@@ -167,14 +174,14 @@ body {
 /* ─── Glass Morphism ────────────────────────────────────── */
 
 .glass {
-  background: rgba(17, 17, 19, 0.8);
+  background: rgba(var(--vault-surface-rgb), 0.8);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--color-vault-border-subtle);
 }
 
 .glass-strong {
-  background: rgba(17, 17, 19, 0.92);
+  background: rgba(var(--vault-surface-rgb), 0.92);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: 1px solid var(--color-vault-border);
