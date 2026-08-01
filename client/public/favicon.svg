@@ -1,4 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2">
-  <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z"/>
-  <path d="M12 22V12" stroke-dasharray="3 3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-width="2"
+     stroke-linecap="round" stroke-linejoin="round">
+  <!-- The stroke was hardcoded #ffffff, which is invisible against a light tab bar.
+       Follow the browser's colour scheme instead. -->
+  <style>
+    svg { --mark: #17140f; }
+    @media (prefers-color-scheme: dark) { svg { --mark: #f4f2ec; } }
+  </style>
+  <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z" stroke="var(--mark)"/>
+  <path d="M12 22V12" stroke-dasharray="3 3" stroke="var(--mark)"/>
 </svg>

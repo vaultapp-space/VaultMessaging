@@ -75,13 +75,27 @@
     progress = max > 0 ? Math.min(1, scrollEl.scrollTop / max) : 0;
   }
 
-  /* Fade + rise elements in as they scroll into view. */
+  /* Fade + rise elements in as they scroll into view.
+     The reveal classes are stripped once the animation finishes: leaving them on
+     would keep the 0.7s reveal transition (and its delay) overriding each card's
+     own faster hover transition. */
   function reveal(node, delay = 0) {
     if (typeof IntersectionObserver === 'undefined' || reduceMotion) {
-      node.classList.add('revealed');
       if (node.dataset.mock === 'chat') playChatMock();
       return {};
     }
+
+    let doneTimer;
+    function finish() {
+      clearTimeout(doneTimer);
+      node.removeEventListener('transitionend', onEnd);
+      node.classList.remove('reveal-init', 'revealed');
+      node.style.removeProperty('--reveal-delay');
+    }
+    function onEnd(e) {
+      if (e.target === node && e.propertyName === 'transform') finish();
+    }
+
     node.classList.add('reveal-init');
     node.style.setProperty('--reveal-delay', `${delay}ms`);
     const io = new IntersectionObserver(
@@ -90,6 +104,9 @@
           if (entry.isIntersecting) {
             node.classList.add('revealed');
             io.unobserve(node);
+            node.addEventListener('transitionend', onEnd);
+            // Fallback: transitionend never fires if the tab is backgrounded mid-reveal.
+            doneTimer = setTimeout(finish, delay + 1200);
             if (node.dataset.mock === 'chat') playChatMock();
           }
         }
@@ -97,7 +114,13 @@
       { threshold: 0.15, rootMargin: '0px 0px -60px 0px' }
     );
     io.observe(node);
-    return { destroy: () => io.disconnect() };
+    return {
+      destroy() {
+        io.disconnect();
+        clearTimeout(doneTimer);
+        node.removeEventListener('transitionend', onEnd);
+      }
+    };
   }
 
   onMount(() => {
@@ -108,20 +131,35 @@
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) activeSection = entry.target.id;
+          // Clear on exit too, or the highlight stays stuck on the last section
+          // once you scroll back up to the hero, where nothing is in the band.
+          else if (activeSection === entry.target.id) activeSection = '';
         }
       },
       { rootMargin: '-45% 0px -50% 0px' }
     );
     navLinks.forEach(({ id }) => {
-      const el = document.getElementById(id);
+      const el = scrollEl?.querySelector(`#${id}`);
       if (el) sectionObserver.observe(el);
     });
+
+    // scrollHeight changes when the tech panel or an FAQ item opens, so recompute
+    // progress on layout changes instead of only on scroll.
+    let sizeObserver;
+    if (typeof ResizeObserver !== 'undefined' && scrollEl) {
+      sizeObserver = new ResizeObserver(() => onScroll());
+      sizeObserver.observe(scrollEl);
+      for (const child of scrollEl.children) sizeObserver.observe(child);
+    }
 
     tickTimer = setInterval(() => {
       ttls = ttls.map((t) => (t > 0 ? t - 1 : 0));
     }, 1000);
 
-    return () => sectionObserver.disconnect();
+    return () => {
+      sectionObserver.disconnect();
+      sizeObserver?.disconnect();
+    };
   });
 
   onDestroy(() => {
@@ -158,13 +196,14 @@
             class:open={menuOpen}
             on:click={() => (menuOpen = !menuOpen)}
             aria-expanded={menuOpen}
+            aria-controls="mobile-menu"
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           >
             <span></span><span></span><span></span>
           </button>
         </div>
       </nav>
-      <div class="mobile-menu" class:open={menuOpen}>
+      <div class="mobile-menu" id="mobile-menu" class:open={menuOpen}>
         <div class="mobile-menu-inner">
           {#each navLinks as link}
             <a href="#{link.id}" on:click={onNavClick}>{link.label}</a>
@@ -247,9 +286,11 @@
       </div>
       <div class="tech-footnote" use:reveal={0}>
         <span>Technically: X3DH key exchange + the Double Ratchet, the same cryptography Signal uses.</span>
-        <button class="tech-link" on:click={toggleTech}>{techOpen ? 'Hide technical details ↑' : 'Read the technical details →'}</button>
+        <button class="tech-link" on:click={toggleTech} aria-expanded={techOpen} aria-controls="tech-details">
+          {techOpen ? 'Hide technical details ↑' : 'Read the technical details →'}
+        </button>
       </div>
-      <div class="tech-details-panel" class:open={techOpen}>
+      <div class="tech-details-panel" id="tech-details" class:open={techOpen}>
         <div class="tech-details-inner">
           <h4>Key exchange: X3DH</h4>
           <p>Before you've ever messaged someone, your device publishes a bundle of public keys to the server: an <code>identity key</code>, a <code>signed prekey</code>, and a batch of one-time <code>prekeys</code>. When a friend wants to message you, even while you're offline, their device fetches that bundle and runs four Diffie-Hellman exchanges against it (X3DH: Extended Triple Diffie-Hellman) to derive a shared secret neither of you has typed or transmitted anywhere.</p>
@@ -332,11 +373,11 @@
       </div>
       <div class="showcase-grid">
         <figure class="showcase-desktop" use:reveal={0}>
-          <img src="/landing-app-preview.png" alt="Vault desktop app showing an encrypted conversation with an active end-to-end encrypted call" loading="lazy" />
+          <img src="/landing-app-preview.png" width="2600" height="1553" alt="Vault desktop app showing an encrypted conversation with an active end-to-end encrypted call" loading="lazy" decoding="async" />
           <figcaption>Desktop</figcaption>
         </figure>
         <figure class="showcase-mobile" use:reveal={140}>
-          <img src="/landing-mobile-preview.png" alt="Vault mobile app showing the same encrypted conversation" loading="lazy" />
+          <img src="/landing-mobile-preview.png" width="900" height="1948" alt="Vault mobile app showing the same encrypted conversation" loading="lazy" decoding="async" />
           <figcaption>Mobile</figcaption>
         </figure>
       </div>
@@ -534,11 +575,15 @@
   .nav-toggle.open span:nth-child(1) { transform: translateY(5.5px) rotate(45deg); }
   .nav-toggle.open span:nth-child(2) { opacity: 0; }
   .nav-toggle.open span:nth-child(3) { transform: translateY(-5.5px) rotate(-45deg); }
+  /* visibility (not just max-height:0) keeps the collapsed menu out of the tab order. */
   .mobile-menu {
-    display: none; overflow: hidden; max-height: 0;
-    transition: max-height 0.35s cubic-bezier(0.16,1,0.3,1);
+    display: none; overflow: hidden; max-height: 0; visibility: hidden;
+    transition: max-height 0.35s cubic-bezier(0.16,1,0.3,1), visibility 0s linear 0.35s;
   }
-  .mobile-menu.open { max-height: 260px; }
+  .mobile-menu.open {
+    max-height: 420px; visibility: visible;
+    transition: max-height 0.35s cubic-bezier(0.16,1,0.3,1), visibility 0s;
+  }
   .mobile-menu-inner {
     display: flex; flex-direction: column; gap: 2px; padding: 8px 0 14px;
     border-bottom: 1px solid var(--border-subtle);
@@ -670,8 +715,14 @@
     font-size: 0.8rem; color: var(--accent); font-weight: 700; white-space: nowrap;
     background: none; border: none; cursor: pointer; font-family: inherit; padding: 0;
   }
-  .tech-details-panel { max-height: 0; overflow: hidden; opacity: 0; transition: max-height 0.4s cubic-bezier(0.16,1,0.3,1), opacity 0.3s ease; }
-  .tech-details-panel.open { max-height: 900px; opacity: 1; margin-top: 16px; }
+  .tech-details-panel {
+    max-height: 0; overflow: hidden; opacity: 0; visibility: hidden;
+    transition: max-height 0.4s cubic-bezier(0.16,1,0.3,1), opacity 0.3s ease, visibility 0s linear 0.4s;
+  }
+  .tech-details-panel.open {
+    max-height: 1400px; opacity: 1; margin-top: 16px; visibility: visible;
+    transition: max-height 0.4s cubic-bezier(0.16,1,0.3,1), opacity 0.3s ease, visibility 0s;
+  }
   .tech-details-inner { border: 1px solid var(--border); border-radius: 0.75rem; padding: 24px 26px; background: var(--surface); }
   .tech-details-inner h4 {
     font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
@@ -781,10 +832,14 @@
   .footer-links a { color: var(--text-dim); text-decoration: none; }
   .footer-links a:hover { color: var(--text); }
 
+  /* Tablets get two columns; a single column wastes most of the width there. */
   @media (max-width: 860px) {
-    .steps, .feature-grid { grid-template-columns: 1fr; }
+    .steps, .feature-grid { grid-template-columns: repeat(2, 1fr); }
     table.compare { min-width: 520px; }
     .scroll-hint { display: block; }
+  }
+  @media (max-width: 600px) {
+    .steps, .feature-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 700px) {
     nav.top .links a { display: none; }
@@ -795,7 +850,26 @@
     .bubble-row { max-width: 88%; }
     .chat-mock { min-height: 292px; }
   }
+  @media (max-width: 600px) {
+    .wrap { padding: 0 18px; }
+    section { padding: 44px 0; }
+    .hero { padding-top: 48px; }
+    .final-cta { padding: 56px 0; }
+    .section-head { margin-bottom: 30px; }
+    .trust-row { gap: 14px; margin-top: 26px; }
+    .community-row { margin-top: 30px; }
+    .hero .actions { gap: 12px; width: 100%; }
+    .hero .actions .btn-primary, .hero .actions .btn-ghost { width: 100%; text-align: center; }
+    .chat-mock { padding: 16px; }
+    .tech-details-inner { padding: 20px 18px; }
+  }
   @media (max-width: 400px) {
     .cta-small { display: none; }
+  }
+  /* Landscape phones: 100dvh leaves very little room, so drop the vertical rhythm. */
+  @media (max-height: 460px) and (orientation: landscape) {
+    .hero { padding-top: 34px; }
+    section { padding: 34px 0; }
+    .final-cta { padding: 40px 0; }
   }
 </style>
