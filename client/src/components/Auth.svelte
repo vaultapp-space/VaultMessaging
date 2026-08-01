@@ -146,6 +146,7 @@
 
       // Set user session
       setUser(user);
+      activeView.set('chat');
 
     } catch (err) {
       error = err.message || 'Registration failed';
@@ -269,6 +270,7 @@
       oneTimePrekeyPairs.set(otpPairsWithPub);
 
       setUser(user);
+      activeView.set('chat');
 
     } catch (err) {
       error = err.message || 'Login failed';

@@ -59,7 +59,7 @@
         <h1>A conversation only the two of you can ever read.</h1>
         <p class="sub">No phone number. No email. Nothing to hand over, because we never collect it. Messages lock on your device and disappear after 24 hours.</p>
         <div class="actions">
-          <button class="btn-primary" on:click={goToApp}>Start a private chat — free</button>
+          <button class="btn-primary" on:click={goToApp}>Start a private chat, it's free</button>
           <a class="btn-ghost" href="#how">See how it works ↓</a>
         </div>
         <p class="hero-microcopy">Works right in your browser. No install, no app store.</p>
@@ -89,7 +89,7 @@
           <div class="bubble-meta"><span class="dot"></span>encrypted · disappears in 23:41:07</div>
         </div>
         <div class="bubble-row out">
-          <div class="bubble">yeah — this app's actually kind of nice, no number or anything needed</div>
+          <div class="bubble">yeah, this app's actually kind of nice, no number or anything needed</div>
           <div class="bubble-meta"><span class="dot"></span>encrypted · disappears in 23:58:52</div>
         </div>
         <div class="bubble-row in">
@@ -103,23 +103,23 @@
       <div class="section-head">
         <div class="eyebrow">How it works</div>
         <h2>Three things happen. We're only ever holding a locked box.</h2>
-        <p>No math, no key exchange diagrams — just what actually happens when you hit send.</p>
+        <p>No math, no key exchange diagrams, just what actually happens when you hit send.</p>
       </div>
       <div class="steps">
         <div class="step">
           <div class="num">One</div>
           <h3>You write a message</h3>
-          <p>It's locked on your own device, using a key that never leaves it — before it ever touches our servers.</p>
+          <p>It's locked on your own device, using a key that never leaves it, before it ever touches our servers.</p>
         </div>
         <div class="step">
           <div class="num">Two</div>
           <h3>It travels sealed</h3>
-          <p>Our servers move the locked box from one device to the other. We can see it exists — never what's inside.</p>
+          <p>Our servers move the locked box from one device to the other. We can see it exists, but never what's inside.</p>
         </div>
         <div class="step">
           <div class="num">Three</div>
           <h3>Only they can open it</h3>
-          <p>Your friend's device holds the one key that fits. We never had a copy, so we can't hand one over — to anyone.</p>
+          <p>Your friend's device holds the one key that fits. We never had a copy, so we can't hand one over to anyone.</p>
         </div>
       </div>
       <div class="tech-footnote">
@@ -128,14 +128,14 @@
       </div>
       <div class="tech-details-panel" class:open={techOpen}>
         <div class="tech-details-inner">
-          <h4>Key exchange — X3DH</h4>
-          <p>Before you've ever messaged someone, your device publishes a bundle of public keys to the server: an <code>identity key</code>, a <code>signed prekey</code>, and a batch of one-time <code>prekeys</code>. When a friend wants to message you — even while you're offline — their device fetches that bundle and runs four Diffie-Hellman exchanges against it (X3DH: Extended Triple Diffie-Hellman) to derive a shared secret neither of you has typed or transmitted anywhere.</p>
-          <h4>Per-message encryption — the Double Ratchet</h4>
+          <h4>Key exchange: X3DH</h4>
+          <p>Before you've ever messaged someone, your device publishes a bundle of public keys to the server: an <code>identity key</code>, a <code>signed prekey</code>, and a batch of one-time <code>prekeys</code>. When a friend wants to message you, even while you're offline, their device fetches that bundle and runs four Diffie-Hellman exchanges against it (X3DH: Extended Triple Diffie-Hellman) to derive a shared secret neither of you has typed or transmitted anywhere.</p>
+          <h4>Per-message encryption: the Double Ratchet</h4>
           <p>Every message advances a symmetric-key ratchet, so each one is locked with its own unique key derived from the last. Each time the conversation changes direction, a fresh Diffie-Hellman exchange folds a new secret into that chain. The result: even if a single message key were somehow exposed, it wouldn't unlock any message before or after it.</p>
           <h4>What actually gets encrypted</h4>
-          <p>Message bodies are sealed with <code>AES-256-GCM</code> using keys derived via <code>HKDF</code>. Your local vault (session state, drafts, cached keys) is protected with <code>Argon2id</code> against your password. All of this runs in your browser via the Web Crypto API — plaintext and raw key material never leave your device.</p>
-          <h4>Calls — WebRTC over TURN</h4>
-          <p>Voice and video use WebRTC, encrypted end-to-end with <code>DTLS-SRTP</code> over a key negotiated through your Double Ratchet session. Media is routed through our <code>TURN</code> relay rather than connecting peer-to-peer, which means neither side ever learns the other's IP address or general location — the relay only ever sees encrypted packets.</p>
+          <p>Message bodies are sealed with <code>AES-256-GCM</code> using keys derived via <code>HKDF</code>. Your local vault (session state, drafts, cached keys) is protected with <code>Argon2id</code> against your password. All of this runs in your browser via the Web Crypto API, so plaintext and raw key material never leave your device.</p>
+          <h4>Calls: WebRTC over TURN</h4>
+          <p>Voice and video use WebRTC, encrypted end-to-end with <code>DTLS-SRTP</code> over a key negotiated through your Double Ratchet session. Media is routed through our <code>TURN</code> relay rather than connecting peer-to-peer, which means neither side ever learns the other's IP address or general location. The relay only ever sees encrypted packets.</p>
           <button class="tech-close" on:click={toggleTech}>Hide details ↑</button>
         </div>
       </div>
@@ -171,12 +171,12 @@
         <div class="feature">
           <div class="plate">GROUPS</div>
           <h3>Group chats stay private</h3>
-          <p>Every member gets their own lock — a large group is never a weak point.</p>
+          <p>Every member gets their own lock, so a large group is never a weak point.</p>
         </div>
         <div class="feature">
           <div class="plate">FILES</div>
           <h3>Share files without a trace</h3>
-          <p>Photos and files travel straight between devices, encrypted the whole way — never stored in the open.</p>
+          <p>Photos and files travel straight between devices, encrypted the whole way, never stored in the open.</p>
         </div>
         <div class="feature">
           <div class="plate">CALLS</div>
@@ -191,12 +191,12 @@
         <div class="feature">
           <div class="plate">DEVICES</div>
           <h3>Add a device with a scan</h3>
-          <p>Point your phone at a QR code to bring a laptop or tablet in — no account transfer, no new password.</p>
+          <p>Point your phone at a QR code to bring a laptop or tablet in. No account transfer, no new password.</p>
         </div>
         <div class="feature">
           <div class="plate">MEMORY</div>
           <h3>Nothing lingers after you close it</h3>
-          <p>Close the tab and your keys are erased, not just hidden — there's nothing left to recover.</p>
+          <p>Close the tab and your keys are erased, not just hidden, so there's nothing left to recover.</p>
         </div>
       </div>
     </section>
@@ -204,7 +204,7 @@
     <section id="showcase">
       <div class="section-head">
         <div class="eyebrow">See it for yourself</div>
-        <h2>The actual app — on your desktop and in your pocket.</h2>
+        <h2>The actual app, on your desktop and in your pocket.</h2>
       </div>
       <div class="showcase-grid">
         <figure class="showcase-desktop">
@@ -235,7 +235,7 @@
         </details>
         <details class="faq-item">
           <summary>What happens if I lose my password?</summary>
-          <p>Your key lives on your device, protected by your password — we don't keep a backup copy on our servers, on purpose. If you lose both, that conversation history can't be recovered. You can opt into an encrypted backup ahead of time if you want a safety net.</p>
+          <p>Your key lives on your device, protected by your password. We don't keep a backup copy on our servers, on purpose. If you lose both, that conversation history can't be recovered. You can opt into an encrypted backup ahead of time if you want a safety net.</p>
         </details>
         <details class="faq-item">
           <summary>Is this really free?</summary>
@@ -243,7 +243,7 @@
         </details>
         <details class="faq-item">
           <summary>What if Vault's servers go down?</summary>
-          <p>New messages can't send until they're back — but nothing already delivered to your device is affected, and nothing is exposed while it's down.</p>
+          <p>New messages can't send until they're back, but nothing already delivered to your device is affected, and nothing is exposed while it's down.</p>
         </details>
       </div>
 
@@ -262,16 +262,16 @@
         </details>
         <details class="faq-item">
           <summary>Can I self-host it?</summary>
-          <p>Not yet — Vault currently runs on centralized infrastructure with no peer-to-peer fallback. Self-hosting is on the roadmap.</p>
+          <p>Not yet. Vault currently runs on centralized infrastructure with no peer-to-peer fallback. Self-hosting is on the roadmap.</p>
         </details>
       </div>
     </section>
 
     <section class="final-cta" style="border-top:none;">
       <h2>Say it once. Then let it disappear.</h2>
-      <p>No number, no email, no history left behind — just a private conversation.</p>
+      <p>No number, no email, no history left behind, just a private conversation.</p>
       <div class="actions">
-        <button class="btn-primary" on:click={goToApp}>Start a private chat — free</button>
+        <button class="btn-primary" on:click={goToApp}>Start a private chat, it's free</button>
       </div>
     </section>
   </div>

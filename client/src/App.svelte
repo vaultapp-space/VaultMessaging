@@ -154,6 +154,7 @@
           window.history.replaceState({}, document.title, window.location.pathname);
 
           setUser(decrypted.currentUser);
+          activeView.set('chat');
           isLoading.set(false);
           return;
         }
