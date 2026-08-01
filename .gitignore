@@ -8,4 +8,5 @@ build/
 *.log
 vps_key.pem
 promotional_materials/
+backups/
 
