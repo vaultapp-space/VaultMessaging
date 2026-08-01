@@ -1,11 +1,54 @@
 <script>
   import { activeView } from '../lib/stores/session.js';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { applyTheme } from '../lib/theme.js';
 
   let isLight = false;
   let techOpen = false;
   let faqMode = 'simple';
+  let menuOpen = false;
+
+  let scrollEl;
+  let progress = 0;
+  let activeSection = '';
+  let reduceMotion =
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const navLinks = [
+    { id: 'how', label: 'How it works' },
+    { id: 'compare', label: 'Compare' },
+    { id: 'features', label: 'Features' },
+    { id: 'faq', label: 'FAQ' }
+  ];
+
+  /* ---- animated chat preview ---- */
+  const mockMessages = [
+    { side: 'in', text: 'hey, you free to talk tonight?', ttl: 23 * 3600 + 41 * 60 + 7 },
+    { side: 'out', text: "yeah, this app's actually kind of nice, no number or anything needed", ttl: 23 * 3600 + 58 * 60 + 52 },
+    { side: 'in', text: 'wait for real? not even Vault can see this?', ttl: 23 * 3600 + 59 * 60 + 14 }
+  ];
+  let shown = 0;
+  let typingSide = null;
+  let ttls = mockMessages.map((m) => m.ttl);
+  let mockTimers = [];
+  let tickTimer;
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function formatTtl(s) {
+    return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+  }
+
+  function playChatMock() {
+    if (shown > 0) return;
+    if (reduceMotion) { shown = mockMessages.length; return; }
+    let at = 260;
+    mockMessages.forEach((msg, i) => {
+      mockTimers.push(setTimeout(() => { typingSide = msg.side; }, at));
+      at += 900;
+      mockTimers.push(setTimeout(() => { typingSide = null; shown = i + 1; }, at));
+      at += 420;
+    });
+  }
 
   function goToApp() {
     activeView.set('auth');
@@ -22,15 +65,78 @@
     techOpen = !techOpen;
   }
 
+  function onNavClick() {
+    menuOpen = false;
+  }
+
+  function onScroll() {
+    if (!scrollEl) return;
+    const max = scrollEl.scrollHeight - scrollEl.clientHeight;
+    progress = max > 0 ? Math.min(1, scrollEl.scrollTop / max) : 0;
+  }
+
+  /* Fade + rise elements in as they scroll into view. */
+  function reveal(node, delay = 0) {
+    if (typeof IntersectionObserver === 'undefined' || reduceMotion) {
+      node.classList.add('revealed');
+      if (node.dataset.mock === 'chat') playChatMock();
+      return {};
+    }
+    node.classList.add('reveal-init');
+    node.style.setProperty('--reveal-delay', `${delay}ms`);
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            node.classList.add('revealed');
+            io.unobserve(node);
+            if (node.dataset.mock === 'chat') playChatMock();
+          }
+        }
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -60px 0px' }
+    );
+    io.observe(node);
+    return { destroy: () => io.disconnect() };
+  }
+
   onMount(() => {
     isLight = document.documentElement.classList.contains('light');
+    reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const sectionObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) activeSection = entry.target.id;
+        }
+      },
+      { rootMargin: '-45% 0px -50% 0px' }
+    );
+    navLinks.forEach(({ id }) => {
+      const el = document.getElementById(id);
+      if (el) sectionObserver.observe(el);
+    });
+
+    tickTimer = setInterval(() => {
+      ttls = ttls.map((t) => (t > 0 ? t - 1 : 0));
+    }, 1000);
+
+    return () => sectionObserver.disconnect();
+  });
+
+  onDestroy(() => {
+    mockTimers.forEach(clearTimeout);
+    clearInterval(tickTimer);
   });
 </script>
 
-<div class="vault-landing">
+<svelte:window on:keydown={(e) => e.key === 'Escape' && (menuOpen = false)} />
+
+<div class="vault-landing" bind:this={scrollEl} on:scroll={onScroll}>
   <div class="bg-field"></div>
 
   <div class="nav-shell">
+    <div class="scroll-progress" style="transform: scaleX({progress})"></div>
     <div class="wrap">
       <nav class="top">
         <div class="brand">
@@ -42,33 +148,49 @@
           <span class="beta-pill">BETA</span>
         </div>
         <div class="links">
-          <a href="#how">How it works</a>
-          <a href="#compare">Compare</a>
-          <a href="#features">Features</a>
-          <a href="#faq">FAQ</a>
+          {#each navLinks as link}
+            <a href="#{link.id}" class:current={activeSection === link.id}>{link.label}</a>
+          {/each}
           <button class="theme-toggle" on:click={toggleTheme} aria-label="Toggle light/dark theme" title="Toggle light/dark theme">◐</button>
           <button class="cta-small" on:click={goToApp}>Start a private chat</button>
+          <button
+            class="nav-toggle"
+            class:open={menuOpen}
+            on:click={() => (menuOpen = !menuOpen)}
+            aria-expanded={menuOpen}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          >
+            <span></span><span></span><span></span>
+          </button>
         </div>
       </nav>
+      <div class="mobile-menu" class:open={menuOpen}>
+        <div class="mobile-menu-inner">
+          {#each navLinks as link}
+            <a href="#{link.id}" on:click={onNavClick}>{link.label}</a>
+          {/each}
+          <button class="mobile-cta" on:click={() => { menuOpen = false; goToApp(); }}>Start a private chat</button>
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="wrap">
     <section class="hero" style="border-top:none;">
       <div class="hero-inner">
-        <h1>A conversation only the two of you can ever read.</h1>
-        <p class="sub">No phone number. No email. Nothing to hand over, because we never collect it. Messages lock on your device and disappear after 24 hours.</p>
-        <div class="actions">
+        <h1 use:reveal={0}>A conversation only the two of you can ever read.</h1>
+        <p class="sub" use:reveal={90}>No phone number. No email. Nothing to hand over, because we never collect it. Messages lock on your device and disappear after 24 hours.</p>
+        <div class="actions" use:reveal={180}>
           <button class="btn-primary" on:click={goToApp}>Start a private chat, it's free</button>
           <a class="btn-ghost" href="#how">See how it works ↓</a>
         </div>
-        <p class="hero-microcopy">Works right in your browser. No install, no app store.</p>
-        <div class="trust-row">
+        <p class="hero-microcopy" use:reveal={240}>Works right in your browser. No install, no app store.</p>
+        <div class="trust-row" use:reveal={300}>
           <div class="trust-item"><span class="chk">✓</span> No sign-up info to leak</div>
           <div class="trust-item"><span class="chk">✓</span> Locked before it leaves your phone</div>
           <div class="trust-item"><span class="chk">✓</span> Gone in 24 hours</div>
         </div>
-        <div class="community-row">
+        <div class="community-row" use:reveal={360}>
           <span class="community-label">Join the community</span>
           <div class="community-links">
             <a href="https://discord.gg/VZyvTsJcFQ" target="_blank" rel="noopener noreferrer">
@@ -83,46 +205,47 @@
 
     <section id="preview" style="border-top:none; padding-top: 8px; text-align: center;">
       <p class="preview-caption">A real conversation, encrypted end-to-end</p>
-      <div class="chat-mock">
-        <div class="bubble-row in">
-          <div class="bubble">hey, you free to talk tonight?</div>
-          <div class="bubble-meta"><span class="dot"></span>encrypted · disappears in 23:41:07</div>
-        </div>
-        <div class="bubble-row out">
-          <div class="bubble">yeah, this app's actually kind of nice, no number or anything needed</div>
-          <div class="bubble-meta"><span class="dot"></span>encrypted · disappears in 23:58:52</div>
-        </div>
-        <div class="bubble-row in">
-          <div class="bubble">wait for real? not even Vault can see this?</div>
-          <div class="bubble-meta"><span class="dot"></span>encrypted · disappears in 23:59:14</div>
-        </div>
+      <div class="chat-mock" data-mock="chat" use:reveal={0}>
+        {#each mockMessages as msg, i}
+          {#if shown > i}
+            <div class="bubble-row {msg.side} appear">
+              <div class="bubble">{msg.text}</div>
+              <div class="bubble-meta"><span class="dot"></span>encrypted · disappears in {formatTtl(ttls[i])}</div>
+            </div>
+          {/if}
+        {/each}
+        {#if typingSide}
+          <div class="bubble-row {typingSide} appear">
+            <div class="bubble typing"><span></span><span></span><span></span></div>
+          </div>
+        {/if}
       </div>
     </section>
 
     <section id="how">
-      <div class="section-head">
+      <div class="section-head" use:reveal={0}>
         <div class="eyebrow">How it works</div>
         <h2>Three things happen. We're only ever holding a locked box.</h2>
         <p>No math, no key exchange diagrams, just what actually happens when you hit send.</p>
       </div>
       <div class="steps">
-        <div class="step">
+        <div class="step" use:reveal={0}>
           <div class="num">One</div>
           <h3>You write a message</h3>
           <p>It's locked on your own device, using a key that never leaves it, before it ever touches our servers.</p>
         </div>
-        <div class="step">
+        <div class="step" use:reveal={110}>
           <div class="num">Two</div>
           <h3>It travels sealed</h3>
           <p>Our servers move the locked box from one device to the other. We can see it exists, but never what's inside.</p>
         </div>
-        <div class="step">
+        <div class="step" use:reveal={220}>
           <div class="num">Three</div>
           <h3>Only they can open it</h3>
           <p>Your friend's device holds the one key that fits. We never had a copy, so we can't hand one over to anyone.</p>
         </div>
       </div>
-      <div class="tech-footnote">
+      <div class="tech-footnote" use:reveal={0}>
         <span>Technically: X3DH key exchange + the Double Ratchet, the same cryptography Signal uses.</span>
         <button class="tech-link" on:click={toggleTech}>{techOpen ? 'Hide technical details ↑' : 'Read the technical details →'}</button>
       </div>
@@ -142,11 +265,12 @@
     </section>
 
     <section id="compare">
-      <div class="section-head">
+      <div class="section-head" use:reveal={0}>
         <div class="eyebrow">How Vault compares</div>
         <h2>The parts of "private" that are easy to skip.</h2>
       </div>
-      <div class="table-scroll">
+      <p class="scroll-hint">Swipe to compare →</p>
+      <div class="table-scroll" use:reveal={80}>
         <table class="compare">
           <thead>
             <tr><th>&nbsp;</th><th class="brandcol">Vault</th><th>Signal</th><th>Telegram</th><th>WhatsApp</th></tr>
@@ -163,37 +287,37 @@
     </section>
 
     <section id="features">
-      <div class="section-head">
+      <div class="section-head" use:reveal={0}>
         <div class="eyebrow">What you get</div>
         <h2>Built so there's simply nothing of yours to lose.</h2>
       </div>
       <div class="feature-grid">
-        <div class="feature">
+        <div class="feature" use:reveal={0}>
           <div class="plate">GROUPS</div>
           <h3>Group chats stay private</h3>
           <p>Every member gets their own lock, so a large group is never a weak point.</p>
         </div>
-        <div class="feature">
+        <div class="feature" use:reveal={60}>
           <div class="plate">FILES</div>
           <h3>Share files without a trace</h3>
           <p>Photos and files travel straight between devices, encrypted the whole way, never stored in the open.</p>
         </div>
-        <div class="feature">
+        <div class="feature" use:reveal={120}>
           <div class="plate">CALLS</div>
           <h3>Calls no one can listen to</h3>
           <p>Locked with a key only the two of you hold. Calls route through our relay, so the other person never sees your IP address or location.</p>
         </div>
-        <div class="feature">
+        <div class="feature" use:reveal={180}>
           <div class="plate">SIGN-IN</div>
           <h3>Unlock with your face or fingerprint</h3>
           <p>No password to steal or forget. Your device's own lock protects the key.</p>
         </div>
-        <div class="feature">
+        <div class="feature" use:reveal={240}>
           <div class="plate">DEVICES</div>
           <h3>Add a device with a scan</h3>
           <p>Point your phone at a QR code to bring a laptop or tablet in. No account transfer, no new password.</p>
         </div>
-        <div class="feature">
+        <div class="feature" use:reveal={300}>
           <div class="plate">MEMORY</div>
           <h3>Nothing lingers after you close it</h3>
           <p>Close the tab and your keys are erased, not just hidden, so there's nothing left to recover.</p>
@@ -202,16 +326,16 @@
     </section>
 
     <section id="showcase">
-      <div class="section-head">
+      <div class="section-head" use:reveal={0}>
         <div class="eyebrow">See it for yourself</div>
         <h2>The actual app, on your desktop and in your pocket.</h2>
       </div>
       <div class="showcase-grid">
-        <figure class="showcase-desktop">
+        <figure class="showcase-desktop" use:reveal={0}>
           <img src="/landing-app-preview.png" alt="Vault desktop app showing an encrypted conversation with an active end-to-end encrypted call" loading="lazy" />
           <figcaption>Desktop</figcaption>
         </figure>
-        <figure class="showcase-mobile">
+        <figure class="showcase-mobile" use:reveal={140}>
           <img src="/landing-mobile-preview.png" alt="Vault mobile app showing the same encrypted conversation" loading="lazy" />
           <figcaption>Mobile</figcaption>
         </figure>
@@ -219,7 +343,7 @@
     </section>
 
     <section id="faq">
-      <div class="section-head">
+      <div class="section-head" use:reveal={0}>
         <div class="eyebrow">Questions</div>
         <h2>Whatever level of detail you want.</h2>
         <div class="faq-toggle">
@@ -268,9 +392,9 @@
     </section>
 
     <section class="final-cta" style="border-top:none;">
-      <h2>Say it once. Then let it disappear.</h2>
-      <p>No number, no email, no history left behind, just a private conversation.</p>
-      <div class="actions">
+      <h2 use:reveal={0}>Say it once. Then let it disappear.</h2>
+      <p use:reveal={90}>No number, no email, no history left behind, just a private conversation.</p>
+      <div class="actions" use:reveal={160}>
         <button class="btn-primary" on:click={goToApp}>Start a private chat, it's free</button>
       </div>
     </section>
@@ -314,6 +438,20 @@
   .vault-landing :global(section[id]), .vault-landing :global(#preview) { scroll-margin-top: 76px; }
   @media (prefers-reduced-motion: reduce) { .vault-landing { scroll-behavior: auto; } }
 
+  /* ---------- SCROLL REVEAL ---------- */
+  /* .reveal-init / .revealed are applied by the `reveal` action, so they must be :global. */
+  .vault-landing :global(.reveal-init) {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1) var(--reveal-delay, 0ms),
+                transform 0.7s cubic-bezier(0.16,1,0.3,1) var(--reveal-delay, 0ms);
+    will-change: opacity, transform;
+  }
+  .vault-landing :global(.revealed) { opacity: 1; transform: none; will-change: auto; }
+  @media (prefers-reduced-motion: reduce) {
+    .vault-landing :global(.reveal-init) { opacity: 1; transform: none; transition: none; }
+  }
+
   h1, h2, h3 { font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
   a, button { color: inherit; }
   .eyebrow, .plate { font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace; }
@@ -339,6 +477,10 @@
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   }
   nav.top { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border-subtle); }
+  .scroll-progress {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent);
+    transform-origin: 0 50%; transform: scaleX(0); box-shadow: 0 0 10px var(--accent-glow-strong);
+  }
   .theme-toggle {
     display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
     border: 1px solid var(--border); border-radius: 0.75rem; background: none; color: var(--text-secondary);
@@ -360,10 +502,55 @@
     border-radius: 9999px; color: var(--text-dim); text-transform: none; font-weight: 600;
   }
   nav.top .links { display: flex; align-items: center; gap: 26px; font-size: 0.88rem; color: var(--text-secondary); font-family: inherit; }
-  nav.top .links a { text-decoration: none; }
+  nav.top .links a {
+    position: relative; text-decoration: none; padding-bottom: 3px; transition: color 0.25s ease;
+  }
+  nav.top .links a::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 1.5px;
+    background: var(--accent); transform: scaleX(0); transform-origin: 0 50%;
+    transition: transform 0.3s cubic-bezier(0.16,1,0.3,1);
+  }
+  nav.top .links a:hover { color: var(--text); }
+  nav.top .links a:hover::after, nav.top .links a.current::after { transform: scaleX(1); }
+  nav.top .links a.current { color: var(--text); }
   .cta-small {
     background: var(--text); color: var(--black); padding: 8px 16px; border-radius: 0.75rem;
     text-decoration: none; font-size: 0.85rem; font-weight: 700; border: none; cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.16,1,0.3,1), box-shadow 0.25s ease;
+  }
+  .cta-small:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--accent-glow-strong); }
+  .cta-small:active { transform: translateY(0); }
+
+  /* hamburger + mobile menu */
+  .nav-toggle {
+    display: none; flex-direction: column; justify-content: center; gap: 4px;
+    width: 34px; height: 32px; padding: 0 7px; background: none; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 0.75rem;
+  }
+  .nav-toggle span {
+    display: block; height: 1.5px; width: 100%; background: var(--text-secondary); border-radius: 2px;
+    transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), opacity 0.2s ease;
+  }
+  .nav-toggle.open span:nth-child(1) { transform: translateY(5.5px) rotate(45deg); }
+  .nav-toggle.open span:nth-child(2) { opacity: 0; }
+  .nav-toggle.open span:nth-child(3) { transform: translateY(-5.5px) rotate(-45deg); }
+  .mobile-menu {
+    display: none; overflow: hidden; max-height: 0;
+    transition: max-height 0.35s cubic-bezier(0.16,1,0.3,1);
+  }
+  .mobile-menu.open { max-height: 260px; }
+  .mobile-menu-inner {
+    display: flex; flex-direction: column; gap: 2px; padding: 8px 0 14px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .mobile-menu-inner a {
+    padding: 11px 4px; text-decoration: none; color: var(--text-secondary);
+    font-size: 0.95rem; font-weight: 600; border-bottom: 1px solid var(--border-subtle);
+  }
+  .mobile-menu-inner a:last-of-type { border-bottom: none; }
+  .mobile-cta {
+    margin-top: 10px; background: var(--text); color: var(--black); border: none;
+    padding: 12px 16px; border-radius: 0.75rem; font-size: 0.9rem; font-weight: 700; cursor: pointer;
   }
 
   /* ---------- HERO ---------- */
@@ -381,7 +568,13 @@
     font-size: 0.95rem; font-weight: 700; border-radius: 0.75rem; cursor: pointer; text-decoration: none;
     transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
   }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(250,250,250,0.12); }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px var(--accent-glow-strong), 0 0 16px rgba(250,250,250,0.12); }
+  .btn-primary:active { transform: translateY(0); box-shadow: none; }
+  .btn-ghost:hover { transform: translateY(-1px); }
+  .btn-ghost:active { transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-primary:hover, .btn-ghost:hover, .cta-small:hover { transform: none; }
+  }
   .btn-ghost {
     color: var(--text-secondary); text-decoration: none; font-size: 0.9rem;
     border: 1px solid var(--border); padding: 12px 20px; border-radius: 0.75rem;
@@ -422,8 +615,29 @@
   .chat-mock {
     max-width: 480px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border);
     border-radius: 1rem; padding: 22px; display: flex; flex-direction: column; gap: 12px;
+    min-height: 268px; justify-content: flex-end;
   }
   .bubble-row { display: flex; flex-direction: column; max-width: 78%; }
+  .bubble-row.appear { animation: bubbleIn 0.42s cubic-bezier(0.16,1,0.3,1) both; }
+  @keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to { opacity: 1; transform: none; }
+  }
+  .bubble.typing { display: inline-flex; align-items: center; gap: 4px; padding: 13px 16px; }
+  .bubble.typing span {
+    width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: 0.45;
+    animation: typingDot 1.2s ease-in-out infinite;
+  }
+  .bubble.typing span:nth-child(2) { animation-delay: 0.18s; }
+  .bubble.typing span:nth-child(3) { animation-delay: 0.36s; }
+  @keyframes typingDot {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+    30% { transform: translateY(-3px); opacity: 0.9; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bubble-row.appear { animation: none; }
+    .bubble.typing span { animation: none; }
+  }
   .bubble-row.in { align-self: flex-start; align-items: flex-start; }
   .bubble-row.out { align-self: flex-end; align-items: flex-end; }
   .bubble { padding: 10px 14px; border-radius: 1rem; font-size: 0.92rem; line-height: 1.4; }
@@ -434,7 +648,15 @@
 
   /* ---------- HOW IT WORKS ---------- */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
-  .step { background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 24px 22px; }
+  .step {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 24px 22px;
+    transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), border-color 0.35s ease, box-shadow 0.35s ease;
+  }
+  .step:hover {
+    transform: translateY(-4px); border-color: var(--accent);
+    box-shadow: 0 14px 34px rgba(0,0,0,0.22), 0 0 0 1px var(--accent-glow);
+  }
+  @media (prefers-reduced-motion: reduce) { .step:hover { transform: none; } }
   .step .num { font-size: 0.72rem; color: var(--accent); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
   .step h3 { margin-top: 10px; font-size: 1.08rem; font-weight: 700; }
   .step p { margin-top: 8px; color: var(--text-secondary); font-size: 0.92rem; }
@@ -466,12 +688,20 @@
 
   /* ---------- FEATURES ---------- */
   .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 0.75rem; overflow: hidden; }
-  .feature { background: var(--surface); padding: 26px 24px; transition: background 0.25s ease; }
+  /* Cards sit in a 1px-gap grid, so hover reads as depth via an accent edge, not a lift. */
+  .feature { position: relative; background: var(--surface); padding: 26px 24px; transition: background 0.25s ease; }
+  .feature::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent);
+    transform: scaleX(0); transform-origin: 0 50%; transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
+  }
   .feature:hover { background: var(--elevated); }
+  .feature:hover::before { transform: scaleX(1); }
   .feature .plate {
     display: inline-block; font-size: 0.62rem; color: var(--accent); letter-spacing: 0.06em;
     background: var(--accent-glow); padding: 3px 8px; border-radius: 9999px; font-weight: 600;
+    transition: background 0.3s ease;
   }
+  .feature:hover .plate { background: var(--accent-glow-strong); }
   .feature h3 { margin-top: 12px; font-size: 1.02rem; font-weight: 700; }
   .feature p { margin-top: 8px; color: var(--text-secondary); font-size: 0.9rem; }
 
@@ -480,6 +710,14 @@
   .showcase-desktop, .showcase-mobile {
     margin: 0; border: 1px solid var(--border); border-radius: 0.85rem; overflow: hidden;
     background: var(--surface); box-shadow: 0 20px 48px rgba(0,0,0,0.25);
+    transition: transform 0.45s cubic-bezier(0.16,1,0.3,1), box-shadow 0.45s ease, border-color 0.45s ease;
+  }
+  .showcase-desktop:hover, .showcase-mobile:hover {
+    transform: translateY(-5px); border-color: var(--accent);
+    box-shadow: 0 28px 60px rgba(0,0,0,0.32);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .showcase-desktop:hover, .showcase-mobile:hover { transform: none; }
   }
   .showcase-desktop :global(img), .showcase-mobile :global(img) { display: block; width: 100%; height: auto; }
   .showcase-mobile { width: 220px; justify-self: end; }
@@ -503,6 +741,12 @@
   .no { color: var(--text-dim); }
   .no::before { content: "✕ "; opacity: 0.6; }
   .table-scroll { overflow-x: auto; }
+  .scroll-hint {
+    display: none; margin: 0 0 10px; font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-dim); font-family: 'JetBrains Mono', monospace;
+  }
+  table.compare tbody tr { transition: background 0.2s ease; }
+  table.compare tbody tr:hover { background: var(--surface); }
 
   /* ---------- FAQ ---------- */
   .faq-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 9999px; padding: 3px; margin-bottom: 8px; }
@@ -511,9 +755,14 @@
     padding: 7px 16px; border-radius: 9999px; cursor: pointer; font-family: 'JetBrains Mono', monospace;
   }
   .faq-toggle button.active { background: var(--accent); color: var(--black); }
+  .faq-toggle button { transition: background 0.25s ease, color 0.25s ease; }
   .faq-panel { display: none; margin-top: 26px; }
-  .faq-panel.active { display: block; }
-  .faq-item { border-bottom: 1px solid var(--border-subtle); padding: 16px 0; }
+  .faq-panel.active { display: block; animation: panelIn 0.35s cubic-bezier(0.16,1,0.3,1) both; }
+  @keyframes panelIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .faq-panel.active { animation: none; } }
+  .faq-item { border-bottom: 1px solid var(--border-subtle); padding: 16px 0; transition: border-color 0.25s ease; }
+  .faq-item:hover { border-color: var(--border); }
+  .faq-item[open] p { animation: panelIn 0.3s cubic-bezier(0.16,1,0.3,1) both; }
   .faq-item summary { cursor: pointer; font-weight: 700; font-size: 0.98rem; list-style: none; display: flex; justify-content: space-between; align-items: center; }
   .faq-item summary::-webkit-details-marker { display: none; }
   .faq-item summary::after { content: "+"; color: var(--accent); font-size: 1.2rem; font-weight: 400; }
@@ -535,9 +784,18 @@
   @media (max-width: 860px) {
     .steps, .feature-grid { grid-template-columns: 1fr; }
     table.compare { min-width: 520px; }
+    .scroll-hint { display: block; }
   }
   @media (max-width: 700px) {
     nav.top .links a { display: none; }
+    nav.top .links { gap: 10px; }
+    .nav-toggle { display: flex; }
+    .mobile-menu { display: block; }
+    .cta-small { padding: 8px 12px; font-size: 0.8rem; }
     .bubble-row { max-width: 88%; }
+    .chat-mock { min-height: 292px; }
+  }
+  @media (max-width: 400px) {
+    .cta-small { display: none; }
   }
 </style>
