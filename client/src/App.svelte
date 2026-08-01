@@ -15,7 +15,7 @@
   // the full chat client before it's needed.
 
   // Initialize theme from localStorage immediately (no flicker)
-  applyTheme(localStorage.getItem('vault_theme') || 'dark');
+  applyTheme(localStorage.getItem('vault_theme') || 'light');
 
   let mounted = false;
   let wakeLock = null;
