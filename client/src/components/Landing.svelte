@@ -43,8 +43,8 @@
         </div>
         <div class="links">
           <a href="#how">How it works</a>
-          <a href="#features">Features</a>
           <a href="#compare">Compare</a>
+          <a href="#features">Features</a>
           <a href="#faq">FAQ</a>
           <button class="theme-toggle" on:click={toggleTheme} aria-label="Toggle light/dark theme" title="Toggle light/dark theme">◐</button>
           <button class="cta-small" on:click={goToApp}>Start a private chat</button>
@@ -141,6 +141,27 @@
       </div>
     </section>
 
+    <section id="compare">
+      <div class="section-head">
+        <div class="eyebrow">How Vault compares</div>
+        <h2>The parts of "private" that are easy to skip.</h2>
+      </div>
+      <div class="table-scroll">
+        <table class="compare">
+          <thead>
+            <tr><th>&nbsp;</th><th class="brandcol">Vault</th><th>Signal</th><th>Telegram</th><th>WhatsApp</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Asks for your phone number</td><td class="yes">Never</td><td class="no">Required</td><td class="no">Required</td><td class="no">Required</td></tr>
+            <tr><td>Private by default, no toggle</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Only in "Secret Chat"</td><td class="yes">Yes</td></tr>
+            <tr><td>New lock generated per message</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Secret chats only</td><td class="yes">Yes</td></tr>
+            <tr><td>Anyone can inspect the code</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Partial</td><td class="no">No</td></tr>
+            <tr><td>Messages expire automatically</td><td class="yes">Every message, 24h</td><td class="no">Opt-in</td><td class="no">Opt-in</td><td class="no">Opt-in</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <section id="features">
       <div class="section-head">
         <div class="eyebrow">What you get</div>
@@ -194,27 +215,6 @@
           <img src="/landing-mobile-preview.png" alt="Vault mobile app showing the same encrypted conversation" loading="lazy" />
           <figcaption>Mobile</figcaption>
         </figure>
-      </div>
-    </section>
-
-    <section id="compare">
-      <div class="section-head">
-        <div class="eyebrow">How Vault compares</div>
-        <h2>The parts of "private" that are easy to skip.</h2>
-      </div>
-      <div class="table-scroll">
-        <table class="compare">
-          <thead>
-            <tr><th>&nbsp;</th><th class="brandcol">Vault</th><th>Signal</th><th>Telegram</th><th>WhatsApp</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Asks for your phone number</td><td class="yes">Never</td><td class="no">Required</td><td class="no">Required</td><td class="no">Required</td></tr>
-            <tr><td>Private by default, no toggle</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Only in "Secret Chat"</td><td class="yes">Yes</td></tr>
-            <tr><td>New lock generated per message</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Secret chats only</td><td class="yes">Yes</td></tr>
-            <tr><td>Anyone can inspect the code</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Partial</td><td class="no">No</td></tr>
-            <tr><td>Messages expire automatically</td><td class="yes">Every message, 24h</td><td class="no">Opt-in</td><td class="no">Opt-in</td><td class="no">Opt-in</td></tr>
-          </tbody>
-        </table>
       </div>
     </section>
 
