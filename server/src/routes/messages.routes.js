@@ -24,8 +24,14 @@ async function messageRoutes(fastify) {
           previousChain:  { type: 'integer', minimum: 0, default: 0 },
           ttlMinutes:     { type: 'integer', minimum: 1, maximum: MAX_TTL_MINUTES, default: MAX_TTL_MINUTES },
           iv:             { type: 'string', maxLength: 100 },
-          groupId:        { type: 'string', pattern: UUID_PATTERN },
-          attachmentId:   { type: 'string', pattern: UUID_PATTERN },
+          // These two are optional, and a client that has nothing to put in
+          // them may send an explicit null rather than omitting the key.
+          // AJV type coercion turns a null into '' for a plain string type,
+          // which then fails the UUID pattern and 400s the whole send — so
+          // null has to be an accepted type here (`pattern` only ever
+          // applies to strings, so a real value is still validated).
+          groupId:        { type: ['string', 'null'], pattern: UUID_PATTERN },
+          attachmentId:   { type: ['string', 'null'], pattern: UUID_PATTERN },
         },
       },
     },

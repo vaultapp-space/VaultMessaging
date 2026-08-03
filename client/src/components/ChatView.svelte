@@ -538,7 +538,9 @@
             ttlMinutes,
             iv: packet.iv,
             groupId: $activePeer.id.replace('group-', ''),
-            attachmentId
+            // Only send the key when there actually is an attachment — an
+            // explicit null is rejected by the server's UUID validation.
+            ...(attachmentId ? { attachmentId } : {})
           });
         } catch (e) {
           console.error(`Failed to send SenderKey group message to ${member.username}:`, e);
@@ -621,7 +623,7 @@
         previousChain: header.previousChainLength,
         ttlMinutes,
         iv: iv,
-        attachmentId
+        ...(attachmentId ? { attachmentId } : {})
       });
 
       // Best-effort cloud backup — must never cause the message/attachment
