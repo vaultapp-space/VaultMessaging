@@ -1,0 +1,8 @@
+# Generated from project.yml by XcodeGen. Committing a pbxproj means every
+# branch that adds a file conflicts, in a format no reviewer can read.
+VaultMessenger.xcodeproj/
+
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
