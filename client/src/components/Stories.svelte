@@ -15,7 +15,7 @@
     fetchStories, postStory, markStoryViewed, fetchStoryViewers, deleteStory,
     uploadPublicMedia, publicMediaUrl,
   } from '../lib/api/http.js';
-  import { currentUser } from '../lib/stores/session.js';
+  import { currentUser, composeStoryRequested } from '../lib/stores/session.js';
   import { getAvatarGradient } from '../lib/avatar.js';
 
   let stories = [];
@@ -66,6 +66,13 @@
       uploading = false;
       if (fileInput) fileInput.value = '';
     }
+  }
+
+  // Opened from the sidebar's "New" menu; the strip itself is hidden when
+  // there is nothing in it.
+  $: if ($composeStoryRequested) {
+    showCompose = true;
+    composeStoryRequested.set(false);
   }
 
   onMount(load);
@@ -143,7 +150,11 @@
   }
 </script>
 
-{#if !loading && (stories.length > 0 || true)}
+<!-- The strip appears once there is something to show, or while composing.
+     A permanently visible "+" circle above the conversation list costs a
+     whole band of vertical space to advertise a feature most people will not
+     use today; posting is still reachable from the header. -->
+{#if !loading && (stories.length > 0 || showCompose)}
   <div class="px-2 py-2 border-b border-vault-border">
     <div class="flex items-center gap-2 overflow-x-auto">
       <button

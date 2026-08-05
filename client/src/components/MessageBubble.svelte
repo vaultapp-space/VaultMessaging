@@ -93,8 +93,16 @@
     return `${Math.floor(diff / 3600000)}h`;
   }
 
+  // True in the final hour of a message's life, which is the only point at
+  // which its expiry is worth a badge.
+  function isExpiringSoon(expiresAt) {
+    if (!expiresAt) return false;
+    return new Date(expiresAt) - new Date() < 3600000;
+  }
+
   let timer;
   let expiryText = getExpiryInfo(message.expiresAt);
+  let expiringSoon = isExpiringSoon(message.expiresAt);
 
   let burnOnReadRevealed = false;
   let burnOnReadTimerVal = 15;
@@ -141,6 +149,7 @@
   onMount(() => {
     timer = setInterval(() => {
       expiryText = getExpiryInfo(message.expiresAt);
+      expiringSoon = isExpiringSoon(message.expiresAt);
     }, 1000);
     
     if (isAttachment && attachmentData && !attachmentData.burnOnRead) {
@@ -310,7 +319,10 @@
   class:animate-slide-right={!isOwn}
   class:animate-slide-left={isOwn}
 >
-  <div class="flex items-end gap-2 max-w-[75%] {isOwn ? 'flex-row-reverse' : 'flex-row'}">
+  <!-- items-start, not items-end: the bubble column also holds the reaction
+       and action row, so bottom-aligning put the avatar level with the
+       buttons instead of the message it belongs to. -->
+  <div class="flex items-start gap-2 max-w-[75%] {isOwn ? 'flex-row-reverse' : 'flex-row'}">
     <!-- Avatar -->
     {#if showAvatar && !isOwn}
       <div
@@ -565,8 +577,14 @@
             <span class="text-[9px] text-vault-text-dim italic" title="This message was edited">edited</span>
           {/if}
 
-          {#if expiryText}
-            <span class="text-[9px] text-vault-warning/60 flex items-center gap-0.5">
+          <!-- Shown only in the last hour. Every message in the product
+               expires in 24h, so "23h" on all of them is a constant, and a
+               constant repeated on every line is noise rather than
+               information. Under an hour it becomes news, and that is when
+               it earns the warning colour. The footer under the composer
+               already states the rule for anyone who wants it. -->
+          {#if expiryText && expiringSoon}
+            <span class="text-[9px] text-vault-warning/70 flex items-center gap-0.5" title="Expires soon">
               <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 6v6l4 2" />
@@ -600,9 +618,15 @@
         </div>
       </div>
 
-      <!-- Reactions -->
+      <!-- Reactions and hover actions -->
       {#if !isDeleted && (reactions.length > 0 || canReact || canReply || canEditThis || canDelete || canPin || canForward)}
-        <div class="flex items-center gap-1 mt-1 flex-wrap {isOwn ? 'justify-end' : 'justify-start'}">
+        <!-- Reactions are content and stay put. The action buttons are
+             chrome and reveal on hover, because a permanent six-icon toolbar
+             under every message triples the vertical weight of a one-line
+             reply and makes a conversation unreadable at a glance.
+             focus-within keeps them reachable by keyboard, where hover does
+             not exist. -->
+        <div class="flex items-center gap-1 flex-wrap {reactions.length ? 'mt-1' : ''} {isOwn ? 'justify-end' : 'justify-start'}">
           {#each reactions as entry (entry.emoji)}
             <button
               on:click={() => toggle(entry.emoji)}
@@ -619,6 +643,20 @@
             </button>
           {/each}
 
+          <!-- Absolutely positioned, so a hidden toolbar reserves no height.
+               In flow it added roughly twenty pixels under every message —
+               invisible, but enough to space a conversation out until it read
+               as sparse. Floating it above the bubble's top edge also puts it
+               where the cursor already is when you reach for it.
+
+               On touch there is no hover, so it stays in flow and visible. -->
+          <span
+            class="flex items-center gap-1 transition-opacity duration-100
+                   md:absolute md:-top-4 md:z-[45]
+                   md:px-1 md:py-0.5 md:rounded-full md:bg-vault-surface md:border md:border-vault-border md:shadow-sm
+                   md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100
+                   {isOwn ? 'md:right-0' : 'md:left-0'}"
+          >
           {#if canForward}
             <button
               on:click={() => onForward(message)}
@@ -704,8 +742,15 @@
               </button>
 
               {#if showReactionPicker}
+                <!-- Opens downward. Upward put it above the floating toolbar,
+                     which for a message near the top of the list is inside the
+                     chat header's area — and the header has its own stacking
+                     context (glass-strong / backdrop filter), so no z-index on
+                     this element can win. The same trap is documented on the
+                     chat menu in ChatView. Downward there is always the
+                     transcript below, which clips nothing. -->
                 <div
-                  class="absolute z-20 bottom-full mb-1 {isOwn ? 'right-0' : 'left-0'} flex items-center gap-0.5 px-1.5 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
+                  class="absolute z-[60] top-full mt-1 {isOwn ? 'right-0' : 'left-0'} flex items-center gap-0.5 px-1.5 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
                   use:clickOutside={() => showReactionPicker = false}
                 >
                   {#each QUICK_REACTIONS as emoji}
@@ -722,6 +767,7 @@
               {/if}
             </div>
           {/if}
+          </span>
         </div>
       {/if}
     </div>

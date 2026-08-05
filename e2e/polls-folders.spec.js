@@ -188,7 +188,8 @@ test.describe('folders', () => {
       await expect(alice.getByRole('button', { name: new RegExp(bobName) }).first())
         .toBeVisible({ timeout: 20_000 });
 
-      await alice.getByTitle('New folder').click();
+      await alice.getByLabel('New', { exact: true }).click();
+      await alice.getByRole('button', { name: 'New folder' }).click();
       await alice.getByPlaceholder('Folder name').fill('Work');
       await alice.getByRole('checkbox').first().check();
       await alice.getByRole('button', { name: 'Save' }).click();

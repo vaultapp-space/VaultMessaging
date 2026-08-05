@@ -29,7 +29,8 @@ async function register(page, username) {
 }
 
 async function createGroup(page, groupName, memberUsernames) {
-  await page.getByTitle('New group').click();
+  await page.getByLabel('New', { exact: true }).click();
+  await page.getByRole('button', { name: 'New group' }).click();
   await page.getByPlaceholder('E.g., Secret Project Alpha').fill(groupName);
 
   for (const username of memberUsernames) {

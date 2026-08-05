@@ -145,7 +145,8 @@ test.describe('stories', () => {
     try {
       await register(page, uniqueUsername('sta'));
 
-      await page.getByTitle('Post a story').click();
+      await page.getByLabel('New', { exact: true }).click();
+      await page.getByRole('button', { name: 'Post a story' }).click();
       await expect(page.getByText(/Disappears after 24 hours/)).toBeVisible({ timeout: 15_000 });
 
       const caption = `my story ${Date.now()}`;

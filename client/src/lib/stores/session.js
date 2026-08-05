@@ -55,6 +55,11 @@ export const syncPts = writable(0);
 // per-peer machinery (ratchets, typing, calls) applies to one.
 export const activeChannelId = writable(null);
 
+// Set by the sidebar's "New" menu to open the story composer, which lives in
+// Stories.svelte. A store rather than a prop because the two components are
+// siblings, not parent and child.
+export const composeStoryRequested = writable(false);
+
 export const activeCall = writable(null); // null or { status: 'incoming'|'ongoing', peerId, peerUsername, type, direction, currentCallKey }
 export const recentCalls = writable([]);   // call logs
 

@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, activePeer, activeChannelId, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { openPrivateChat, fetchFolders, createFolder, setFolderChats, deleteFolder,
     fetchChannels, createChannel, searchChannels, subscribeChannel } from '../lib/api/http.js';
@@ -224,6 +224,8 @@
   // Message search is folded away until asked for; two identical-looking
   // search boxes doing different things is worse than one extra click.
   let showMessageSearch = false;
+  // One creation menu rather than an icon per thing you can create.
+  let showNewMenu = false;
 
   // ─── Global search ──────────────────────────────────────
   // Searches message *content* across every cloud chat, as distinct from the
@@ -714,42 +716,93 @@
       </div>
       <div>
         <div class="text-sm font-semibold text-vault-text tracking-tight">Vault</div>
-        <div class="text-[10px] text-vault-text-dim flex items-center gap-1 font-mono">
-          <div class="w-1.5 h-1.5 rounded-full {$wsConnected ? 'bg-vault-accent' : 'bg-vault-warning'}"></div>
-          {$wsConnected ? `Encrypted · ${ping}ms` : 'Connecting'}
-        </div>
+        <!-- Connected is the normal case and needs no commentary. A latency
+             figure on screen at all times is a developer's readout, not a
+             user's: it changes constantly, nobody acts on it, and it makes
+             the header look like a diagnostic panel. What matters is being
+             told when the connection is *not* working. -->
+        {#if !$wsConnected}
+          <div class="text-[10px] text-vault-warning flex items-center gap-1">
+            <div class="w-1.5 h-1.5 rounded-full bg-vault-warning animate-pulse"></div>
+            Reconnecting…
+          </div>
+        {:else}
+          <div class="text-[10px] text-vault-text-dim" title="Latency {ping}ms">
+            End-to-end encrypted
+          </div>
+        {/if}
       </div>
     </div>
 
     <div class="flex items-center gap-1">
-      <button
-        on:click={() => showGroupModal = true}
-        class="p-2 rounded-lg text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
-        title="New group"
-        aria-label="New group"
-      >
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-        </svg>
-      </button>
+      <!-- One "New" menu instead of an icon per thing you can create. Four
+           unlabelled glyphs in a 200px header is a guessing game, and every
+           new feature made it worse; a menu absorbs the next one for free and
+           says what each item actually is. -->
+      <div class="relative">
+        <button
+          on:click={() => (showNewMenu = !showNewMenu)}
+          class="p-2 rounded-lg transition-all focus:outline-none
+            {showNewMenu ? 'text-vault-accent bg-vault-elevated' : 'text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated'}"
+          title="New"
+          aria-label="New"
+          aria-expanded={showNewMenu}
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
 
-      <!-- Creating a channel belongs next to creating a group: both are
-           "start something new", and neither deserves a permanent row in the
-           list. Here it costs no vertical space and is still findable by
-           someone who has never made one. -->
-      <button
-        on:click={() => (showChannelModal = true)}
-        class="p-2 rounded-lg text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
-        title="New channel"
-        aria-label="New channel"
-      >
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 11l18-8-8 18-2-7-8-3z" />
-        </svg>
-      </button>
+        {#if showNewMenu}
+          <div
+            class="absolute right-0 top-full mt-1 z-50 w-52 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
+            use:clickOutside={() => (showNewMenu = false)}
+          >
+            <button
+              on:click={() => { showNewMenu = false; showGroupModal = true; }}
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none text-left"
+            >
+              <svg class="w-4 h-4 text-vault-text-dim shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              </svg>
+              New group
+            </button>
+
+            <button
+              on:click={() => { showNewMenu = false; showChannelModal = true; }}
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none text-left"
+            >
+              <svg class="w-4 h-4 text-vault-text-dim shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 11l18-8-8 18-2-7-8-3z" />
+              </svg>
+              New channel
+            </button>
+
+            <button
+              on:click={() => { showNewMenu = false; composeStoryRequested.set(true); }}
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none text-left"
+            >
+              <svg class="w-4 h-4 text-vault-text-dim shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="9" stroke-dasharray="3 3" />
+                <path d="M12 9v6M9 12h6" stroke-linecap="round" />
+              </svg>
+              Post a story
+            </button>
+
+            <button
+              on:click={() => { showNewMenu = false; openFolderEditor(); }}
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none text-left"
+            >
+              <svg class="w-4 h-4 text-vault-text-dim shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+              New folder
+            </button>
+          </div>
+        {/if}
+      </div>
 
       <button
         on:click={() => showBackupModal = true}
@@ -971,8 +1024,10 @@
         </div>
       {/if}
 
-      <!-- Folder tabs. Hidden until the user makes one, so the default
-           sidebar is unchanged for anyone who does not use folders. -->
+      <!-- Folder tabs, only once there is a folder to switch between. An
+           "All +" row with nothing to filter is a band of chrome advertising
+           a feature; creating the first folder lives in the New menu. -->
+      {#if folders.length > 0}
       <div class="flex items-center gap-1 px-2 pb-1.5 overflow-x-auto">
         <button
           on:click={() => (activeFolderId = null)}
@@ -1001,6 +1056,7 @@
           >Delete</button>
         {/if}
       </div>
+      {/if}
 
       <!-- Archived toggle -->
       {#if $conversations.some(c => c.archived) || showArchived}

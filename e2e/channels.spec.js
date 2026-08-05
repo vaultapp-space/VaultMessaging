@@ -25,7 +25,8 @@ async function register(page, username) {
 }
 
 async function makeChannel(page, title, username) {
-  await page.getByTitle('New channel').click();
+  await page.getByLabel('New', { exact: true }).click();
+  await page.getByRole('button', { name: 'New channel' }).click();
   await page.getByPlaceholder('Channel name').fill(title);
   await page.getByPlaceholder(/public username/i).fill(username);
   await page.getByRole('button', { name: 'Create', exact: true }).click();

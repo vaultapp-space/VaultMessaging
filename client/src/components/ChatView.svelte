@@ -1482,7 +1482,7 @@
         <button
           on:click={() => startCall('audio')}
           class="p-2 rounded-lg text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
-          title="Start E2EE Audio Call"
+          title="Start an encrypted audio call — media is relayed, so your IP is never shared with the other party"
         >
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
@@ -1492,7 +1492,7 @@
         <button
           on:click={() => startCall('video')}
           class="p-2 rounded-lg text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
-          title="Start E2EE Video Call"
+          title="Start an encrypted video call — media is relayed, so your IP is never shared with the other party"
         >
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 7l-7 5 7 5V7z" />
@@ -1500,14 +1500,11 @@
           </svg>
         </button>
 
-        <div class="relative group">
-          <div class="p-1 text-[10px] text-vault-accent bg-vault-accent/10 border border-vault-accent/20 rounded-md cursor-help font-semibold">
-            🔒 Relayed Call
-          </div>
-          <div class="absolute right-0 top-7 hidden group-hover:block z-50 w-48 p-2.5 bg-vault-surface border border-vault-border rounded-xl text-[9px] text-vault-text-dim leading-relaxed shadow-xl text-left">
-            Media is always routed through the TURN relay — your real IP is never exposed to the other party.
-          </div>
-        </div>
+        <!-- The "Relayed Call" badge lived here, permanently, beside buttons
+             that start a call. It reassured about something that had not
+             happened yet and cost header space on every screen. The same
+             promise now rides on the call buttons' own tooltips, where it is
+             read at the moment it matters. -->
       {/if}
     </div>
   </div>
@@ -1707,7 +1704,13 @@
             Album · {albumRuns.first.get(i)} files
           </div>
         {/if}
-        <div class:album-item={albumRuns.inRun.has(i)}>
+        <!-- Album members are pulled together so a run of files reads as one
+             attachment rather than a column of separate sends. A margin on
+             the wrapper rather than CSS reaching into the child: the previous
+             rule targeted a class the bubble had stopped using and silently
+             stopped matching, and a scoped selector aimed at another
+             component's internals cannot be checked at build time. -->
+        <div class={albumRuns.inRun.has(i) ? '-mt-2.5' : ''}>
         <MessageBubble
           onToggleReaction={handleToggleReaction}
           onReply={startReply}
@@ -2057,6 +2060,7 @@
       </div>
     {/if}
   </div>
+
 
   <!-- Message Input -->
   <div class="px-2 md:px-4 py-2 md:py-3 border-t border-vault-border glass-strong animate-fade-in">
@@ -2726,10 +2730,3 @@
   </div>
 {/if}
 
-<style>
-  /* Album members sit tighter than ordinary messages so a run of files
-     reads as one attachment rather than a column of separate sends. */
-  .album-item :global(.mb-4) {
-    margin-bottom: 0.125rem;
-  }
-</style>
