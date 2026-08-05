@@ -467,8 +467,12 @@ describe('stories', () => {
 
     assert.equal(fs.existsSync(filePath), false, 'and is gone with the story');
 
-    // And the server no longer serves it.
-    const res = await app.inject({ method: 'GET', url: `/api/media/${upload.fileId}` });
+    // And the server no longer serves it. Media is authenticated now, so the
+    // request carries a session — otherwise this would 401 and prove nothing.
+    const res = await app.inject({
+      method: 'GET', url: `/api/media/${upload.fileId}`,
+      headers: { cookie: alice.cookie },
+    });
     assert.equal(res.statusCode, 404);
   });
 
@@ -484,7 +488,71 @@ describe('stories', () => {
 
     await harness.store.reap();
 
+    const res = await app.inject({
+      method: 'GET', url: `/api/media/${upload.fileId}`,
+      headers: { cookie: alice.cookie },
+    });
+    assert.equal(res.statusCode, 200);
+  });
+
+  test('a story image is not readable by someone outside its audience', async () => {
+    // The story row was privacy-scoped but its image was served by an
+    // unauthenticated endpoint, so a "contacts only" story's picture was
+    // readable by anyone holding the URL and the privacy setting governed
+    // only the caption.
+    const alice = await registerUser(app);
+    const stranger = await registerUser(app);
+
+    const upload = (await app.inject({
+      method: 'POST', url: '/api/media/upload',
+      headers: { cookie: alice.cookie },
+      payload: { mimeType: 'image/png', data: TINY_PNG },
+    })).json();
+
+    await postStory(alice, {
+      media: { kind: 'photo', fileId: upload.fileId, mimeType: 'image/png' },
+      privacy: 'contacts',
+    });
+
+    const refused = await app.inject({
+      method: 'GET', url: `/api/media/${upload.fileId}`,
+      headers: { cookie: stranger.cookie },
+    });
+    assert.equal(refused.statusCode, 404, 'a stranger must not get the bytes');
+
+    const mine = await app.inject({
+      method: 'GET', url: `/api/media/${upload.fileId}`,
+      headers: { cookie: alice.cookie },
+    });
+    assert.equal(mine.statusCode, 200, 'the author still can');
+  });
+
+  test('media requires a session at all', async () => {
+    const alice = await registerUser(app);
+    const upload = (await app.inject({
+      method: 'POST', url: '/api/media/upload',
+      headers: { cookie: alice.cookie },
+      payload: { mimeType: 'image/png', data: TINY_PNG },
+    })).json();
+
     const res = await app.inject({ method: 'GET', url: `/api/media/${upload.fileId}` });
+    assert.equal(res.statusCode, 401);
+  });
+
+  test('a sticker image stays readable by any signed-in user', async () => {
+    // Sticker sets are shared libraries; only story images carry an audience.
+    const owner = await registerUser(app);
+    const other = await registerUser(app);
+    const upload = (await app.inject({
+      method: 'POST', url: '/api/media/upload',
+      headers: { cookie: owner.cookie },
+      payload: { mimeType: 'image/png', data: TINY_PNG },
+    })).json();
+
+    const res = await app.inject({
+      method: 'GET', url: `/api/media/${upload.fileId}`,
+      headers: { cookie: other.cookie },
+    });
     assert.equal(res.statusCode, 200);
   });
 

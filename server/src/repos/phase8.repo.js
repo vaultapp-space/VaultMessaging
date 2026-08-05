@@ -439,6 +439,37 @@ export function createPhase8({ pool }) {
       return rows.map((r) => this.shapeStory(r));
     },
 
+    /**
+     * Whether a viewer may see the *bytes* of a story image.
+     *
+     * The story row is privacy-scoped, but its image was served by an
+     * unauthenticated endpoint — so a "contacts only" story's picture was
+     * readable by anyone holding the URL, and the privacy setting only ever
+     * governed the caption and the ring in the UI.
+     *
+     * Returns true for a file no story references, which is how sticker
+     * images stay readable: those are public assets by design.
+     */
+    async canViewMediaFile(fileId, viewerId) {
+      const { rows } = await this.pool.query(
+        `SELECT 1 FROM stories s
+          WHERE s.media->>'fileId' = $1
+            AND s.expires_at > now()
+            AND NOT (
+              s.user_id = $2
+              OR s.privacy = 'everyone'
+              OR (s.privacy = 'contacts' AND EXISTS (
+                    SELECT 1 FROM contacts c
+                     WHERE c.owner_id = s.user_id AND c.contact_id = $2))
+            )
+          LIMIT 1`,
+        [fileId, viewerId]
+      );
+      // A row here is a story this viewer may *not* see. Absence means either
+      // they may see it, or no story claims the file at all.
+      return rows.length === 0;
+    },
+
     async recordStoryView(storyId, viewerId) {
       await this.pool.query(
         `INSERT INTO story_views (story_id, user_id) VALUES ($1, $2)

@@ -26,6 +26,7 @@ import { MAX_TTL_SECONDS } from '../repos/chats.repo.js';
 import { extractFirstUrl, fetchPreview } from '../lib/link-preview.js';
 
 const MAX_BODY_LENGTH = 8192;
+const UUID_RE = new RegExp(UUID_PATTERN);
 
 async function chatMessageRoutes(fastify) {
 
@@ -174,6 +175,26 @@ async function chatMessageRoutes(fastify) {
     // Everyone in the chat, including the sender's other devices — which is
     // the multi-device sync that cloud mode exists to provide.
     const memberIds = await fastify.repos.chats.memberIds(chatId);
+
+    // Attachments carry a per-file allowlist, and only the secret send path
+    // populated it — so a file sent in a cloud chat was uploaded, referenced
+    // by a message everyone could see, and then refused with a 403 to every
+    // recipient who tried to open it. Groups are all cloud now, which made
+    // this every file shared in a group.
+    //
+    // Authorised for members rather than for the whole chat, so a file does
+    // not become readable by someone who joins afterwards.
+    // Guarded on the id actually being an uploaded file. `media` is a free
+    // shape — a sticker reference, a location, a caption-only object — and
+    // most of those carry no `id`, or an `id` that is not a file at all.
+    // Inserting one blindly hits a foreign key and turns an ordinary send
+    // into a 500.
+    if (media?.id && UUID_RE.test(String(media.id))
+        && await fastify.repos.attachments.getAttachment(media.id)) {
+      for (const memberId of memberIds) {
+        await fastify.repos.attachments.authorizeAttachmentUser(media.id, memberId);
+      }
+    }
 
     // Recorded before delivery, not after. A device that is offline right now
     // finds this on its next catch-up; one that is connected gets it over the

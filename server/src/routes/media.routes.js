@@ -81,7 +81,12 @@ async function mediaRoutes(fastify) {
     return reply.code(201).send({ fileId, mimeType });
   });
 
+  // Authenticated. Sticker images are public *to users of the instance*, not
+  // to the internet — and story images must additionally respect the story's
+  // audience, which an unauthenticated endpoint cannot do. Cookies ride along
+  // with <img> requests on the same origin, so nothing on the client changes.
   fastify.get('/api/media/:fileId', {
+    preValidation: [fastify.authenticate],
     schema: {
       params: {
         type: 'object', required: ['fileId'],
@@ -90,6 +95,13 @@ async function mediaRoutes(fastify) {
     },
   }, async (request, reply) => {
     const { fileId } = request.params;
+
+    // A story's picture is only as private as the bytes behind it.
+    if (!(await fastify.repos.phase8.canViewMediaFile(fileId, request.user.id))) {
+      // 404 rather than 403: whether a given file exists is itself something
+      // the viewer is not entitled to learn.
+      return reply.code(404).send({ error: 'Not found' });
+    }
 
     for (const [mimeType, extension] of ALLOWED_MEDIA_MIME) {
       try {
