@@ -25,6 +25,10 @@ final class AppState: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var retentionNotice: String?
+    @Published var devices: [Device] = []
+    /// nil follows the system; the web client has an explicit toggle and
+    /// people expect the same control here.
+    @AppStorage("appearance") var appearancePreference: String = "system"
 
     let api: APIClient
     let socket: SocketClient
@@ -136,6 +140,52 @@ final class AppState: ObservableObject {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? "Could not send that message."
         }
+    }
+
+    // MARK: - Devices
+
+    func refreshDevices() async {
+        do {
+            devices = try await api.devices()
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "Could not load your sessions."
+        }
+    }
+
+    func revoke(_ device: Device) async {
+        // Signing out the device you are holding is just a logout, and
+        // offering it in a list of others is how someone does it by accident.
+        guard !device.current else { return }
+        do {
+            try await api.revokeDevice(id: device.id)
+            devices.removeAll { $0.id == device.id }
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "Could not sign that device out."
+        }
+    }
+
+    // MARK: - Password
+
+    /// Changes the account password, then refreshes the session so the app is
+    /// holding the new salt and resealed vault rather than the ones it started
+    /// with.
+    ///
+    /// - Returns: how many other devices were signed out.
+    func changePassword(current: String, new: String) async throws -> Int {
+        guard let user else { throw APIClient.Failure.unauthorized }
+
+        let revoked = try await api.changePassword(
+            username: user.username,
+            currentPassword: current,
+            newPassword: new,
+            encryptedVault: user.encryptedVault
+        )
+
+        self.user = try? await api.currentUser()
+        await refreshDevices()
+        return revoked
     }
 
     // MARK: - Live updates

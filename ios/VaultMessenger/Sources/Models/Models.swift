@@ -75,6 +75,32 @@ struct CurrentUser: Codable, Equatable {
     let id: String
     let username: String
     let deviceId: String?
+    /// The PBKDF2 salt the account's master key is stretched with, and the
+    /// identity keys sealed under that master key.
+    ///
+    /// This app never opens the vault to *use* what is inside — the ratchet
+    /// lives in the web client. It carries them so a password change from the
+    /// phone can reseal the vault under the new key rather than orphaning it.
+    let salt: String?
+    let encryptedVault: String?
+}
+
+/// A signed-in device, as shown on the Settings tab.
+///
+/// Revoking one has to take effect immediately rather than whenever its token
+/// expires — a lost phone that keeps working for a day is the failure the
+/// feature exists to prevent.
+struct Device: Identifiable, Codable, Equatable {
+    let id: String
+    let name: String?
+    let platform: String?
+    let lastActiveAt: Date?
+    /// Set by the server so the UI can label this device and refuse to offer
+    /// signing it out from its own list, which is how people lock themselves
+    /// out by accident.
+    let current: Bool
+
+    var displayName: String { name ?? platform ?? "Unknown device" }
 }
 
 // MARK: - Wire envelopes
@@ -90,6 +116,16 @@ struct MessagesResponse: Codable {
 }
 
 struct SaltResponse: Codable { let salt: String }
+
+struct DeviceListResponse: Codable { let devices: [Device] }
+
+struct PasswordChangeResponse: Codable {
+    let ok: Bool?
+    /// Other devices are signed out by a password change, and the count is
+    /// worth showing: it is how someone confirms the session they were worried
+    /// about is actually gone.
+    let revokedDevices: Int?
+}
 
 struct SentMessage: Codable {
     let id: String

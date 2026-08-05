@@ -43,6 +43,18 @@ export async function login(username, password, device = {}) {
   return request('POST', '/auth/login', { username, password, ...device });
 }
 
+/**
+ * Rotates the password.
+ *
+ * Note what is being sent: two `authSecret` values and a vault already
+ * resealed under the new master key. The passwords themselves are never
+ * arguments to this function, because they are never arguments to anything
+ * that talks to the network.
+ */
+export async function changePassword({ currentPassword, newPassword, salt, encryptedVault }) {
+  return request('POST', '/auth/password', { currentPassword, newPassword, salt, encryptedVault });
+}
+
 // ─── Voice chats, topics, stories, contacts ─────────────────
 
 export async function startVoiceChat(chatId, title = null) {

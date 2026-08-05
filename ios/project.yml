@@ -21,6 +21,7 @@ targets:
     platform: iOS
     sources:
       - path: VaultMessenger/Sources
+      - path: VaultMessenger/Resources
     info:
       path: VaultMessenger/Info.plist
       properties:
@@ -38,6 +39,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: space.vaultapp.messenger
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   VaultMessengerUITests:
     type: bundle.ui-testing
@@ -50,3 +52,23 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: space.vaultapp.messenger.uitests
         GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  VaultMessenger:
+    build:
+      targets:
+        VaultMessenger: all
+        VaultMessengerUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - VaultMessengerUITests
+      # Credentials are not stored here — these expand build settings, so the
+      # values come from the command line:
+      #   xcodebuild test VAULT_TEST_USERNAME=… VAULT_TEST_PASSWORD=…
+      # An account in the repository would be an account someone reuses.
+      environmentVariables:
+        VAULT_TEST_USERNAME: $(VAULT_TEST_USERNAME)
+        VAULT_TEST_PASSWORD: $(VAULT_TEST_PASSWORD)

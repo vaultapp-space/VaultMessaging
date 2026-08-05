@@ -106,6 +106,63 @@ actor APIClient {
         _ = try? await postRaw("/api/auth/logout", body: [:])
     }
 
+    /// Rotates the password.
+    ///
+    /// Everything expensive happens before the request: two PBKDF2 stretches
+    /// and a resealed vault. The server is handed derived values only — it has
+    /// never seen either password and cannot help if one is forgotten.
+    ///
+    /// - Returns: how many other devices were signed out as a result.
+    func changePassword(
+        username: String,
+        currentPassword: String,
+        newPassword: String,
+        encryptedVault: String?
+    ) async throws -> Int {
+        let currentSalt = try await salt(for: username)
+
+        // A fresh salt, not the old one — reusing it would leave the new key
+        // derivable by anyone who had precomputed against the old.
+        var saltBytes = [UInt8](repeating: 0, count: 16)
+        _ = SecRandomCopyBytes(kSecRandomDefault, saltBytes.count, &saltBytes)
+        let newSalt = Data(saltBytes).base64EncodedString()
+
+        let (currentSecret, newSecret, resealed) = try await Task.detached(priority: .userInitiated) {
+            let oldMaster = try KeyDerivation.masterKeyBits(
+                password: currentPassword, saltBase64: currentSalt)
+            let newMaster = try KeyDerivation.masterKeyBits(
+                password: newPassword, saltBase64: newSalt)
+
+            // The vault must move with the password or the account keeps
+            // working while every secret chat in it becomes permanently
+            // unreadable. If there is no vault yet there is nothing to move.
+            let resealed: String
+            if let encryptedVault, !encryptedVault.isEmpty {
+                resealed = try IdentityVault.rekey(
+                    encryptedVault,
+                    from: oldMaster.base64EncodedString(),
+                    to: newMaster.base64EncodedString()
+                )
+            } else {
+                resealed = ""
+            }
+
+            return (
+                KeyDerivation.serverAuthSecret(masterKeyBits: oldMaster),
+                KeyDerivation.serverAuthSecret(masterKeyBits: newMaster),
+                resealed
+            )
+        }.value
+
+        let response: PasswordChangeResponse = try await post("/api/auth/password", body: [
+            "currentPassword": currentSecret,
+            "newPassword": newSecret,
+            "salt": newSalt,
+            "encryptedVault": resealed,
+        ])
+        return response.revokedDevices ?? 0
+    }
+
     // MARK: - Chats
 
     func chats() async throws -> [Chat] {
@@ -129,6 +186,17 @@ actor APIClient {
 
     func markRead(chatId: String, upTo seq: Int) async throws {
         _ = try? await postRaw("/api/chats/\(chatId)/read", body: ["maxSeq": seq])
+    }
+
+    // MARK: - Devices
+
+    func devices() async throws -> [Device] {
+        let response: DeviceListResponse = try await get("/api/devices")
+        return response.devices
+    }
+
+    func revokeDevice(id: String) async throws {
+        _ = try await performDelete("/api/devices/\(id)")
     }
 
     // MARK: - Plumbing
@@ -155,6 +223,11 @@ actor APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         return try await perform(req)
+    }
+
+    @discardableResult
+    private func performDelete(_ path: String) async throws -> Data {
+        try await perform(request(path, method: "DELETE"))
     }
 
     private func request(_ path: String, method: String) throws -> URLRequest {

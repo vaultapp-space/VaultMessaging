@@ -22,6 +22,7 @@
   import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
   import WalletSettings from './WalletSettings.svelte';
   import ActiveSessions from './ActiveSessions.svelte';
+  import ChangePassword from './ChangePassword.svelte';
   import Stories from './Stories.svelte';
   import QRCode from 'qrcode';
 
@@ -1328,6 +1329,8 @@
 
       <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
         <ActiveSessions />
+
+        <ChangePassword />
 
         <!-- Appearance Settings -->
         <div class="flex items-center justify-between border-b border-vault-border pb-4">

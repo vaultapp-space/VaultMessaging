@@ -332,3 +332,109 @@ describe('the salt endpoint does not reveal who exists', () => {
     assert.notEqual(actual, guessable);
   });
 });
+
+describe('POST /api/auth/password', () => {
+  const rotation = () => ({ salt: 'bmV3LXNhbHQtMTZieXRlcw==', encryptedVault: 'resealed-vault' });
+
+  test('rotates the credential, the salt and the vault together', async () => {
+    const user = await registerUser(app);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password',
+      headers: { cookie: user.cookie },
+      payload: { currentPassword: user.password, newPassword: 'a-brand-new-password', ...rotation() },
+    });
+    assert.equal(res.statusCode, 200);
+
+    const oldPassword = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: user.username, password: user.password },
+    });
+    assert.equal(oldPassword.statusCode, 401, 'the old password stops working');
+
+    const newPassword = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: user.username, password: 'a-brand-new-password' },
+    });
+    assert.equal(newPassword.statusCode, 200);
+    // The salt and the vault have to move with the hash. A login that
+    // returned the old salt would stretch the new password into a master key
+    // that cannot open the vault it is handed in the same response.
+    assert.equal(newPassword.json().salt, rotation().salt);
+    assert.equal(newPassword.json().encryptedVault, 'resealed-vault');
+  });
+
+  test('rejects a wrong current password and changes nothing', async () => {
+    const user = await registerUser(app);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password',
+      headers: { cookie: user.cookie },
+      payload: { currentPassword: 'not-the-password', newPassword: 'a-brand-new-password', ...rotation() },
+    });
+    assert.equal(res.statusCode, 401);
+
+    const stillWorks = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: user.username, password: user.password },
+    });
+    assert.equal(stillWorks.statusCode, 200);
+  });
+
+  test('refuses a change that keeps the same password', async () => {
+    const user = await registerUser(app);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password',
+      headers: { cookie: user.cookie },
+      payload: { currentPassword: user.password, newPassword: user.password, ...rotation() },
+    });
+    assert.equal(res.statusCode, 400);
+  });
+
+  test('requires a session', async () => {
+    const user = await registerUser(app);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password',
+      payload: { currentPassword: user.password, newPassword: 'a-brand-new-password', ...rotation() },
+    });
+    assert.equal(res.statusCode, 401);
+  });
+
+  test('signs out every other device but keeps the caller signed in', async () => {
+    const user = await registerUser(app);
+
+    // A second session, as a second device would have.
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: user.username, password: user.password, deviceName: 'Laptop' },
+    });
+    const secondCookie = sessionCookie(second);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/password',
+      headers: { cookie: user.cookie },
+      payload: { currentPassword: user.password, newPassword: 'a-brand-new-password', ...rotation() },
+    });
+    assert.equal(res.statusCode, 200);
+    assert.ok(res.json().revokedDevices >= 1);
+
+    const otherDevice = await app.inject({
+      method: 'GET', url: '/api/auth/me', headers: { cookie: secondCookie },
+    });
+    assert.equal(otherDevice.statusCode, 401, 'the other device is signed out');
+
+    const caller = await app.inject({
+      method: 'GET', url: '/api/auth/me', headers: { cookie: user.cookie },
+    });
+    assert.equal(caller.statusCode, 200, 'the device that made the change stays signed in');
+  });
+});
