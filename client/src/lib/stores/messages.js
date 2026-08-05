@@ -127,6 +127,18 @@ export function addMessage(peerId, message) {
 
   knownMessageIds.add(message.id);
 
+  // The message itself is proof the sender is done typing it. Without this,
+  // "typing…" only clears on its own 3-second timer, so a message that
+  // arrives sooner than that renders next to an indicator for something
+  // that has already been sent — looking stuck rather than live.
+  if (message.senderId) {
+    typingUsers.update(map => {
+      if (!map.has(message.senderId)) return map;
+      map.delete(message.senderId);
+      return new Map(map);
+    });
+  }
+
   if (message.encrypted) {
     message.decrypting = true;
   }

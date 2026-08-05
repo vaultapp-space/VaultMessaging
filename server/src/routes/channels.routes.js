@@ -329,7 +329,17 @@ async function channelRoutes(fastify) {
     if (!channel.linkedChatId) {
       return reply.code(400).send({ error: 'This channel has comments disabled' });
     }
-    if (await fastify.repos.phase3.isBanned(chatId, request.user.id)) {
+    // A ban can be recorded against either chat id: the channel itself
+    // (banned via the channel's own admin surface) or the linked discussion
+    // group (banned via its Members panel — the generic
+    // `POST /api/chats/:chatId/members/:userId/ban` route, pointed at the
+    // group, which is the path the UI actually offers for removing a
+    // disruptive commenter). `addMember` below re-joins the commenter to the
+    // group, so missing either check would let a banned user walk straight
+    // back in on their next comment.
+    const bannedFromChannel = await fastify.repos.phase3.isBanned(chatId, request.user.id);
+    const bannedFromGroup = await fastify.repos.phase3.isBanned(channel.linkedChatId, request.user.id);
+    if (bannedFromChannel || bannedFromGroup) {
       return reply.code(403).send({ error: 'You cannot comment on this channel' });
     }
 

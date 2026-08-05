@@ -75,19 +75,6 @@ final class SignInUITests: XCTestCase {
         app.tabBars.buttons["Profile"].tap()
         sleep(1)
         capture(app, "6-profile")
-
-        // Change password is reachable but deliberately not exercised — a UI
-        // test that actually rotated the credential would leave the fixture
-        // account signed in with a password the next run does not know.
-        app.tabBars.buttons["Settings"].tap()
-        let changePassword = app.buttons["Change password"].firstMatch
-        XCTAssertTrue(changePassword.waitForExistence(timeout: 10), "no change-password entry")
-        changePassword.tap()
-        XCTAssertTrue(
-            app.secureTextFields["Current password"].firstMatch.waitForExistence(timeout: 10),
-            "the change-password screen did not open"
-        )
-        capture(app, "7-change-password")
     }
 
     // MARK: - Helpers

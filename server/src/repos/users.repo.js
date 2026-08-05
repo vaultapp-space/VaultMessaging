@@ -55,27 +55,6 @@ export function createUsers({ pool, dummySaltSecret = config.jwtSecret }) {
     return res.rows[0] || null;
   },
 
-  /**
-   * Rotates the password hash, the PBKDF2 salt and the encrypted vault
-   * together.
-   *
-   * All three in one statement, deliberately. They are one value pretending
-   * to be three: the salt is what the client stretches the new password
-   * with, and the vault is sealed under the result. Writing the hash without
-   * the salt would let the account authenticate with a key that no longer
-   * opens its own identity keys — which is not a login failure the user
-   * could diagnose, it is a silently unusable account.
-   */
-  async changePassword(id, { passwordHash, salt, encryptedVault }) {
-    const res = await this.pool.query(
-      `UPDATE users SET password_hash = $1, salt = $2, encrypted_vault = $3
-       WHERE id = $4
-       RETURNING id, username, salt`,
-      [passwordHash, salt, encryptedVault, id]
-    );
-    return res.rows[0] || null;
-  },
-
   async getUserByUsername(username) {
     const res = await this.pool.query(
       `SELECT id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault FROM users

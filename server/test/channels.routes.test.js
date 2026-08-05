@@ -436,6 +436,38 @@ describe('channel comments', () => {
     assert.equal(res.statusCode, 400);
   });
 
+  test('a user banned from the discussion group cannot walk back in via a comment', async () => {
+    // Banning a disruptive commenter happens through the group's own Members
+    // panel (POST /api/chats/:chatId/members/:userId/ban, pointed at the
+    // discussion group) — that's the only ban surface the UI offers here.
+    // The comments route must honour a ban recorded that way, not only one
+    // recorded against the channel's own id.
+    const owner = await registerUser(app);
+    const commenter = await registerUser(app);
+    const { channel, group } = await withDiscussion(owner);
+    await subscribe(commenter, channel.id);
+    const sent = (await post(owner, channel.id, { body: 'discuss this' })).json();
+
+    const firstComment = await app.inject({
+      method: 'POST', url: `/api/channels/${channel.id}/posts/${sent.seq}/comments`,
+      headers: { cookie: commenter.cookie }, payload: { body: 'first' },
+    });
+    assert.equal(firstComment.statusCode, 201, firstComment.body);
+
+    const banned = await app.inject({
+      method: 'POST', url: `/api/chats/${group.id}/members/${commenter.id}/ban`,
+      headers: { cookie: owner.cookie }, payload: {},
+    });
+    assert.equal(banned.statusCode, 200, banned.body);
+
+    const secondComment = await app.inject({
+      method: 'POST', url: `/api/channels/${channel.id}/posts/${sent.seq}/comments`,
+      headers: { cookie: commenter.cookie }, payload: { body: 'let me back in' },
+    });
+    assert.equal(secondComment.statusCode, 403, secondComment.body);
+    assert.equal(secondComment.json().error, 'You cannot comment on this channel');
+  });
+
   test('a group you do not administer cannot be attached as a discussion', async () => {
     // Otherwise anyone could bolt their channel's comment section onto
     // someone else's private conversation.

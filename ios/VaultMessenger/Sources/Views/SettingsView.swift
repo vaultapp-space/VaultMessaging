@@ -4,45 +4,15 @@ struct SettingsView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.colorScheme) private var scheme
 
-    /// Value-based navigation rather than a NavigationLink wrapping the row.
-    /// A NavigationLink with a full-width custom label and `.buttonStyle(.plain)`
-    /// renders correctly and does not push — the row looks tappable and does
-    /// nothing, which is the worst of both.
-    private enum Destination: Hashable { case changePassword }
-
-    @State private var path: [Destination] = []
-
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             settings
-                .navigationDestination(for: Destination.self) { destination in
-                    switch destination {
-                    case .changePassword: ChangePasswordView()
-                    }
-                }
         }
         .tint(Vault.Palette.accent(scheme))
     }
 
     private var settings: some View {
         VaultScreen(title: "Settings") {
-            VaultSection(
-                title: "Account",
-                footnote: "Changing your password re-encrypts your identity keys under it and signs your other devices out."
-            ) {
-                Button {
-                    path.append(.changePassword)
-                } label: {
-                    VaultRow(title: "Change password", icon: "key.fill") {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Vault.Palette.muted(scheme))
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-
             VaultSection(title: "Appearance") {
                 HStack(spacing: 6) {
                     ForEach(["system", "dark", "light"], id: \.self) { option in

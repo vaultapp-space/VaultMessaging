@@ -197,75 +197,6 @@ async function authRoutes(fastify) {
     return reply.send({ success: true });
   });
 
-  // ─── CHANGE PASSWORD ──────────────────────────────────────
-  //
-  // The server does not change a password here so much as accept the result
-  // of one. It never saw either password: `currentPassword` and
-  // `newPassword` are both `authSecret` values — HMACs of a PBKDF2 stretch
-  // the client did locally — and `encryptedVault` arrives already resealed
-  // under the new master key. There is nothing here the server could do on
-  // the user's behalf if they forgot the old one, which is the point.
-  fastify.post('/api/auth/password', {
-    preValidation: [fastify.authenticate],
-    config: {
-      // Tighter than login. The caller is already authenticated, so this is
-      // not a guessing surface for an outsider — it is a guessing surface
-      // for someone sitting at an unlocked session, which is exactly when
-      // rate limiting is worth having.
-      rateLimit: { max: 5, timeWindow: '15 minutes' },
-    },
-    schema: {
-      body: {
-        type: 'object',
-        required: ['currentPassword', 'newPassword', 'salt', 'encryptedVault'],
-        properties: {
-          currentPassword: { type: 'string', minLength: MIN_PASSWORD_LENGTH },
-          newPassword:     { type: 'string', minLength: MIN_PASSWORD_LENGTH },
-          salt:            { type: 'string', maxLength: 50 },
-          encryptedVault:  { type: 'string', maxLength: 100000 },
-        },
-      },
-    },
-  }, async (request, reply) => {
-    const { currentPassword, newPassword, salt, encryptedVault } = request.body;
-
-    const user = await fastify.store.getUserById(request.user.id);
-    if (!user) return reply.code(401).send({ error: 'Invalid credentials' });
-
-    const valid = await verifyPassword(user.password_hash, currentPassword);
-    if (!valid) {
-      return reply.code(401).send({ error: 'Current password is incorrect' });
-    }
-
-    // Refusing a no-op change. Otherwise "change your password" could be
-    // satisfied by re-entering the one that was just compromised, and the
-    // user would have every reason to think they had fixed it.
-    if (currentPassword === newPassword) {
-      return reply.code(400).send({ error: 'New password must be different' });
-    }
-
-    const passwordHash = await hashPassword(newPassword);
-    await fastify.store.changePassword(user.id, { passwordHash, salt, encryptedVault });
-
-    // Every other device holds key material derived from the old password
-    // and a session it got before the change. Leaving those signed in makes
-    // a password change cosmetic against the case people actually change
-    // passwords for — someone else already being logged in.
-    const devices = await fastify.repos.devices.listForUser(user.id);
-    let revokedCount = 0;
-    for (const device of devices) {
-      if (device.id === request.deviceId) continue;
-      await fastify.repos.devices.revoke(user.id, device.id);
-      await fastify.store.deleteSessionsForDevice(device.id);
-      revokedCount += 1;
-    }
-    if (revokedCount > 0) {
-      await fastify.fanout.deliverToUser(user.id, { type: 'password_changed' });
-    }
-
-    return reply.send({ ok: true, salt, revokedDevices: revokedCount });
-  });
-
   // ─── LOGOUT ───────────────────────────────────────────────
   fastify.post('/api/auth/logout', {
     preValidation: [fastify.authenticate],
@@ -294,6 +225,17 @@ async function authRoutes(fastify) {
 
   // ─── GET SALT FOR USER ─────────────────────────────────────
   fastify.get('/api/auth/salt/:username', {
+    config: {
+      // Unauthenticated by necessity — a client needs its salt before it can
+      // log in. That also makes it the cheapest username-enumeration probe
+      // in the app: same rate as login/register keeps guessing at scale
+      // impractical, on top of the dummy-salt response already closing the
+      // value-based hole.
+      rateLimit: {
+        max: 5,
+        timeWindow: '1 minute',
+      },
+    },
     schema: {
       params: {
         type: 'object',

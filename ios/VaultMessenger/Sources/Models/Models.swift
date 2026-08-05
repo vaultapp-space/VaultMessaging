@@ -119,14 +119,6 @@ struct SaltResponse: Codable { let salt: String }
 
 struct DeviceListResponse: Codable { let devices: [Device] }
 
-struct PasswordChangeResponse: Codable {
-    let ok: Bool?
-    /// Other devices are signed out by a password change, and the count is
-    /// worth showing: it is how someone confirms the session they were worried
-    /// about is actually gone.
-    let revokedDevices: Int?
-}
-
 struct SentMessage: Codable {
     let id: String
     let chatId: String

@@ -22,8 +22,8 @@ if you are on the simulator.
 
 Works: a welcome screen on first launch, signing in, three tabs (Chats,
 Settings, Profile), reading and sending in cloud chats and groups, live updates
-over the websocket, unread counts, read receipts, active-session management,
-and changing the account password.
+over the websocket, unread counts, read receipts, and active-session
+management.
 
 **Secret chats are listed but not readable here.** One-to-one chats are
 end-to-end encrypted by default, and that stack — X3DH, the Double Ratchet,
@@ -65,24 +65,6 @@ These are passed as build settings and expanded into the test scheme's
 environment, so no account is baked into the repository. Without them the test
 skips rather than failing.
 
-### The vault, which is worse
-
-`Crypto/IdentityVault.swift` opens and reseals the encrypted identity vault so
-a password changed on the phone does not orphan the account's private keys.
-The failure mode is the quietest one in the project: get a parameter wrong and
-the account still logs in perfectly while every secret chat in it becomes
-permanently unreadable. Nothing in either test suite would notice.
-
-So there is a dedicated check, and it runs both directions — web seals / Swift
-opens, and Swift reseals / web opens:
-
-```bash
-ios/Scripts/verify-vault-interop.sh
-```
-
-Run it after touching `IdentityVault.swift` or `encryptIdentityVault` in
-`client/src/lib/crypto/keys.js`.
-
 ## A SwiftUI trap worth knowing about
 
 Two bugs in this app were the same shape — SwiftUI inferring something that
@@ -90,8 +72,7 @@ then changed underneath it:
 
 - **`NavigationLink` with a full-width custom label and `.buttonStyle(.plain)`
   renders correctly and does not push.** The row looks tappable and does
-  nothing. Settings uses an explicit `Button` appending to a
-  `NavigationStack(path:)` instead.
+  nothing. Prefer an explicit `Button` driving navigation state instead.
 - **Accessibility labels inferred from nearby text move when the layout does.**
   The sign-in fields lost their labels the day the screen gained a transition.
   Anything a UI test needs to find carries an explicit

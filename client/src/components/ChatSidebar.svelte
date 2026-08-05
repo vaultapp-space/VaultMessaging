@@ -22,7 +22,6 @@
   import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
   import WalletSettings from './WalletSettings.svelte';
   import ActiveSessions from './ActiveSessions.svelte';
-  import ChangePassword from './ChangePassword.svelte';
   import Stories from './Stories.svelte';
   import QRCode from 'qrcode';
 
@@ -215,9 +214,6 @@
 
   let searchQuery = '';
   let searchResults = [];
-  // Read by the template below (search spinner); the svelte eslint processor
-  // does not track template usage for a plain `let`, hence the disable.
-  // eslint-disable-next-line no-unused-vars
   let searching = false;
 
   let showGroupModal = false;
@@ -886,8 +882,13 @@
     </div>
 
     <!-- Search Results -->
-    {#if searchQuery && searchResults.length > 0}
+    {#if searchQuery}
       <div class="px-2 pb-2">
+        {#if searching}
+          <p class="text-[10px] text-vault-text-dim px-2 py-1">Searching…</p>
+        {:else if searchResults.length === 0}
+          <p class="text-[10px] text-vault-text-dim px-2 py-1">No users found</p>
+        {:else}
         <div class="text-[10px] text-vault-text-dim uppercase tracking-wider px-2 py-1">Users</div>
         {#each searchResults as user}
           <div class="w-full flex items-center gap-1 animate-fade-in">
@@ -922,6 +923,7 @@
             </button>
           </div>
         {/each}
+        {/if}
       </div>
     {/if}
 
@@ -1319,7 +1321,7 @@
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
     <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up">
       <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
-        <h3 class="text-sm font-semibold text-vault-text">Local Backup Settings</h3>
+        <h3 class="text-sm font-semibold text-vault-text">Settings</h3>
         <button on:click={() => showBackupModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close settings">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -1329,8 +1331,6 @@
 
       <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
         <ActiveSessions />
-
-        <ChangePassword />
 
         <!-- Appearance Settings -->
         <div class="flex items-center justify-between border-b border-vault-border pb-4">

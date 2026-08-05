@@ -166,28 +166,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    // MARK: - Password
-
-    /// Changes the account password, then refreshes the session so the app is
-    /// holding the new salt and resealed vault rather than the ones it started
-    /// with.
-    ///
-    /// - Returns: how many other devices were signed out.
-    func changePassword(current: String, new: String) async throws -> Int {
-        guard let user else { throw APIClient.Failure.unauthorized }
-
-        let revoked = try await api.changePassword(
-            username: user.username,
-            currentPassword: current,
-            newPassword: new,
-            encryptedVault: user.encryptedVault
-        )
-
-        self.user = try? await api.currentUser()
-        await refreshDevices()
-        return revoked
-    }
-
     // MARK: - Live updates
 
     private func handleSocketEvent(type: String, payload: [String: Any]) {
