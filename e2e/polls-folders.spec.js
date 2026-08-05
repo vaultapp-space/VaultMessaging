@@ -110,7 +110,8 @@ test.describe('polls', () => {
       const question = `lunch? ${Date.now()}`;
 
       await reopen(alice, group.name);
-      await alice.getByTitle('Create a poll').click();
+      await alice.getByLabel('Attach').click();
+      await alice.getByRole('button', { name: /^Poll/ }).click();
       await alice.getByPlaceholder('Ask a question').fill(question);
       await alice.getByPlaceholder('Option 1').fill('Ramen');
       await alice.getByPlaceholder('Option 2').fill('Tacos');
@@ -144,7 +145,8 @@ test.describe('polls', () => {
     const { alice } = ctx;
 
     try {
-      await expect(alice.getByTitle('Create a poll')).toHaveCount(0);
+      await alice.getByLabel('Attach').click();
+      await expect(alice.getByRole('button', { name: /^Poll/ })).toHaveCount(0);
     } finally {
       await ctx.aliceCtx.close();
       await ctx.bobCtx.close();
@@ -159,7 +161,8 @@ test.describe('polls', () => {
     const { alice } = ctx;
 
     try {
-      await expect(alice.getByTitle('Create a poll')).toHaveCount(0);
+      await alice.getByLabel('Attach').click();
+      await expect(alice.getByRole('button', { name: /^Poll/ })).toHaveCount(0);
     } finally {
       await ctx.aliceCtx.close();
       await ctx.bobCtx.close();

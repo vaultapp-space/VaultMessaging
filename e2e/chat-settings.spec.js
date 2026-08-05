@@ -68,7 +68,8 @@ test.describe('global message search', () => {
       const needle = `hydroponics${Date.now()}`;
       await sendMessage(alice, `something about ${needle} here`);
 
-      await alice.getByPlaceholder('Search messages...').fill(needle);
+      await alice.getByLabel('Search inside conversations').click();
+      await alice.getByPlaceholder('Search inside conversations...').fill(needle);
       await expect(alice.getByText(new RegExp(needle)).first())
         .toBeVisible({ timeout: 20_000 });
     } finally {
@@ -85,7 +86,8 @@ test.describe('global message search', () => {
 
     try {
       await sendMessage(alice, `findable ${Date.now()}`);
-      await alice.getByPlaceholder('Search messages...').fill('findable');
+      await alice.getByLabel('Search inside conversations').click();
+      await alice.getByPlaceholder('Search inside conversations...').fill('findable');
 
       await expect(alice.getByText(/Secret chats are not searchable/i))
         .toBeVisible({ timeout: 20_000 });
@@ -101,7 +103,8 @@ test.describe('global message search', () => {
 
     try {
       await sendMessage(alice, `present ${Date.now()}`);
-      await alice.getByPlaceholder('Search messages...').fill('zzzabsentzzz');
+      await alice.getByLabel('Search inside conversations').click();
+      await alice.getByPlaceholder('Search inside conversations...').fill('zzzabsentzzz');
       await expect(alice.getByText('No messages found')).toBeVisible({ timeout: 20_000 });
     } finally {
       await ctx.aliceCtx.close();

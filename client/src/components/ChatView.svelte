@@ -976,6 +976,7 @@
   // which one. That is why the recents call is made by this client rather
   // than inferred server-side from the send.
   let showStickers = false;
+  let showAttachMenu = false;
 
   async function sendSticker(sticker) {
     showStickers = false;
@@ -2069,23 +2070,81 @@
         class="hidden"
       />
 
-      <button
-        on:click={() => fileInput.click()}
-        disabled={sendingMessage || sendingFile}
-        class="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border transition-all cursor-pointer focus:outline-none"
-        title="Share E2EE File"
-      >
-        {#if sendingFile}
-          <svg class="w-4 h-4 animate-spin text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
-            <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
-          </svg>
-        {:else}
-          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-          </svg>
+      <div class="relative flex-shrink-0">
+        <button
+          on:click={() => (showAttachMenu = !showAttachMenu)}
+          disabled={sendingMessage || sendingFile}
+          class="w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all cursor-pointer focus:outline-none
+            {showAttachMenu || viewOnceActive
+              ? 'bg-vault-accent/20 text-vault-accent'
+              : 'bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border'}"
+          title="Attach"
+          aria-label="Attach"
+          aria-expanded={showAttachMenu}
+        >
+          {#if sendingFile}
+            <svg class="w-4 h-4 animate-spin text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+              <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
+            </svg>
+          {:else}
+            <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          {/if}
+        </button>
+
+        {#if showAttachMenu}
+          <!-- One menu instead of a row of unlabelled icons. Everything here
+               is infrequent enough that a second tap costs nothing, and the
+               labels say what the icons could not: "view once" in particular
+               is not guessable from an eye. -->
+          <div
+            class="absolute bottom-full left-0 mb-2 z-50 w-56 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
+            use:clickOutside={() => (showAttachMenu = false)}
+          >
+            <button
+              on:click={() => { showAttachMenu = false; fileInput.click(); }}
+              class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none text-left"
+            >
+              <svg class="w-4 h-4 text-vault-text-dim shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+              <span>Photo or file<span class="block text-[10px] text-vault-text-dim">Pick several to send an album</span></span>
+            </button>
+
+            {#if canViewOnce}
+              <button
+                on:click={() => { viewOnceActive = !viewOnceActive; showAttachMenu = false; }}
+                aria-pressed={viewOnceActive}
+                class="w-full flex items-center gap-2.5 px-3 py-2 text-xs hover:bg-vault-elevated transition-colors focus:outline-none text-left
+                  {viewOnceActive ? 'text-vault-accent' : 'text-vault-text'}"
+              >
+                <svg class="w-4 h-4 shrink-0 {viewOnceActive ? 'text-vault-accent' : 'text-vault-text-dim'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <span>
+                  View once{viewOnceActive ? ' · on' : ''}
+                  <span class="block text-[10px] text-vault-text-dim">Deleted from the server once opened</span>
+                </span>
+              </button>
+            {/if}
+
+            {#if canPoll}
+              <button
+                on:click={() => { showAttachMenu = false; openPollComposer(); }}
+                class="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none text-left"
+              >
+                <svg class="w-4 h-4 text-vault-text-dim shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M18 20V10M12 20V4M6 20v-6" />
+                </svg>
+                <span>Poll<span class="block text-[10px] text-vault-text-dim">Ask the group a question</span></span>
+              </button>
+            {/if}
+          </div>
         {/if}
-      </button>
+      </div>
 
       <div class="relative flex-shrink-0">
         <button
@@ -2096,6 +2155,7 @@
               ? 'bg-vault-accent/20 text-vault-accent'
               : 'bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border'}"
           title="Stickers"
+          aria-label="Stickers"
         >
           <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12a9 9 0 1 1-9-9c0 4 1 5 5 5s5 1 5 4z" />
@@ -2114,37 +2174,6 @@
           </div>
         {/if}
       </div>
-
-      {#if canViewOnce}
-        <button
-          on:click={() => (viewOnceActive = !viewOnceActive)}
-          disabled={sendingMessage || sendingFile}
-          class="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all cursor-pointer focus:outline-none
-            {viewOnceActive
-              ? 'bg-vault-accent/20 text-vault-accent'
-              : 'bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border'}"
-          title={viewOnceActive ? 'View once: on — the next message is destroyed after it is opened' : 'Send so it can only be viewed once'}
-          aria-pressed={viewOnceActive}
-        >
-          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-            <circle cx="12" cy="12" r="3" />
-          </svg>
-        </button>
-      {/if}
-
-      {#if canPoll}
-        <button
-          on:click={openPollComposer}
-          disabled={sendingMessage || sendingFile}
-          class="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border transition-all cursor-pointer focus:outline-none"
-          title="Create a poll"
-        >
-          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M18 20V10M12 20V4M6 20v-6" />
-          </svg>
-        </button>
-      {/if}
 
       {#if isRecording}
         <div class="flex-1 flex items-center justify-between px-3 py-2 bg-vault-danger/10 border border-vault-danger/20 rounded-xl animate-pulse text-vault-danger">
@@ -2184,6 +2213,35 @@
                 class="flex-shrink-0 p-1 rounded text-vault-text-dim hover:text-vault-text transition-colors focus:outline-none"
                 aria-label="Cancel edit"
                 title="Cancel edit"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          {/if}
+
+          {#if viewOnceActive}
+            <!-- Armed state gets its own bar. It was a toggle on a permanently
+                 visible icon before; now that it lives behind a menu, the only
+                 thing standing between "armed" and "I forgot" is this. Sending
+                 a message you meant to be ordinary as view-once destroys it
+                 for the recipient, so the state has to be loud. -->
+            <div class="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg bg-vault-accent/10 border-l-2 border-vault-accent">
+              <svg class="w-3.5 h-3.5 text-vault-accent flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <div class="flex-1 min-w-0">
+                <div class="text-[10px] text-vault-accent font-medium">View once</div>
+                <div class="text-[11px] text-vault-text-dim truncate">
+                  This message is deleted from the server once it is opened
+                </div>
+              </div>
+              <button
+                on:click={() => (viewOnceActive = false)}
+                class="flex-shrink-0 p-1 rounded text-vault-text-dim hover:text-vault-text transition-colors focus:outline-none"
+                aria-label="Turn off view once"
               >
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />

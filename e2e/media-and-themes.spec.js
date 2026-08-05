@@ -66,7 +66,8 @@ test.describe('view-once messages', () => {
     try {
       const secret = `only once ${Date.now()}`;
 
-      await alice.getByTitle(/Send so it can only be viewed once/).click();
+      await alice.getByLabel('Attach').click();
+      await alice.getByRole('button', { name: /View once/ }).click();
       await sendMessage(alice, secret);
       await expect(alice.getByText(secret)).toBeVisible({ timeout: 20_000 });
 
@@ -103,7 +104,8 @@ test.describe('view-once messages', () => {
     const { alice, bob, aliceName } = ctx;
 
     try {
-      await alice.getByTitle(/Send so it can only be viewed once/).click();
+      await alice.getByLabel('Attach').click();
+      await alice.getByRole('button', { name: /View once/ }).click();
       await sendMessage(alice, `first ${Date.now()}`);
 
       const ordinary = `ordinary ${Date.now()}`;
@@ -124,7 +126,9 @@ test.describe('view-once messages', () => {
     const { alice } = ctx;
 
     try {
-      await expect(alice.getByTitle(/Send so it can only be viewed once/)).toHaveCount(0);
+      // The whole menu entry is absent in a secret chat, not merely disabled.
+      await alice.getByLabel('Attach').click();
+      await expect(alice.getByRole('button', { name: /View once/ })).toHaveCount(0);
     } finally {
       await ctx.aliceCtx.close();
       await ctx.bobCtx.close();
