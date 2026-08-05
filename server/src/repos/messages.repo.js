@@ -277,7 +277,6 @@ export function createMessages({ pool }) {
               m.type, m.body, m.entities, m.media, m.reply_to_seq, m.grouped_id,
               m.edited_at, m.deleted_at, m.pinned_at, m.sent_at, m.expires_at, m.reactions,
               m.fwd_from_chat, m.fwd_from_seq, m.preview, m.view_once, m.post_author, m.topic_id,
-              m.reply_markup, m.via_bot_id,
               m.ciphertext, m.ephemeral_key, m.iv, m.message_number, m.previous_chain,
               c.mode
          FROM messages m
@@ -305,8 +304,6 @@ export function createMessages({ pool }) {
       viewOnce: row.view_once,
       topicId: row.topic_id === null ? null : Number(row.topic_id),
       postAuthor: row.post_author ?? null,
-      replyMarkup: row.reply_markup ?? null,
-      viaBot: Boolean(row.via_bot_id),
       editedAt: row.edited_at,
       pinnedAt: row.pinned_at,
       forwarded: Boolean(row.fwd_from_chat),
@@ -326,24 +323,6 @@ export function createMessages({ pool }) {
   // A channel post is attributed to the channel unless the channel signs its
   // posts. The author is recorded either way so the admin log can answer who
   // wrote it without the feed showing it.
-  // An inline keyboard, stored on the message so a later callback can be
-  // validated against the message that actually offered the button — rather
-  // than trusted from whatever the client sends back.
-  async setReplyMarkup(chatId, seq, markup) {
-    await this.pool.query(
-      `UPDATE messages SET reply_markup = $3 WHERE chat_id = $1 AND seq = $2`,
-      [chatId, seq, markup ? JSON.stringify(markup) : null]
-    );
-  },
-
-  async getReplyMarkup(chatId, seq) {
-    const { rows } = await this.pool.query(
-      `SELECT reply_markup FROM messages WHERE chat_id = $1 AND seq = $2`,
-      [chatId, seq]
-    );
-    return rows[0]?.reply_markup ?? null;
-  },
-
   async setPostAuthor(chatId, seq, author) {
     await this.pool.query(
       `UPDATE messages SET post_author = $3 WHERE chat_id = $1 AND seq = $2`,

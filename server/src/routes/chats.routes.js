@@ -65,7 +65,10 @@ async function chatRoutes(fastify) {
         required: ['peerId'],
         properties: {
           peerId: { type: 'string', pattern: UUID_PATTERN },
-          mode: { type: 'string', enum: ['cloud', 'secret'], default: 'cloud' },
+          // One-to-one chats are end-to-end encrypted by default. This is
+          // the conversation people assume is private, so the safe mode is
+          // the one you get without asking; `cloud` is opt-in per chat.
+          mode: { type: 'string', enum: ['cloud', 'secret'], default: 'secret' },
         },
       },
     },

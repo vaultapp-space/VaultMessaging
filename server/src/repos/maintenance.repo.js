@@ -47,15 +47,6 @@ export function createMaintenance({ pool, uploadsDir }) {
     // already been deleted everywhere else.
     await this.pool.query(`DELETE FROM user_updates WHERE expires_at < $1`, [now]);
 
-    // The bot queue and both query tables hold user content for the same
-    // reason and on the same schedule. Reaped here rather than in their own
-    // job: separate schedules drift, and then diverge permanently on any
-    // failure, leaving a bot's queue as an archive of messages that were
-    // deleted everywhere else.
-    await this.pool.query(`DELETE FROM bot_updates_queue WHERE expires_at < $1`, [now]);
-    await this.pool.query(`DELETE FROM callback_queries WHERE expires_at < $1`, [now]);
-    await this.pool.query(`DELETE FROM inline_queries WHERE expires_at < $1`, [now]);
-
     // Stories are media with a TTL, so they go the same way. Their view rows
     // cascade, which matters: a viewer list outliving its story would be a
     // record of who looked at something that no longer exists.

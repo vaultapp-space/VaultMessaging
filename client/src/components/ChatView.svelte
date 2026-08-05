@@ -913,7 +913,13 @@
   let pollError = '';
   let creatingPoll = false;
 
-  $: canPoll = $activePeer?.mode === 'cloud' && $activePeer?.chatId;
+  // Groups only. A poll needs an audience to be worth running — offering one
+  // in a two-person chat is asking someone to vote at the person who can
+  // simply reply. It also costs a permanent slot in the composer, which is
+  // the scarcest space in the UI.
+  $: canPoll = $activePeer?.mode === 'cloud'
+    && $activePeer?.chatId
+    && $activePeer?.isGroup;
 
   // ─── Forum topics ─────────────────────────────────────────
   // The selected topic narrows the message list and tags what is sent. Reset

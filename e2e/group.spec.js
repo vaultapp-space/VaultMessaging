@@ -54,8 +54,12 @@ async function sendMessage(page, text) {
   await composer.press('Enter');
 }
 
+// Groups are cloud chats. The Signal Sender Keys implementation remains for
+// groups created before that change, but a new group no longer uses it — so
+// what this spec proves is that a group message reaches every member and that
+// membership changes are picked up, not that a ratchet ran.
 test.describe('group messaging', () => {
-  test('a sender key message decrypts for every member', async ({ browser }) => {
+  test('a group message reaches every member', async ({ browser }) => {
     const contexts = await Promise.all([
       browser.newContext({ ignoreHTTPSErrors: true }),
       browser.newContext({ ignoreHTTPSErrors: true }),
@@ -82,22 +86,22 @@ test.describe('group messaging', () => {
       await sendMessage(alice, first);
       await expect(alice.getByText(first)).toBeVisible({ timeout: 20_000 });
 
-      // Each member must independently decrypt using the distributed key.
+      // Each member sees it independently.
       await openConversation(bob, groupName);
       await expect(bob.getByText(first)).toBeVisible({ timeout: 30_000 });
 
       await openConversation(carol, groupName);
       await expect(carol.getByText(first)).toBeVisible({ timeout: 30_000 });
 
-      // A second message reuses the existing sender key rather than
-      // redistributing, which is a different branch of the send path.
+      // A second message, so the steady-state path is covered as well as the
+      // first-message one.
       const second = `second message ${Date.now()}`;
       await sendMessage(alice, second);
       await expect(bob.getByText(second)).toBeVisible({ timeout: 30_000 });
       await expect(carol.getByText(second)).toBeVisible({ timeout: 30_000 });
 
-      // A reply from another member exercises distribution in the other
-      // direction: bob now has to send *his* sender key to alice and carol.
+      // A reply from another member: the fanout has to reach the sender's
+      // peers as well as the original poster's.
       const reply = `bob replies ${Date.now()}`;
       await sendMessage(bob, reply);
       await expect(alice.getByText(reply)).toBeVisible({ timeout: 30_000 });

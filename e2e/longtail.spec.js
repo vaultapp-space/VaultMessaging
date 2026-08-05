@@ -1,11 +1,10 @@
 import { test, expect } from '@playwright/test';
 
 // ============================================================
-// Bots, voice chats, topics, stories
+// Voice chats, forum topics, stories
 // ============================================================
-// Phases 7 and 8 end to end. The assertions that matter are the ones about
-// what a bot is *not* allowed to do — a bot token is a credential anyone can
-// obtain by registering, so the refusals are the security surface.
+// The Phase 8 long tail. Bots were removed from the product; the specs that
+// covered them went with the code.
 
 const PASSWORD = 'a-sufficiently-long-test-password';
 
@@ -22,152 +21,6 @@ async function register(page, username) {
   await page.getByRole('button', { name: /create secure account/i }).click();
   await expect(page.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });
 }
-
-test.describe('bots', () => {
-  test('a bot is created and its token is shown exactly once', async ({ browser }) => {
-    // Only a hash is stored, so if the UI does not surface it here there is
-    // no way to recover it.
-    const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
-    const page = await ctx.newPage();
-
-    try {
-      await register(page, uniqueUsername('bta'));
-      await page.getByTitle('Settings').click();
-      await expect(page.getByText('Bots', { exact: true })).toBeVisible({ timeout: 15_000 });
-
-      await page.getByRole('button', { name: 'New bot' }).click();
-      await page.getByPlaceholder(/must end in bot/).fill(uniqueUsername('helper').slice(0, 26) + 'bot');
-      await page.getByRole('button', { name: /Create bot/ }).click();
-
-      await expect(page.getByText(/copy it now/i)).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByText(/only time it is shown/i)).toBeVisible();
-    } finally {
-      await ctx.close();
-    }
-  });
-
-  test('a bot receives a message and can reply', async ({ browser }) => {
-    const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
-    const page = await ctx.newPage();
-
-    try {
-      await register(page, uniqueUsername('btb'));
-
-      // The bot itself is driven through the API — a bot has no UI by
-      // definition; it is a program holding a token.
-      const bot = await page.evaluate(async () => {
-        const res = await fetch('/api/bots', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ username: `e2e${Date.now().toString(36)}bot` }),
-        });
-        return res.json();
-      });
-      expect(bot.token).toBeTruthy();
-
-      const chat = await page.evaluate(async (botId) => {
-        const res = await fetch('/api/chats/private', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ peerId: botId, mode: 'cloud' }),
-        });
-        return res.json();
-      }, bot.id);
-
-      // The bot replies with an inline keyboard.
-      await page.evaluate(async ([token, chatId]) => {
-        await fetch(`/bot${token}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: 'Pick one',
-            reply_markup: { inline_keyboard: [[{ text: 'Yes please', callback_data: 'yes' }]] },
-          }),
-        });
-      }, [bot.token, chat.id]);
-
-      // The chat was created through the API after the sidebar loaded, so it
-      // is reached through search rather than the existing list.
-      await page.getByPlaceholder('Search users...').fill(bot.username);
-      // The search is debounced; clicking into a list that is still
-      // re-rendering lands on whatever was there a moment ago.
-      await page.waitForTimeout(1000);
-      await page.getByText(bot.username, { exact: false }).first().click({ timeout: 20_000 });
-      await expect(page.getByPlaceholder('Type a message...')).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByText('Pick one')).toBeVisible({ timeout: 20_000 });
-
-      // The keyboard renders, and pressing it reaches the bot.
-      const button = page.getByRole('button', { name: 'Yes please' });
-      await expect(button).toBeVisible({ timeout: 15_000 });
-      await button.click();
-      // The press is a round trip; the callback is queued server-side before
-      // it can be polled for.
-      await page.waitForTimeout(1500);
-
-      const updates = await page.evaluate(async (token) => {
-        const res = await fetch(`/bot${token}/getUpdates`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        });
-        return (await res.json()).result;
-      }, bot.token);
-
-      expect(updates.some((u) => u.callback_query?.data === 'yes')).toBe(true);
-    } finally {
-      await ctx.close();
-    }
-  });
-
-  test('a bot cannot be added to a secret chat', async ({ browser }) => {
-    // The refusal that keeps the encryption claim honest: a bot receiving a
-    // message means the server can read it.
-    const aliceCtx = await browser.newContext({ ignoreHTTPSErrors: true });
-    const bobCtx = await browser.newContext({ ignoreHTTPSErrors: true });
-    const alice = await aliceCtx.newPage();
-    const bob = await bobCtx.newPage();
-
-    try {
-      const aliceName = uniqueUsername('bsa');
-      const bobName = uniqueUsername('bsb');
-      await register(alice, aliceName);
-      await register(bob, bobName);
-
-      await alice.getByPlaceholder('Search users...').fill(bobName);
-      await alice.getByRole('button', { name: `Start a secret chat with ${bobName}` })
-        .click({ timeout: 20_000 });
-      await expect(alice.getByPlaceholder('Type a message...')).toBeVisible({ timeout: 20_000 });
-
-      const status = await alice.evaluate(async () => {
-        const bot = await (await fetch('/api/bots', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ username: `sec${Date.now().toString(36)}bot` }),
-        })).json();
-
-        const chats = (await (await fetch('/api/chats', { credentials: 'include' })).json()).chats;
-        const secret = chats.find((c) => c.mode === 'secret');
-
-        const res = await fetch(`/api/chats/${secret.id}/bots`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ botId: bot.id }),
-        });
-        return res.status;
-      });
-
-      expect(status).toBe(400);
-    } finally {
-      await aliceCtx.close();
-      await bobCtx.close();
-    }
-  });
-});
 
 test.describe('voice chats', () => {
   test('a group voice chat can be started and joined, and shows its cap', async ({ browser }) => {

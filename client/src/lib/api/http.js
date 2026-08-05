@@ -43,46 +43,6 @@ export async function login(username, password, device = {}) {
   return request('POST', '/auth/login', { username, password, ...device });
 }
 
-// ─── Bots ───────────────────────────────────────────────────
-
-export async function createBot(payload) {
-  return request('POST', '/bots', payload);
-}
-
-export async function fetchBots() {
-  return request('GET', '/bots');
-}
-
-export async function searchBots(q) {
-  return request('GET', `/bots/search?q=${encodeURIComponent(q)}`);
-}
-
-export async function updateBot(botId, patch) {
-  return request('PATCH', `/bots/${botId}`, patch);
-}
-
-export async function rotateBotToken(botId) {
-  return request('POST', `/bots/${botId}/token`);
-}
-
-export async function deleteBot(botId) {
-  return request('DELETE', `/bots/${botId}`);
-}
-
-export async function addBotToChat(chatId, botId) {
-  return request('POST', `/chats/${chatId}/bots`, { botId });
-}
-
-export async function startBot(botId, payload = null) {
-  return request('POST', `/bots/${botId}/start`, { payload });
-}
-
-// Pressing an inline keyboard button. The server checks the button against
-// the message's stored markup, so a fabricated payload gets nowhere.
-export async function pressBotButton(chatId, seq, data) {
-  return request('POST', `/chats/${chatId}/messages/${seq}/callback`, { data });
-}
-
 // ─── Voice chats, topics, stories, contacts ─────────────────
 
 export async function startVoiceChat(chatId, title = null) {

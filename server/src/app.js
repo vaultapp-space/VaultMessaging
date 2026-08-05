@@ -32,8 +32,6 @@ import deviceRoutes from './routes/devices.routes.js';
 import channelRoutes from './routes/channels.routes.js';
 import stickerRoutes from './routes/stickers.routes.js';
 import mediaRoutes from './routes/media.routes.js';
-import botApiRoutes from './routes/bot-api.routes.js';
-import botRoutes from './routes/bots.routes.js';
 import phase8Routes from './routes/phase8.routes.js';
 import { validateUrl } from './lib/safe-fetch.js';
 import chunkRoutes from './routes/chunks.routes.js';
@@ -164,7 +162,6 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
     devices: store.devices,
     channels: store.channels,
     stickers: store.stickers,
-    bots: store.bots,
     phase8: store.phase8,
     attachments: store.attachments,
     push: store.push,
@@ -223,8 +220,6 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
   await fastify.register(channelRoutes);
   await fastify.register(mediaRoutes);
   await fastify.register(stickerRoutes);
-  await fastify.register(botApiRoutes);
-  await fastify.register(botRoutes);
   await fastify.register(phase8Routes);
   await fastify.register(chunkRoutes);
   await fastify.register(turnRoutes);

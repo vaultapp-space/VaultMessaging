@@ -44,6 +44,19 @@ async function groupRoutes(fastify) {
 
     const group = await fastify.store.createGroup(name, allMembers, request.user.id);
 
+    // Tell the people who were added. This used to happen by accident:
+    // groups were secret, so the first message arrived through the ratchet
+    // path and built the conversation on the way past. A cloud group's
+    // messages carry a chatId the recipient has never seen, so without this
+    // a member added to a group would simply never see it appear.
+    await notifyGroupMembersChanged(
+      fastify,
+      allMembers.filter((id) => id !== request.user.id),
+      group.id,
+      group,
+      'added'
+    );
+
     return reply.code(201).send(group);
   });
 

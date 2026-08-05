@@ -25,8 +25,10 @@ async function register(page, username) {
 
 async function startChat(page, peerUsername, mode = 'cloud') {
   await page.getByPlaceholder('Search users...').fill(peerUsername);
-  if (mode === 'secret') {
-    await page.getByRole('button', { name: `Start a secret chat with ${peerUsername}` })
+  // Secret is the default now, so the row itself starts an encrypted chat and
+  // cloud is the deliberate side button.
+  if (mode === 'cloud') {
+    await page.getByRole('button', { name: `Start a cloud chat with ${peerUsername}` })
       .click({ timeout: 20_000 });
   } else {
     await page.getByText(peerUsername, { exact: false }).first().click({ timeout: 20_000 });

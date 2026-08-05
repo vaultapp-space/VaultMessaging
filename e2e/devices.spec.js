@@ -181,8 +181,12 @@ test.describe('multi-device sync', () => {
       await register(alice, aliceName);
       await register(bob, bobName);
 
+      // Explicitly a *cloud* chat. The update log is plaintext, so secret
+      // chats — now the one-to-one default — are deliberately never written
+      // to it, and a secret chat here would correctly catch up on nothing.
       await alice.getByPlaceholder('Search users...').fill(bobName);
-      await alice.getByText(bobName, { exact: false }).first().click({ timeout: 20_000 });
+      await alice.getByRole('button', { name: `Start a cloud chat with ${bobName}` })
+        .click({ timeout: 20_000 });
       await expect(alice.getByPlaceholder('Type a message...')).toBeVisible({ timeout: 20_000 });
 
       const start = await bob.evaluate(async () => {

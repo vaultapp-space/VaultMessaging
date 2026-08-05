@@ -38,8 +38,13 @@ export function createGroups({ pool }) {
       // mode='secret': groups use Sender Keys, and nothing here should
       // silently downgrade an existing feature to server-readable storage.
       await client.query(
+        // Groups are cloud. Sender keys work, but every cloud-only group
+        // feature — polls, scheduled sends, server-side search, channel
+        // discussion — is unreachable when a group cannot be one, and a
+        // feature that exists but can never be used is worse than no feature.
+        // One-to-one chats are where the end-to-end guarantee lives.
         `INSERT INTO chats (id, type, mode, title, created_by, members_count)
-         VALUES ($1, 'group', 'secret', $2, $3, $4)
+         VALUES ($1, 'group', 'cloud', $2, $3, $4)
          ON CONFLICT (id) DO NOTHING`,
         [id, name, creatorId, memberIds.length]
       );

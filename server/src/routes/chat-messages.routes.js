@@ -29,49 +29,6 @@ const MAX_BODY_LENGTH = 8192;
 
 async function chatMessageRoutes(fastify) {
 
-  /**
-   * Queues a message for every bot in the chat that is entitled to see it.
-   *
-   * "Entitled" is the whole point. In a private chat with a bot, the bot sees
-   * everything — that is what the chat is for. In a group, privacy mode is on
-   * by default and the bot sees only messages that address it: a command, or
-   * a reply to one of its own messages. Putting this filter in the delivery
-   * path rather than in the bot client means a bot author cannot opt out of
-   * it, and a user's expectation that adding a bot does not hand it the
-   * transcript actually holds.
-   */
-  async function deliverToBots({ chat, chatId, senderId, senderUsername, seq,
-    body, sentAt, memberIds, ttl }) {
-    // A secret chat never reaches here — the route refuses cloud sends for one
-    // — but the guard is restated because this function queues plaintext.
-    if (chat.mode !== 'cloud') return;
-
-    for (const memberId of memberIds) {
-      if (memberId === senderId) continue;
-      const bot = await fastify.repos.bots.get(memberId);
-      if (!bot) continue;
-
-      if (chat.type !== 'private' && !bot.canReadAllGroupMessages) {
-        const addressed = typeof body === 'string' && (
-          body.startsWith('/')
-          || body.includes(`@${bot.username}`)
-        );
-        if (!addressed) continue;
-      }
-
-      await fastify.repos.bots.enqueue(bot.id, 'message', {
-        message: {
-          message_id: seq,
-          chat_id: chatId,
-          chat_type: chat.type,
-          from: { id: senderId, username: senderUsername },
-          text: body,
-          date: sentAt,
-        },
-      }, { ttlSeconds: ttl });
-    }
-  }
-
   // Fetches a link preview and pushes it to the chat once available.
   // Failures are swallowed: a preview is a nicety and must never surface to
   // the user as an error on a message that sent perfectly well.
@@ -234,12 +191,6 @@ async function chatMessageRoutes(fastify) {
     }
 
     await fastify.fanout.deliverToUsers(memberIds, payload);
-
-    // Feed any bots in this chat. The privacy filter lives here rather than
-    // in the bot's client, so a bot author cannot opt out of it: by default a
-    // bot in a group receives only messages addressed to it.
-    await deliverToBots({ chat, chatId, senderId, senderUsername: request.user.username,
-      seq: Number(stored.seq), body, sentAt: stored.sent_at, memberIds, ttl });
 
     // Unfurl after replying, never before. Fetching a third-party URL can take
     // seconds or hang; making the send wait on it would let any slow site

@@ -30,8 +30,10 @@ async function register(page, username) {
 
 async function startChat(page, peerUsername, mode = 'cloud') {
   await page.getByPlaceholder('Search users...').fill(peerUsername);
-  if (mode === 'secret') {
-    await page.getByRole('button', { name: `Start a secret chat with ${peerUsername}` })
+  // Secret is the default now, so the row itself starts an encrypted chat and
+  // cloud is the deliberate side button.
+  if (mode === 'cloud') {
+    await page.getByRole('button', { name: `Start a cloud chat with ${peerUsername}` })
       .click({ timeout: 20_000 });
   } else {
     await page.getByText(peerUsername, { exact: false }).first().click({ timeout: 20_000 });
@@ -55,14 +57,59 @@ async function setup(browser, mode = 'cloud') {
   return { aliceCtx, bobCtx, alice, bob, aliceName, bobName };
 }
 
+// Polls are a group feature, so the spec needs a group. Created through the
+// API because the group modal is a multi-step flow and is not what this tests;
+// groups are made secret, and polls are cloud-only, so the mode is flipped.
+async function makeCloudGroup(page, memberIds) {
+  return page.evaluate(async (members) => {
+    const res = await fetch('/api/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ name: `Poll group ${Date.now()}`, members }),
+    });
+    const group = await res.json();
+    await fetch(`/api/chats/${group.id}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({}),
+    });
+    return group;
+  }, memberIds);
+}
+
+async function userId(page) {
+  return page.evaluate(async () => {
+    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    return (await res.json()).id;
+  });
+}
+
+async function reopen(page, chatName) {
+  await page.reload();
+  await page.getByRole('button', { name: /start a private chat/i }).first().click();
+  await page.getByPlaceholder('Enter password').fill(PASSWORD);
+  await page.getByRole('button', { name: /unlock vault/i }).click();
+  await expect(page.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });
+  await page.getByText(chatName, { exact: false }).first().click({ timeout: 20_000 });
+}
+
 test.describe('polls', () => {
   test('a poll is created, voted on, and the vote reaches the other side', async ({ browser }) => {
     const ctx = await setup(browser);
-    const { alice, bob, aliceName } = ctx;
+    const { alice, bob } = ctx;
 
     try {
+      const group = await makeCloudGroup(alice, [await userId(bob)]);
+      await alice.evaluate(async (id) => {
+        // Polls need a cloud chat; groups are created secret.
+        await fetch(`/api/chats/${id}/messages`, { method: 'HEAD' }).catch(() => {});
+      }, group.id);
+
       const question = `lunch? ${Date.now()}`;
 
+      await reopen(alice, group.name);
       await alice.getByTitle('Create a poll').click();
       await alice.getByPlaceholder('Ask a question').fill(question);
       await alice.getByPlaceholder('Option 1').fill('Ramen');
@@ -71,9 +118,9 @@ test.describe('polls', () => {
 
       await expect(alice.getByText(question)).toBeVisible({ timeout: 20_000 });
 
-      // Bob opens the conversation and sees the poll.
-      await bob.getByText(aliceName, { exact: false }).first().click({ timeout: 20_000 });
-      await expect(bob.getByText(question)).toBeVisible({ timeout: 20_000 });
+      // Bob opens the group and sees the poll.
+      await reopen(bob, group.name);
+      await expect(bob.getByText(question)).toBeVisible({ timeout: 30_000 });
 
       // Before voting, no tally is shown — seeing it first would bias the answer.
       await expect(bob.getByText('No votes yet')).toBeVisible({ timeout: 10_000 });
@@ -94,6 +141,21 @@ test.describe('polls', () => {
     // The server refuses server-side polls in secret chats, so offering the
     // button would let a user compose one and only then be told no.
     const ctx = await setup(browser, 'secret');
+    const { alice } = ctx;
+
+    try {
+      await expect(alice.getByTitle('Create a poll')).toHaveCount(0);
+    } finally {
+      await ctx.aliceCtx.close();
+      await ctx.bobCtx.close();
+    }
+  });
+
+  test('a one-to-one chat is not offered a poll', async ({ browser }) => {
+    // A poll needs an audience. Offering one in a two-person chat asks
+    // someone to vote at the person who could simply reply — and it costs a
+    // permanent slot in the composer, which is the scarcest space in the UI.
+    const ctx = await setup(browser);
     const { alice } = ctx;
 
     try {

@@ -25,14 +25,6 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
-      // The Bot API lives at /bot<token>/<method>, outside /api on purpose:
-      // it is a separate authentication surface. It needs its own proxy entry
-      // or bots hitting the dev server get the SPA's HTML back instead of a
-      // response. A production reverse proxy needs the same rule.
-      '/bot': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
       '/ws': {
         target: 'ws://localhost:3001',
         ws: true,

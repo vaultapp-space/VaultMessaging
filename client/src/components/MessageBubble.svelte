@@ -5,7 +5,7 @@
   import { clickOutside } from '../lib/actions/clickOutside.js';
   import { onDestroy, onMount } from 'svelte';
   import { decryptFile, decryptChunk } from '../lib/crypto/keys.js';
-  import { fetchAttachment, fetchAttachmentChunk, markMessageViewed, publicMediaUrl, pressBotButton } from '../lib/api/http.js';
+  import { fetchAttachment, fetchAttachmentChunk, markMessageViewed, publicMediaUrl } from '../lib/api/http.js';
   import { getAvatarGradient } from '../lib/avatar.js';
 
   export let message;
@@ -48,25 +48,6 @@
   // Distinct from burn-on-read above, which is a client-side timer on an
   // E2EE attachment. This one is enforced by the server: opening it clears
   // the content server-side, so it is gone rather than merely hidden.
-  // ─── Inline keyboards ─────────────────────────────────────
-  // A bot's buttons. The press is validated server-side against the markup
-  // stored on the message, so a fabricated payload gets nowhere — this is
-  // only the rendering.
-  $: keyboardRows = message.replyMarkup?.inline_keyboard ?? [];
-  let pressing = null;
-
-  async function pressButton(button) {
-    if (pressing || !message.chatId || message.seq == null) return;
-    pressing = button.callback_data;
-    try {
-      await pressBotButton(message.chatId, message.seq, button.callback_data);
-    } catch (err) {
-      console.error('Failed to press button:', err);
-    } finally {
-      pressing = null;
-    }
-  }
-
   $: isViewOnce = Boolean(message.viewOnce);
   // Content already gone: either someone opened it, or it was never ours to
   // see. Either way the bubble shows a spent marker, not an empty message.
@@ -564,22 +545,6 @@
               </div>
             </a>
           {/if}
-        {/if}
-
-        {#if keyboardRows.length > 0}
-          <div class="flex flex-col gap-1 mt-1.5">
-            {#each keyboardRows as row, rowIndex (rowIndex)}
-              <div class="flex gap-1">
-                {#each row as button (button.callback_data ?? button.text)}
-                  <button
-                    on:click={() => pressButton(button)}
-                    disabled={pressing === button.callback_data || !button.callback_data}
-                    class="flex-1 px-2 py-1 rounded-lg bg-vault-black/25 hover:bg-vault-black/40 text-[11px] text-vault-text transition-colors disabled:opacity-50 focus:outline-none"
-                  >{button.text}</button>
-                {/each}
-              </div>
-            {/each}
-          </div>
         {/if}
 
         <!-- Meta row -->

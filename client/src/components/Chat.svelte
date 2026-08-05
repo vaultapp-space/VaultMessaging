@@ -364,12 +364,6 @@
         // made itself, rather than a second message.
         clientRandomId: data.clientRandomId ?? null,
         viewOnce: Boolean(data.viewOnce),
-        // A bot's inline keyboard. Carried here as well as in history,
-        // because a message delivered live is deduplicated against the
-        // history fetch — whichever arrives first is the copy that renders,
-        // so both paths have to be complete.
-        replyMarkup: data.replyMarkup ?? null,
-        viaBot: Boolean(data.viaBot),
         encrypted: false,
         sentAt: data.sentAt,
         expiresAt: data.expiresAt,
@@ -478,8 +472,27 @@
       const conv = convs.find(c => c.peerId === threadId);
       if (conv) {
         conv.members = data.group.members;
-        conv.joinKey = data.group.joinKey;
+        return [...convs];
       }
+
+      // Being added to a group has to *create* the row, not just refresh one.
+      // This used to work by accident: groups were secret, so the first
+      // message arrived through the ratchet path and built the thread on the
+      // way past. Cloud group messages carry a chatId the recipient has never
+      // seen, so without this a member added to a group simply never sees it.
+      convs.unshift({
+        peerId: threadId,
+        peerUsername: data.group.name,
+        isGroup: true,
+        members: data.group.members,
+        createdBy: data.group.createdBy,
+        chatId: data.groupId,
+        mode: 'cloud',
+        unreadCount: 0,
+        isEmpty: true,
+        lastMessageAt: null,
+        hasUndelivered: false,
+      });
       return [...convs];
     });
     activePeer.update(peer => {

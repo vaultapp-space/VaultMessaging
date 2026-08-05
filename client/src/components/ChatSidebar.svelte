@@ -22,7 +22,6 @@
   import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
   import WalletSettings from './WalletSettings.svelte';
   import ActiveSessions from './ActiveSessions.svelte';
-  import BotManager from './BotManager.svelte';
   import Stories from './Stories.svelte';
   import QRCode from 'qrcode';
 
@@ -353,6 +352,11 @@
           isGroup: true,
           members: res.members,
           createdBy: res.createdBy,
+          // A group's chat id *is* its group id, and groups are cloud. Both
+          // have to be carried or the send path falls back to the secret
+          // ratchet — silently, because an absent mode reads as secret.
+          chatId: res.id,
+          mode: 'cloud',
           lastMessageAt: null,
           hasUndelivered: false
         });
@@ -364,7 +368,9 @@
         username: res.name,
         isGroup: true,
         members: res.members,
-        createdBy: res.createdBy
+        createdBy: res.createdBy,
+        chatId: res.id,
+        mode: 'cloud'
       });
 
       showGroupModal = false;
@@ -580,7 +586,9 @@
   // is what makes global search, link previews and syncing history to a second
   // device possible. `secret` creates an end-to-end encrypted chat instead —
   // the two are separate conversations and a pair can have both.
-  async function startChatWith(user, mode = 'cloud') {
+  // Defaults to secret. A one-to-one chat is the conversation people assume
+  // is private, so the encrypted mode is the one you get without asking.
+  async function startChatWith(user, mode = 'secret') {
     try {
       const chat = await openPrivateChat(user.id, mode);
       selectPeer({
@@ -792,7 +800,7 @@
         {#each searchResults as user}
           <div class="w-full flex items-center gap-1 animate-fade-in">
             <button
-              on:click={() => startChatWith(user, 'cloud')}
+              on:click={() => startChatWith(user, 'secret')}
               class="flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-vault-elevated transition-all text-left"
             >
               <div
@@ -803,21 +811,21 @@
               </div>
               <div>
                 <div class="text-sm text-vault-text font-medium">{user.username}</div>
-                <div class="text-[10px] text-vault-text-dim">Start chat</div>
+                <div class="text-[10px] text-vault-text-dim">Start chat · encrypted</div>
               </div>
             </button>
-            <!-- The secret-chat affordance sits beside the row rather than
-                 replacing it, so choosing E2EE is one deliberate tap and never
-                 something you land on by accident. -->
+            <!-- Cloud sits beside the row rather than replacing it. Giving up
+                 end-to-end encryption should be one deliberate tap, never
+                 something you land on by accident — which is exactly why the
+                 defaults are this way round and not the other. -->
             <button
-              on:click={() => startChatWith(user, 'secret')}
+              on:click={() => startChatWith(user, 'cloud')}
               class="flex-shrink-0 p-2.5 rounded-xl text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
-              title="Start a secret chat (end-to-end encrypted)"
-              aria-label="Start a secret chat with {user.username}"
+              title="Start a cloud chat (syncs across your devices; the server can read it)"
+              aria-label="Start a cloud chat with {user.username}"
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="11" width="18" height="11" rx="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
               </svg>
             </button>
           </div>
@@ -1224,8 +1232,6 @@
 
       <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
         <ActiveSessions />
-
-        <BotManager />
 
         <!-- Appearance Settings -->
         <div class="flex items-center justify-between border-b border-vault-border pb-4">

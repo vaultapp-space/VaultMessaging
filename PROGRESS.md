@@ -7,9 +7,9 @@ reasoning; this file is the inventory and the at-a-glance state.
 
 | Suite | Count |
 |---|---|
-| Server (`node:test` + real PG/Redis) | **492 passing** |
+| Server (`node:test` + real PG/Redis) | **463 passing** |
 | Client (`vitest`) | **175 passing** |
-| E2E (`playwright`, 16 specs) | **76 passing** |
+| E2E (`playwright`, 16 specs) | **74 passing** |
 | Lint / `svelte-check` / build | clean |
 | Migrations `down` → `up` | clean |
 
@@ -62,8 +62,13 @@ and bot registrations/commands (configuration).
 | 4 — Devices + `pts` sync | done | 0010, `devices.*` |
 | 5 — Channels | done | 0011, `channels.*` |
 | 6 — Stickers | done | 0012, `stickers.*` |
-| 7 — Bot platform | done | 0013, `bots.*`, `bot-api.routes.js` |
+| 7 — Bot platform | **removed** | dropped in 0017; see below |
 | 8 — Voice chats, topics, stories | done | 0014–0015, `phase8.*` |
+
+**Removed, by decision:** the bot platform. A bot receiving a message means
+the server can read it, which sits badly with a product whose one-to-one chats
+are end-to-end encrypted by default — the honest version was always "works
+everywhere except the chats most people use". Migration 0017 drops it.
 
 **Not built, by decision:** live location; Lottie/TGS animated stickers (needs
 rlottie-wasm and mobile perf work — the schema carries `is_animated` so it is a
@@ -91,8 +96,20 @@ existing one. `0015_contacts` exists because that mistake was made and undone.
 
 ## The load-bearing design decisions
 
-**Dual mode.** `cloud` (server-readable, syncs, searchable) vs `secret`
-(E2EE). Forked through `shared/capabilities.js`, imported by both sides.
+**Dual mode, and which way the defaults point.** `cloud` (server-readable,
+syncs, searchable) vs `secret` (E2EE), forked through
+`shared/capabilities.js` and imported by both sides.
+
+- **One-to-one chats are secret by default.** This is the conversation people
+  assume is private, so the safe mode is the one you get without asking. Cloud
+  is a deliberate second tap.
+- **Groups are cloud.** Sender keys still work, but every cloud-only group
+  feature — polls, scheduled sends, server-side search, channel discussion —
+  is unreachable when a group cannot be one, and a feature that exists but can
+  never be used is worse than no feature.
+
+The Signal Sender Keys implementation remains for groups created before that
+change; new groups do not exercise it.
 `t:'op'` envelopes carry reactions/edits/deletes/pins either way — an HTTP call
 in cloud, a ratcheted message applied client-side in secret — so one composer
 and one message list serve both.
