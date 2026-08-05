@@ -374,3 +374,54 @@ body {
 }
 
 
+
+/* ============================================================
+   Per-chat themes
+   ============================================================
+   A theme is a *name*, chosen from this list — never a colour sent by
+   another user. The server stores and returns the name; accepting arbitrary
+   CSS would let anyone you talk to restyle your client.
+
+   Only the accent family is overridden. Backgrounds and text stay on the
+   light/dark theme the user picked globally, so a chat theme can never make
+   a conversation unreadable. */
+
+[data-chat-theme="ocean"] {
+  --color-vault-accent: #0ea5e9;
+  --color-vault-accent-hover: #38bdf8;
+  --color-vault-accent-dim: #0284c7;
+  --color-vault-accent-glow: rgba(14, 165, 233, 0.15);
+  --color-vault-accent-glow-strong: rgba(14, 165, 233, 0.25);
+}
+
+[data-chat-theme="sunset"] {
+  --color-vault-accent: #f97316;
+  --color-vault-accent-hover: #fb923c;
+  --color-vault-accent-dim: #ea580c;
+  --color-vault-accent-glow: rgba(249, 115, 22, 0.15);
+  --color-vault-accent-glow-strong: rgba(249, 115, 22, 0.25);
+}
+
+[data-chat-theme="orchid"] {
+  --color-vault-accent: #a855f7;
+  --color-vault-accent-hover: #c084fc;
+  --color-vault-accent-dim: #9333ea;
+  --color-vault-accent-glow: rgba(168, 85, 247, 0.15);
+  --color-vault-accent-glow-strong: rgba(168, 85, 247, 0.25);
+}
+
+[data-chat-theme="rose"] {
+  --color-vault-accent: #f43f5e;
+  --color-vault-accent-hover: #fb7185;
+  --color-vault-accent-dim: #e11d48;
+  --color-vault-accent-glow: rgba(244, 63, 94, 0.15);
+  --color-vault-accent-glow-strong: rgba(244, 63, 94, 0.25);
+}
+
+[data-chat-theme="slate"] {
+  --color-vault-accent: #64748b;
+  --color-vault-accent-hover: #94a3b8;
+  --color-vault-accent-dim: #475569;
+  --color-vault-accent-glow: rgba(100, 116, 139, 0.15);
+  --color-vault-accent-glow-strong: rgba(100, 116, 139, 0.25);
+}

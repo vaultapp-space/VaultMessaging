@@ -1,18 +1,18 @@
--- ============================================================
--- Vault — Initial Database Schema
--- Zero PII · Encrypted Blobs · 24h Hard Deletion Ceiling
---
--- This file is not executed by the app — server/src/store.js runs the
--- same CREATE TABLE IF NOT EXISTS statements itself on every boot, so
--- the running schema is always self-migrating from that single source
--- of truth. This file exists purely as documentation of the schema and
--- for anyone who wants to provision the database without booting the
--- app first; keep it in sync with the initSchemaSQL block in store.js.
--- ============================================================
+// ============================================================
+// 0001 — Baseline schema
+// ============================================================
+// This is the schema that used to be applied on every boot by
+// `initSchemaSQL` in src/store.js. It is reproduced verbatim, which matters:
+// every statement is idempotent (IF NOT EXISTS), so running this against the
+// existing production database is a no-op and converges it with a fresh one.
+// From 0002 onward, migrations may assume they are the only writer of schema.
 
+export const shorthands = undefined;
+
+export async function up(pgm) {
+  pgm.sql(`
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- ─── USERS ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username        VARCHAR(32) UNIQUE NOT NULL,
@@ -29,7 +29,6 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username));
 
--- ─── ONE-TIME PREKEYS ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS one_time_prekeys (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -41,7 +40,6 @@ CREATE TABLE IF NOT EXISTS one_time_prekeys (
 CREATE INDEX IF NOT EXISTS idx_otp_user_unused ON one_time_prekeys (user_id, used)
     WHERE used = FALSE;
 
--- ─── ENCRYPTED MESSAGES ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS encrypted_messages (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sender_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -68,13 +66,17 @@ CREATE INDEX IF NOT EXISTS idx_msg_expires ON encrypted_messages (expires_at);
 CREATE INDEX IF NOT EXISTS idx_msg_conversation ON encrypted_messages (sender_id, recipient_id, sent_at);
 CREATE INDEX IF NOT EXISTS idx_msg_conversation_rev ON encrypted_messages (recipient_id, sender_id, sent_at);
 
--- ─── GROUPS ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS groups (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
     join_key        TEXT UNIQUE,
+    created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
+
+-- Kept because deployed databases predate created_by being part of the CREATE
+-- above; harmless on a fresh database.
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS group_members (
     group_id        UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
@@ -82,7 +84,6 @@ CREATE TABLE IF NOT EXISTS group_members (
     PRIMARY KEY (group_id, user_id)
 );
 
--- ─── ATTACHMENTS (disk-backed chunks, DB tracks metadata only) ──
 CREATE TABLE IF NOT EXISTS attachments (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     filename        TEXT NOT NULL,
@@ -103,15 +104,31 @@ CREATE TABLE IF NOT EXISTS attachment_allowed_users (
 
 CREATE INDEX IF NOT EXISTS idx_attachments_expires ON attachments (expires_at);
 
--- ─── PUSH SUBSCRIPTIONS ────────────────────────────────────
 CREATE TABLE IF NOT EXISTS push_subscriptions (
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     subscription    TEXT NOT NULL,
     PRIMARY KEY (user_id, subscription)
 );
 
--- ─── SERVER CONFIG (persisted key/value, e.g. VAPID keys) ──
 CREATE TABLE IF NOT EXISTS server_config (
     key             TEXT PRIMARY KEY,
     value           TEXT NOT NULL
 );
+  `);
+}
+
+export async function down(pgm) {
+  // Order matters: children before parents. Only used to prove the migration
+  // is reversible in CI — never run against production.
+  pgm.sql(`
+DROP TABLE IF EXISTS server_config;
+DROP TABLE IF EXISTS push_subscriptions;
+DROP TABLE IF EXISTS attachment_allowed_users;
+DROP TABLE IF EXISTS attachments;
+DROP TABLE IF EXISTS group_members;
+DROP TABLE IF EXISTS groups;
+DROP TABLE IF EXISTS encrypted_messages;
+DROP TABLE IF EXISTS one_time_prekeys;
+DROP TABLE IF EXISTS users;
+  `);
+}

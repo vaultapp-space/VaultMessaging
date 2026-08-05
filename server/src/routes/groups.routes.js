@@ -8,21 +8,13 @@ import { UUID_PATTERN } from '../utils/constants.js';
 // so their client can refresh its cached member list (used for E2EE
 // group fan-out) instead of only finding out on the next message.
 function notifyGroupMembersChanged(fastify, memberIds, groupId, group, membershipChange = null) {
-  for (const memberId of memberIds) {
-    const sockets = fastify.store.getConnections(memberId);
-    const payload = JSON.stringify({ type: 'group_updated', groupId, group, membershipChange });
-    for (const s of sockets) {
-      try { s.send(payload); } catch {}
-    }
-  }
+  return fastify.fanout.deliverToUsers(memberIds, {
+    type: 'group_updated', groupId, group, membershipChange,
+  });
 }
 
 function notifyRemovedFromGroup(fastify, userId, groupId) {
-  const sockets = fastify.store.getConnections(userId);
-  const payload = JSON.stringify({ type: 'group_removed', groupId });
-  for (const s of sockets) {
-    try { s.send(payload); } catch {}
-  }
+  return fastify.fanout.deliverToUser(userId, { type: 'group_removed', groupId });
 }
 
 async function groupRoutes(fastify) {
@@ -63,44 +55,12 @@ async function groupRoutes(fastify) {
     return reply.send(list);
   });
 
-  // ─── JOIN group using Join Key ───────────────────────────
-  fastify.post('/api/groups/join', {
-    preValidation: [fastify.authenticate],
-    schema: {
-      body: {
-        type: 'object',
-        required: ['joinKey'],
-        properties: {
-          joinKey: { type: 'string' }
-        }
-      }
-    }
-  }, async (request, reply) => {
-    const { joinKey } = request.body;
-    
-    // Find the group by join key
-    const group = await fastify.store.getGroupByJoinKey(joinKey);
-    if (!group) {
-      return reply.code(404).send({ error: 'Group not found with this join key' });
-    }
-    
-    // Add member to group
-    await fastify.store.addGroupMember(group.id, request.user.id);
-
-    // Fetch refreshed group object with new member lists
-    const updatedGroup = await fastify.store.getGroup(group.id);
-
-    // Let existing members know someone new joined so their client
-    // refreshes its cached member list for E2EE group fan-out.
-    notifyGroupMembersChanged(
-      fastify,
-      updatedGroup.members.map(m => m.id).filter(id => id !== request.user.id),
-      group.id,
-      updatedGroup
-    );
-
-    return reply.code(200).send(updatedGroup);
-  });
+  // The old `POST /api/groups/join` lived here. It took a permanent,
+  // unrevocable bearer secret: anyone who had ever seen a group's join key
+  // could rejoin forever, including members who had been removed or banned.
+  // `chat_invites` (0008) replaced it with revocable, expiring, attributable
+  // links, and 0016 dropped the column. Do not reintroduce a bearer-secret
+  // join path.
 
   // ─── LEAVE group (self) ───────────────────────────────────
   fastify.post('/api/groups/:id/leave', {
@@ -130,7 +90,7 @@ async function groupRoutes(fastify) {
     // rotate their E2EE Sender Key and redistribute it to the reduced
     // member set, so the departing member's copy of the old key stops
     // being useful for anything encrypted after this point.
-    notifyGroupMembersChanged(fastify, remainingMemberIds, id, { ...group, members: group.members.filter(m => m.id !== request.user.id) }, 'departed');
+    await notifyGroupMembersChanged(fastify, remainingMemberIds, id, { ...group, members: group.members.filter(m => m.id !== request.user.id) }, 'departed');
 
     return reply.send({ success: true });
   });
@@ -170,9 +130,9 @@ async function groupRoutes(fastify) {
     const updatedMembers = group.members.filter(m => m.id !== userId);
     const remainingMemberIds = updatedMembers.map(m => m.id);
     // Same key-rotation signal as leaving above.
-    notifyGroupMembersChanged(fastify, remainingMemberIds, id, { ...group, members: updatedMembers }, 'departed');
+    await notifyGroupMembersChanged(fastify, remainingMemberIds, id, { ...group, members: updatedMembers }, 'departed');
     // Also tell the removed member directly, so their client drops the group.
-    notifyRemovedFromGroup(fastify, userId, id);
+    await notifyRemovedFromGroup(fastify, userId, id);
 
     return reply.send({ success: true });
   });

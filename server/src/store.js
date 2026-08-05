@@ -1,14 +1,54 @@
 // ============================================================
-// Vault — PostgreSQL + Redis Production Data Store
+// Vault — Data Store Facade
 // ============================================================
+// This used to be a 900-line class that owned Postgres, Redis, WebSocket
+// connections and WebRTC call state all at once. The behaviour is unchanged;
+// what changed is where it lives:
+//
+//   src/repos/     Postgres — one module per table group
+//   src/cache/     Redis    — sessions, sync relay, pending queues, quotas
+//   src/realtime/  in-process — socket registry, call state, fanout
+//
+// What remains here is composition plus a delegating surface, so that every
+// existing `fastify.store.x(...)` call site keeps working while new code can
+// depend on the narrow module it actually needs. The delegations are the
+// migration seam, not the destination: as routes move to `fastify.repos`,
+// entries here disappear.
 
 import pg from 'pg';
 import Redis from 'ioredis';
-import { v4 as uuidv4 } from 'uuid';
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { pgConfig, redisConfig } from './db/config.js';
+
+import { createUsers } from './repos/users.repo.js';
+import { createPrekeys } from './repos/prekeys.repo.js';
+import { createMessages } from './repos/messages.repo.js';
+import { createGroups } from './repos/groups.repo.js';
+import { createChats } from './repos/chats.repo.js';
+import { createReactions } from './repos/reactions.repo.js';
+import { createPhase2 } from './repos/phase2.repo.js';
+import { createPhase3 } from './repos/phase3.repo.js';
+import { createDevices } from './repos/devices.repo.js';
+import { createChannels } from './repos/channels.repo.js';
+import { createStickers } from './repos/stickers.repo.js';
+import { createBots } from './repos/bots.repo.js';
+import { createPhase8 } from './repos/phase8.repo.js';
+import { createAttachments } from './repos/attachments.repo.js';
+import { createPush } from './repos/push.repo.js';
+import { createConfig } from './repos/config.repo.js';
+import { createMaintenance } from './repos/maintenance.repo.js';
+
+import { createSessions } from './cache/sessions.js';
+import { createSync } from './cache/sync.js';
+import { createPending } from './cache/pending.js';
+import { createQuota } from './cache/quota.js';
+
+import { createRegistry } from './realtime/registry.js';
+import { createCallState } from './realtime/calls.js';
 
 const { Pool } = pg;
 
@@ -16,891 +56,129 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 
-// Ensure uploads directory exists
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-const pgConfig = {
-  host: process.env.PGHOST || '127.0.0.1',
-  port: parseInt(process.env.PGPORT || '5432', 10),
-  user: process.env.PGUSER || 'vault',
-  password: process.env.PGPASSWORD || 'vault_dev_pass',
-  database: process.env.PGDATABASE || 'vault',
-  max: 50,
-  idleTimeoutMillis: 30000,
-};
+export class DataStore {
+  // Connection settings are injected rather than read from the module scope so
+  // that tests can point a store at a throwaway database. Callers that pass
+  // nothing get the env-derived dev/prod defaults, which is what the server does.
+  constructor({ pg: pgOverrides, redis: redisOverrides } = {}) {
+    this.pool = new Pool({ ...pgConfig, ...pgOverrides });
+    this.redis = new Redis({ ...redisConfig, ...redisOverrides });
+    this.uploadsDir = UPLOADS_DIR;
 
-const redisConfig = {
-  host: process.env.REDIS_HOST || '127.0.0.1',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-};
+    // Distinguishes this process on the realtime bus. Random rather than
+    // pid-based so a restarted process never inherits a predecessor's routes.
+    this.processId = crypto.randomUUID();
 
-const initSchemaSQL = `
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+    const { pool, redis, uploadsDir } = this;
 
-CREATE TABLE IF NOT EXISTS users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    username        VARCHAR(32) UNIQUE NOT NULL,
-    password_hash   TEXT NOT NULL,
-    identity_key    TEXT NOT NULL,
-    signed_prekey   TEXT NOT NULL,
-    prekey_sig      TEXT NOT NULL,
-    salt            TEXT NOT NULL,
-    encrypted_vault TEXT,
-    created_at      TIMESTAMPTZ DEFAULT now()
-);
+    this.users = createUsers({ pool });
+    this.prekeys = createPrekeys({ pool, users: this.users });
+    this.messages = createMessages({ pool });
+    this.groups = createGroups({ pool });
+    this.chats = createChats({ pool });
+    this.reactions = createReactions({ pool });
+    this.phase2 = createPhase2({ pool });
+    this.phase3 = createPhase3({ pool });
+    this.devices = createDevices({ pool });
+    this.channels = createChannels({ pool, redis });
+    this.stickers = createStickers({ pool });
+    this.bots = createBots({ pool });
+    this.phase8 = createPhase8({ pool });
+    this.attachments = createAttachments({ pool, uploadsDir });
+    this.push = createPush({ pool });
+    this.config = createConfig({ pool });
+    this.maintenance = createMaintenance({ pool, uploadsDir });
 
-CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
+    this.sessions = createSessions({ redis });
+    this.sync = createSync({ redis });
+    this.pending = createPending({ redis });
+    this.quota = createQuota({ redis });
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (LOWER(username));
+    this.registry = createRegistry({ redis, processId: this.processId });
+    this.calls = createCallState();
 
-CREATE TABLE IF NOT EXISTS one_time_prekeys (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    public_key      TEXT NOT NULL,
-    used            BOOLEAN DEFAULT FALSE,
-    uploaded_at     TIMESTAMPTZ DEFAULT now()
-);
+    this.#delegate();
 
-CREATE INDEX IF NOT EXISTS idx_otp_user_unused ON one_time_prekeys (user_id, used)
-    WHERE used = FALSE;
-
-CREATE TABLE IF NOT EXISTS encrypted_messages (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    sender_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    recipient_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    ciphertext      TEXT NOT NULL,
-    ephemeral_key   TEXT,
-    message_number  INTEGER NOT NULL,
-    previous_chain  INTEGER DEFAULT 0,
-    sent_at         TIMESTAMPTZ DEFAULT now(),
-    expires_at      TIMESTAMPTZ NOT NULL,
-    delivered       BOOLEAN DEFAULT FALSE,
-    read            BOOLEAN DEFAULT FALSE,
-    iv              TEXT,
-    group_id        TEXT,
-    attachment_id   TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_msg_recipient_undelivered
-    ON encrypted_messages (recipient_id, delivered, sent_at)
-    WHERE delivered = FALSE;
-
-CREATE INDEX IF NOT EXISTS idx_msg_expires ON encrypted_messages (expires_at);
-
-CREATE INDEX IF NOT EXISTS idx_msg_conversation ON encrypted_messages (sender_id, recipient_id, sent_at);
-CREATE INDEX IF NOT EXISTS idx_msg_conversation_rev ON encrypted_messages (recipient_id, sender_id, sent_at);
-
-CREATE TABLE IF NOT EXISTS groups (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name            TEXT NOT NULL,
-    join_key        TEXT UNIQUE,
-    created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
-    created_at      TIMESTAMPTZ DEFAULT now()
-);
-
-ALTER TABLE groups ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;
-
-CREATE TABLE IF NOT EXISTS group_members (
-    group_id        UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    PRIMARY KEY (group_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS attachments (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    filename        TEXT NOT NULL,
-    mime_type       TEXT NOT NULL,
-    total_chunks    INTEGER NOT NULL DEFAULT 1,
-    uploaded_chunks INTEGER NOT NULL DEFAULT 0,
-    burn_on_read    BOOLEAN DEFAULT FALSE,
-    owner_id        UUID REFERENCES users(id) ON DELETE SET NULL,
-    expires_at      TIMESTAMPTZ NOT NULL,
-    created_at      TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS attachment_allowed_users (
-    attachment_id   UUID NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
-    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    PRIMARY KEY (attachment_id, user_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_attachments_expires ON attachments (expires_at);
-
-CREATE TABLE IF NOT EXISTS push_subscriptions (
-    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    subscription    TEXT NOT NULL,
-    PRIMARY KEY (user_id, subscription)
-);
-
-CREATE TABLE IF NOT EXISTS server_config (
-    key             TEXT PRIMARY KEY,
-    value           TEXT NOT NULL
-);
-`;
-
-class DataStore {
-  constructor() {
-    this.pool = new Pool(pgConfig);
-    this.redis = new Redis(redisConfig);
-    this.wsConnections = new Map(); // userId -> Set of socket objects
-    this.activeCalls = new Map();   // userId -> peerId
-    this.pendingInvites = new Map(); // inviteeId -> callerId, cleared on accept/reject/hangup
-
-    // Initialize Schema
-    this.schemaReady = this.pool.query(initSchemaSQL)
-      .then(() => console.log('[DB] Schema initialized successfully'))
-      .catch((err) => { console.error('[DB] Schema initialization failed:', err); throw err; });
+    // The store no longer creates schema — migrations own that (see
+    // migrations/ and scripts/migrate.js). What used to be a "build the
+    // schema" promise is now a gate that fails loudly if the database has
+    // not been migrated, instead of letting routes fail one query at a time.
+    this.schemaReady = this.verifySchema();
   }
 
-  // ─── Users ────────────────────────────────────────────────
+  // Re-exposes each module's methods on the store itself, preserving the
+  // original flat API that all nine route modules were written against.
+  #delegate() {
+    const modules = [
+      this.users, this.prekeys, this.messages, this.groups,
+      this.chats, this.reactions, this.phase2, this.phase3, this.devices, this.channels, this.stickers, this.bots, this.phase8, this.attachments, this.push, this.config, this.maintenance,
+      this.sessions, this.sync, this.pending, this.quota, this.calls,
+    ];
 
-  async createUser({ username, passwordHash, identityKey, signedPrekey, prekeySig, salt, encryptedVault = null }) {
-    const res = await this.pool.query(
-      `INSERT INTO users (username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault, created_at`,
-      [username, passwordHash, identityKey, signedPrekey, prekeySig, salt, encryptedVault]
-    );
-    return res.rows[0];
-  }
-
-  async updateUserKeys(id, { identityKey, signedPrekey, prekeySig }) {
-    const res = await this.pool.query(
-      `UPDATE users SET identity_key = $1, signed_prekey = $2, prekey_sig = $3
-       WHERE id = $4
-       RETURNING id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt`,
-      [identityKey, signedPrekey, prekeySig, id]
-    );
-    return res.rows[0] || null;
-  }
-
-  async updateSignedPrekey(id, signedPrekey, prekeySig) {
-    const res = await this.pool.query(
-      `UPDATE users SET signed_prekey = $1, prekey_sig = $2
-       WHERE id = $3
-       RETURNING id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt`,
-      [signedPrekey, prekeySig, id]
-    );
-    return res.rows[0] || null;
-  }
-
-  async setEncryptedVault(id, encryptedVault) {
-    const res = await this.pool.query(
-      `UPDATE users SET encrypted_vault = $1
-       WHERE id = $2
-       RETURNING id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault`,
-      [encryptedVault, id]
-    );
-    return res.rows[0] || null;
-  }
-
-  async resetPrekeys(userId, publicKeys) {
-    await this.pool.query(`DELETE FROM one_time_prekeys WHERE user_id = $1`, [userId]);
-    if (publicKeys.length > 0) {
-      await this.uploadPrekeys(userId, publicKeys);
-    }
-  }
-
-  getDummySalt(username) {
-    return crypto.createHmac('sha256', 'dummy_salt_key')
-      .update(username)
-      .digest('base64')
-      .substring(0, 24);
-  }
-
-  async getUserByUsername(username) {
-    const res = await this.pool.query(
-      `SELECT id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault FROM users
-       WHERE LOWER(username) = LOWER($1)`,
-      [username]
-    );
-    return res.rows[0] || null;
-  }
-
-  async getUserById(id) {
-    const res = await this.pool.query(
-      `SELECT id, username, password_hash, identity_key, signed_prekey, prekey_sig, salt, encrypted_vault FROM users
-       WHERE id = $1`,
-      [id]
-    );
-    return res.rows[0] || null;
-  }
-
-  // ─── Prekeys ──────────────────────────────────────────────
-
-  async uploadPrekeys(userId, publicKeys) {
-    if (publicKeys.length === 0) return;
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      for (const pk of publicKeys) {
-        await client.query(
-          `INSERT INTO one_time_prekeys (user_id, public_key) VALUES ($1, $2)`,
-          [userId, pk]
-        );
+    for (const mod of modules) {
+      for (const key of Object.keys(mod)) {
+        if (typeof mod[key] !== 'function') continue;
+        if (key in this) continue; // never shadow a real member
+        this[key] = mod[key].bind(mod);
       }
-      await client.query('COMMIT');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
     }
   }
 
-  async consumePrekey(userId) {
-    const res = await this.pool.query(
-      `UPDATE one_time_prekeys SET used = TRUE
-       WHERE id = (
-         SELECT id FROM one_time_prekeys
-         WHERE user_id = $1 AND used = FALSE
-         ORDER BY uploaded_at ASC
-         LIMIT 1
-         FOR UPDATE SKIP LOCKED
-       )
-       RETURNING public_key`,
-      [userId]
+  async verifySchema() {
+    const { rows } = await this.pool.query(
+      `SELECT to_regclass('public.pgmigrations') IS NOT NULL AS migrated,
+              to_regclass('public.users')        IS NOT NULL AS has_users`
     );
-    return res.rows[0] ? res.rows[0].public_key : null;
-  }
-
-  async countUnusedPrekeys(userId) {
-    const res = await this.pool.query(
-      `SELECT COUNT(*) as count FROM one_time_prekeys
-       WHERE user_id = $1 AND used = FALSE`,
-      [userId]
-    );
-    return parseInt(res.rows[0].count, 10);
-  }
-
-  async getKeyBundle(username) {
-    const user = await this.getUserByUsername(username);
-    if (!user) return null;
-    const opk = await this.consumePrekey(user.id);
-    return {
-      identityKey: user.identity_key,
-      signedPrekey: user.signed_prekey,
-      prekeySig: user.prekey_sig,
-      oneTimePrekey: opk
-    };
-  }
-
-  // ─── Messages ─────────────────────────────────────────────
-
-  async createMessage({ senderId, recipientId, ciphertext, ephemeralKey, messageNumber, previousChain, expiresAt, iv, groupId = null, attachmentId = null }) {
-    const res = await this.pool.query(
-      `INSERT INTO encrypted_messages (sender_id, recipient_id, ciphertext, ephemeral_key, message_number, previous_chain, expires_at, iv, group_id, attachment_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING id, sender_id, recipient_id, ciphertext, ephemeral_key, message_number, previous_chain, expires_at, sent_at, iv, group_id, attachment_id`,
-      [senderId, recipientId, ciphertext, ephemeralKey, messageNumber, previousChain, expiresAt, iv, groupId, attachmentId]
-    );
-
-    const msg = res.rows[0];
-
-    // Auto authorize recipient on attachment if any
-    if (attachmentId) {
-      await this.authorizeAttachmentUser(attachmentId, recipientId);
+    const { migrated, has_users: hasUsers } = rows[0];
+    if (!migrated || !hasUsers) {
+      throw new Error(
+        '[DB] Database is not migrated. Run `npm run migrate:up` in server/ before starting.'
+      );
     }
-
-    return msg;
+    console.log('[DB] Schema verified');
   }
 
-  async markDelivered(messageId) {
-    await this.pool.query(
-      `UPDATE encrypted_messages SET delivered = TRUE WHERE id = $1`,
-      [messageId]
-    );
-  }
-
-  async markRead(messageId) {
-    await this.pool.query(
-      `UPDATE encrypted_messages SET read = TRUE WHERE id = $1`,
-      [messageId]
-    );
-  }
-
-  async getMessage(id) {
-    const res = await this.pool.query(
-      `SELECT * FROM encrypted_messages WHERE id = $1`,
-      [id]
-    );
-    return res.rows.length > 0 ? res.rows[0] : null;
-  }
-
-  async getUndeliveredMessages(recipientId) {
-    const res = await this.pool.query(
-      `SELECT m.*, u.username as sender_username FROM encrypted_messages m
-       JOIN users u ON m.sender_id = u.id
-       WHERE m.recipient_id = $1 AND m.delivered = FALSE
-       ORDER BY m.sent_at ASC`,
-      [recipientId]
-    );
-    return res.rows.map(row => ({
-      id: row.id,
-      sender_id: row.sender_id,
-      sender_username: row.sender_username,
-      recipient_id: row.recipient_id,
-      ciphertext: row.ciphertext,
-      ephemeral_key: row.ephemeral_key,
-      message_number: row.message_number,
-      previous_chain: row.previous_chain,
-      sent_at: row.sent_at,
-      expires_at: row.expires_at,
-      iv: row.iv,
-      group_id: row.group_id,
-      attachment_id: row.attachment_id,
-      read: row.read
-    }));
-  }
-
-  async getConversationMessages(userId1, userId2, limit = 50, before = null) {
-    let query = `
-      SELECT m.*, u.username as sender_username FROM encrypted_messages m
-      JOIN users u ON m.sender_id = u.id
-      WHERE (
-        (m.sender_id = $1 AND m.recipient_id = $2) OR
-        (m.sender_id = $2 AND m.recipient_id = $1)
-      )
-    `;
-    const params = [userId1, userId2, limit];
-    if (before) {
-      query += ` AND m.sent_at < $4`;
-      params.push(before);
-    }
-    query += ` ORDER BY m.sent_at DESC LIMIT $3`;
-    const res = await this.pool.query(query, params);
-    return res.rows.map(row => ({
-      id: row.id,
-      sender_id: row.sender_id,
-      sender_username: row.sender_username,
-      recipient_id: row.recipient_id,
-      ciphertext: row.ciphertext,
-      ephemeral_key: row.ephemeral_key,
-      message_number: row.message_number,
-      previous_chain: row.previous_chain,
-      sent_at: row.sent_at,
-      expires_at: row.expires_at,
-      iv: row.iv,
-      group_id: row.group_id,
-      attachment_id: row.attachment_id,
-      read: row.read
-    }));
-  }
-
-  async getConversationsForUser(userId) {
-    const res = await this.pool.query(
-      `SELECT DISTINCT ON (peer_id)
-         peer_id,
-         username as peer_username,
-         last_message_at
-       FROM (
-         SELECT recipient_id as peer_id, sent_at as last_message_at FROM encrypted_messages WHERE sender_id = $1
-         UNION ALL
-         SELECT sender_id as peer_id, sent_at as last_message_at FROM encrypted_messages WHERE recipient_id = $1
-       ) t
-       JOIN users u ON t.peer_id = u.id
-       ORDER BY peer_id, last_message_at DESC`,
-      [userId]
-    );
-
-    const undeliveredRes = await this.pool.query(
-      `SELECT DISTINCT sender_id FROM encrypted_messages WHERE recipient_id = $1 AND delivered = FALSE`,
-      [userId]
-    );
-    const peersWithUndelivered = new Set(undeliveredRes.rows.map(r => r.sender_id));
-
-    return res.rows.map(row => ({
-      peerId: row.peer_id,
-      peerUsername: row.peer_username,
-      lastMessageAt: row.last_message_at,
-      hasUndelivered: peersWithUndelivered.has(row.peer_id)
-    }));
-  }
-
-  // ─── Pending Queue (Redis) ───────────────────────────────
-
-  async enqueuePending(recipientId, messageId) {
-    await this.redis.sadd(`pending:${recipientId}`, messageId);
-  }
-
-  async dequeuePending(recipientId) {
-    const messages = await this.redis.smembers(`pending:${recipientId}`);
-    await this.redis.del(`pending:${recipientId}`);
-    return messages;
-  }
-
-  async removePending(recipientId, messageId) {
-    await this.redis.srem(`pending:${recipientId}`, messageId);
-  }
-
-  // ─── WebSockets Connections (Volatile RAM) ────────────────
+  // ─── Realtime (kept explicit: signatures differ from the old Map API) ────
 
   registerConnection(userId, socket) {
-    if (!this.wsConnections.has(userId)) {
-      this.wsConnections.set(userId, new Set());
-    }
-    this.wsConnections.get(userId).add(socket);
+    // Fire-and-forget: the Redis presence write must never delay accepting a
+    // socket, and registry.register tolerates Redis being unavailable.
+    void this.registry.register(userId, socket);
   }
 
   unregisterConnection(userId, socket) {
-    if (this.wsConnections.has(userId)) {
-      this.wsConnections.get(userId).delete(socket);
-      if (this.wsConnections.get(userId).size === 0) {
-        this.wsConnections.delete(userId);
-      }
-    }
+    void this.registry.unregister(userId, socket);
   }
 
+  // Sockets on this process. Retained because every existing call site is
+  // synchronous and expects a Set it can iterate.
   getConnections(userId) {
-    return this.wsConnections.get(userId) || new Set();
+    return this.registry.getLocal(userId);
   }
 
+  // Synchronous, and therefore only knows about this process. Cluster-aware
+  // callers should await registry.isOnline() instead.
   isOnline(userId) {
-    return this.wsConnections.has(userId);
+    return this.registry.isLocallyConnected(userId);
   }
 
-  // ─── Sessions (Redis) ─────────────────────────────────────
-
-  async createSession(jwtId, userId) {
-    await this.redis.set(`session:${jwtId}`, userId, 'EX', 24 * 60 * 60);
+  touchPresence(userId) {
+    void this.registry.touch(userId);
   }
 
-  async getSession(jwtId) {
-    const userId = await this.redis.get(`session:${jwtId}`);
-    return userId ? { userId } : null;
-  }
-
-  async deleteSession(jwtId) {
-    await this.redis.del(`session:${jwtId}`);
-  }
-
-  async touchSession(jwtId) {
-    await this.redis.expire(`session:${jwtId}`, 24 * 60 * 60);
-  }
-
-  // ─── Sync Sessions (Redis) ────────────────────────────────
-
-  async createSyncSession(syncId, payload, userId) {
-    await this.redis.set(`sync:${syncId}`, JSON.stringify({ payload, userId }), 'EX', 120); // Expires in 2 minutes
-  }
-
-  async getSyncSession(syncId) {
-    const raw = await this.redis.get(`sync:${syncId}`);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  }
-
-  async deleteSyncSession(syncId) {
-    await this.redis.del(`sync:${syncId}`);
-  }
-
-  // ─── Server Config (persisted key/value, e.g. VAPID keys) ──
-
-  // Generates a pair of related config values (e.g. VAPID public/private
-  // keys) exactly once and persists both together, atomically — avoids
-  // ever ending up with a mismatched public/private pair across restarts
-  // or a race between concurrent processes.
-  async getOrSetConfigPair(publicKeyName, privateKeyName, generatePairFn) {
-    const existing = await this.pool.query(
-      `SELECT key, value FROM server_config WHERE key IN ($1, $2)`,
-      [publicKeyName, privateKeyName]
-    );
-    if (existing.rows.length === 2) {
-      const byKey = Object.fromEntries(existing.rows.map(r => [r.key, r.value]));
-      return { publicValue: byKey[publicKeyName], privateValue: byKey[privateKeyName] };
-    }
-
-    const { publicValue, privateValue } = await generatePairFn();
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO server_config (key, value) VALUES ($1, $2), ($3, $4)
-         ON CONFLICT (key) DO NOTHING`,
-        [publicKeyName, publicValue, privateKeyName, privateValue]
-      );
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-
-    const final = await this.pool.query(
-      `SELECT key, value FROM server_config WHERE key IN ($1, $2)`,
-      [publicKeyName, privateKeyName]
-    );
-    const byKey = Object.fromEntries(final.rows.map(r => [r.key, r.value]));
-    return { publicValue: byKey[publicKeyName], privateValue: byKey[privateKeyName] };
-  }
-
-  // ─── User Search ──────────────────────────────────────────
-
-  async searchUsers(query, excludeUserId) {
-    // Prefix match only (not "contains anywhere") — a substring match on a
-    // short query returns most of the user table, effectively letting
-    // anyone enumerate the entire userbase.
-    const escaped = query.replace(/[%_\\]/g, '\\$&');
-    const res = await this.pool.query(
-      `SELECT id, username FROM users
-       WHERE username ILIKE $1 ESCAPE '\\' AND id <> $2
-       LIMIT 20`,
-      [`${escaped}%`, excludeUserId]
-    );
-    return res.rows;
-  }
-
-  // ─── Attachments (Disk + SQL Metadata) ────────────────────
-
-  async saveAttachment(filename, mimeType, totalChunksOrCiphertext = '', burnOnRead = false, ownerId = null) {
-    const id = uuidv4();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    
-    let totalChunks = 1;
-    let ciphertext = '';
-    
-    if (typeof totalChunksOrCiphertext === 'number') {
-      totalChunks = totalChunksOrCiphertext;
-    } else {
-      ciphertext = totalChunksOrCiphertext;
-    }
-    
-    // Save metadata
-    await this.pool.query(
-      `INSERT INTO attachments (id, filename, mime_type, total_chunks, uploaded_chunks, burn_on_read, owner_id, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, filename, mimeType, totalChunks, 0, burnOnRead, ownerId, expiresAt]
-    );
-
-    // Save owner as allowed user
-    if (ownerId) {
-      await this.authorizeAttachmentUser(id, ownerId);
-    }
-
-    // Write chunk 0 if ciphertext is provided immediately
-    if (ciphertext) {
-      await this.saveChunk(id, 0, ciphertext);
-    }
-
-    return id;
-  }
-
-  async getAttachment(id) {
-    const res = await this.pool.query(
-      `SELECT * FROM attachments WHERE id = $1`,
-      [id]
-    );
-    if (res.rows.length === 0) return null;
-
-    const row = res.rows[0];
-    const allowed = await this.pool.query(
-      `SELECT user_id FROM attachment_allowed_users WHERE attachment_id = $1`,
-      [id]
-    );
-    const allowedUsers = new Set(allowed.rows.map(r => r.user_id));
-
-    return {
-      id: row.id,
-      filename: row.filename,
-      mimeType: row.mime_type,
-      totalChunks: row.total_chunks,
-      uploadedChunks: row.uploaded_chunks,
-      burn_on_read: row.burn_on_read,
-      owner_id: row.owner_id,
-      expires_at: row.expires_at,
-      allowed_users: allowedUsers
-    };
-  }
-
-  async authorizeAttachmentUser(attachmentId, userId) {
-    await this.pool.query(
-      `INSERT INTO attachment_allowed_users (attachment_id, user_id)
-       VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [attachmentId, userId]
-    );
-  }
-
-  async revokeAttachmentUser(attachmentId, userId) {
-    await this.pool.query(
-      `DELETE FROM attachment_allowed_users
-       WHERE attachment_id = $1 AND user_id = $2`,
-      [attachmentId, userId]
-    );
-  }
-
-  async countRemainingRecipients(attachmentId, ownerId) {
-    if (ownerId) {
-      const res = await this.pool.query(
-        `SELECT COUNT(*) as count FROM attachment_allowed_users
-         WHERE attachment_id = $1 AND user_id <> $2`,
-        [attachmentId, ownerId]
-      );
-      return parseInt(res.rows[0].count, 10);
-    } else {
-      const res = await this.pool.query(
-        `SELECT COUNT(*) as count FROM attachment_allowed_users
-         WHERE attachment_id = $1`,
-        [attachmentId]
-      );
-      return parseInt(res.rows[0].count, 10);
-    }
-  }
-
-  async saveChunk(id, index, ciphertext) {
-    const filePath = path.join(UPLOADS_DIR, `${id}_${index}.txt`);
-    await fs.promises.writeFile(filePath, ciphertext, 'utf8');
-
-    // Update chunk metadata
-    await this.pool.query(
-      `UPDATE attachments
-       SET uploaded_chunks = uploaded_chunks + 1,
-           total_chunks = GREATEST(total_chunks, $2 + 1)
-       WHERE id = $1`,
-      [id, index]
-    );
-  }
-
-  async getChunk(id, index) {
-    const filePath = path.join(UPLOADS_DIR, `${id}_${index}.txt`);
-    try {
-      return await fs.promises.readFile(filePath, 'utf8');
-    } catch (e) {
-      return null;
-    }
-  }
-
-  async deleteAttachment(id) {
-    const attachment = await this.getAttachment(id);
-    if (!attachment) return;
-
-    // Delete chunks from disk
-    for (let i = 0; i < attachment.totalChunks; i++) {
-      const filePath = path.join(UPLOADS_DIR, `${id}_${i}.txt`);
-      await fs.promises.unlink(filePath).catch(() => {});
-    }
-
-    // Delete database records
-    await this.pool.query(`DELETE FROM attachments WHERE id = $1`, [id]);
-  }
-
-  // ─── Groups (PostgreSQL) ──────────────────────────────────
-
-  async createGroup(name, memberIds, creatorId = null) {
-    const id = uuidv4();
-    const joinKey = uuidv4();
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO groups (id, name, join_key, created_by) VALUES ($1, $2, $3, $4)`,
-        [id, name, joinKey, creatorId]
-      );
-      for (const mId of memberIds) {
-        await client.query(
-          `INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)`,
-          [id, mId]
-        );
-      }
-      await client.query('COMMIT');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
-
-    return await this.getGroup(id);
-  }
-
-  async getGroup(id) {
-    const res = await this.pool.query(
-      `SELECT * FROM groups WHERE id = $1`,
-      [id]
-    );
-    if (res.rows.length === 0) return null;
-
-    const group = res.rows[0];
-    const membersRes = await this.pool.query(
-      `SELECT u.id, u.username FROM group_members gm
-       JOIN users u ON gm.user_id = u.id
-       WHERE gm.group_id = $1`,
-      [id]
-    );
-
-    return {
-      id: group.id,
-      name: group.name,
-      joinKey: group.join_key,
-      createdBy: group.created_by,
-      members: membersRes.rows
-    };
-  }
-
-  async getGroupByJoinKey(joinKey) {
-    const res = await this.pool.query(
-      `SELECT id FROM groups WHERE join_key = $1`,
-      [joinKey]
-    );
-    if (res.rows.length === 0) return null;
-    return await this.getGroup(res.rows[0].id);
-  }
-
-  async removeGroupMember(groupId, userId) {
-    await this.pool.query(
-      `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2`,
-      [groupId, userId]
-    );
-    const remaining = await this.pool.query(
-      `SELECT COUNT(*)::int AS count FROM group_members WHERE group_id = $1`,
-      [groupId]
-    );
-    if (remaining.rows[0].count === 0) {
-      await this.pool.query(`DELETE FROM groups WHERE id = $1`, [groupId]);
-      return { deleted: true };
-    }
-    return { deleted: false };
-  }
-
-  async addGroupMember(groupId, userId) {
-    await this.pool.query(
-      `INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [groupId, userId]
-    );
-  }
-
-  async getGroupsForUser(userId) {
-    const res = await this.pool.query(
-      `SELECT group_id FROM group_members WHERE user_id = $1`,
-      [userId]
-    );
-    
-    const list = [];
-    for (const row of res.rows) {
-      const group = await this.getGroup(row.group_id);
-      if (group) list.push(group);
-    }
-    return list;
-  }
-
-  // ─── Push Subscriptions (PostgreSQL) ──────────────────────
-
-  async addPushSubscription(userId, subscription) {
-    await this.pool.query(
-      `INSERT INTO push_subscriptions (user_id, subscription)
-       VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [userId, subscription]
-    );
-  }
-
-  async getPushSubscriptions(userId) {
-    const res = await this.pool.query(
-      `SELECT subscription FROM push_subscriptions WHERE user_id = $1`,
-      [userId]
-    );
-    return new Set(res.rows.map(r => r.subscription));
-  }
-
-  // ─── Calls (Volatile RAM) ─────────────────────────────────
-
-  // Tracks an outstanding call_invite so call_accept can be verified against
-  // it — otherwise any authenticated user could send call_accept for an
-  // arbitrary recipientId and hijack/overwrite that person's active call.
-  setPendingInvite(inviteeId, callerId) {
-    this.pendingInvites.set(inviteeId, callerId);
-  }
-
-  getPendingInvite(inviteeId) {
-    return this.pendingInvites.get(inviteeId);
-  }
-
-  clearPendingInvite(inviteeId) {
-    this.pendingInvites.delete(inviteeId);
-  }
-
-  // Clears a pending invite regardless of whether `id` is the invitee (the
-  // usual key) or the caller cancelling before the invitee ever accepted.
-  clearPendingInvitesInvolving(id) {
-    this.pendingInvites.delete(id);
-    for (const [inviteeId, callerId] of this.pendingInvites.entries()) {
-      if (callerId === id) this.pendingInvites.delete(inviteeId);
-    }
-  }
-
-  registerCall(userId, peerId) {
-    this.activeCalls.set(userId, peerId);
-    this.activeCalls.set(peerId, userId);
-  }
-
-  unregisterCall(userId) {
-    const peerId = this.activeCalls.get(userId);
-    this.activeCalls.delete(userId);
-    if (peerId) {
-      this.activeCalls.delete(peerId);
-    }
-  }
-
-  getActiveCall(userId) {
-    return this.activeCalls.get(userId);
-  }
-
-  // ─── Reaper (Cleanup Job) ─────────────────────────────────
-
-  async reap() {
-    const now = new Date().toISOString();
-    
-    // Delete expired attachments from disk
-    const expiredAttachments = await this.pool.query(
-      `SELECT id, total_chunks FROM attachments WHERE expires_at < $1`,
-      [now]
-    );
-
-    for (const row of expiredAttachments.rows) {
-      for (let i = 0; i < row.total_chunks; i++) {
-        const filePath = path.join(UPLOADS_DIR, `${row.id}_${i}.txt`);
-        await fs.promises.unlink(filePath).catch(() => {});
-      }
-    }
-
-    // Delete records from DB
-    await this.pool.query(`DELETE FROM attachments WHERE expires_at < $1`, [now]);
-
-    // Delete expired messages
-    const expiredMsgs = await this.pool.query(
-      `DELETE FROM encrypted_messages WHERE expires_at < $1 RETURNING id`,
-      [now]
-    );
-    
-    return expiredMsgs.rowCount;
-  }
-
-  async checkAndIncrementUploadUsage(userId, size) {
-    const now = new Date();
-    const yearMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-    const redisKey = `user:upload_limit:${userId}:${yearMonth}`;
-    const LIMIT = 50 * 1024 * 1024; // 50MB
-
-    // Atomically reserve the usage first to avoid a check-then-increment race
-    // between concurrent uploads, then roll back if it pushed us over the limit.
-    const newUsage = await this.redis.incrby(redisKey, size);
-    await this.redis.expire(redisKey, 35 * 24 * 60 * 60); // 35 days
-
-    if (newUsage > LIMIT) {
-      await this.redis.decrby(redisKey, size);
-      throw new Error('Monthly upload limit of 50MB exceeded');
-    }
-  }
-
-  // Refunds previously-charged upload usage when the chunk was never
-  // actually persisted (e.g. a disk write failure after the quota check).
-  async refundUploadUsage(userId, size) {
-    const now = new Date();
-    const yearMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-    const redisKey = `user:upload_limit:${userId}:${yearMonth}`;
-    await this.redis.decrby(redisKey, size);
+  // Tests build and tear down many stores in one process; without this the
+  // pg pool and Redis socket keep the event loop alive and the run hangs.
+  async close() {
+    await this.pool.end();
+    this.redis.disconnect();
   }
 }
 
-// Singleton instance
-const store = new DataStore();
-export default store;
+// Importing this module must not open a database connection — index.js and the
+// test harness both decide when a store is constructed, and importing app.js in
+// a test should never require a live Postgres.
+export function createStore(options) {
+  return new DataStore(options);
+}

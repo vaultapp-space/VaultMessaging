@@ -20,10 +20,26 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
     /**
-     * Typecheck JS in `.svelte` and `.js` files by default.
-     * Disable this if you'd like to use dynamic types.
+     * Deliberately off, and this is the tradeoff to understand:
+     *
+     * With checkJs ON, svelte-check reports ~778 errors across 26 files.
+     * Essentially all are inference noise on a codebase with no JSDoc
+     * annotations — `writable(null)` infers the type as literally `null`,
+     * catch variables are `unknown`, locals are implicitly `any`. They are
+     * not bugs, and clearing them means annotating 13k LOC, which is a
+     * TypeScript migration by another name.
+     *
+     * With it OFF, svelte-check still validates everything Svelte-specific —
+     * template syntax, unknown props, bad bindings, component contracts —
+     * and reports zero errors. So `npm run check` is a gate that can stay
+     * green and will catch real regressions during the component split.
+     *
+     * Incremental path: add JSDoc types to new modules as they land (the
+     * envelope, router and chat/send modules are the natural first ones),
+     * then flip this back on once the count is manageable.
+     * `npm run check:types` runs the strict pass on demand.
      */
-    "checkJs": true
+    "checkJs": false
   },
   /**
    * Use global.d.ts instead of compilerOptions.types

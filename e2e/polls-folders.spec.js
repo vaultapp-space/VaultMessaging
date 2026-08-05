@@ -1,0 +1,151 @@
+import { test, expect } from '@playwright/test';
+
+// ============================================================
+// Polls and folders
+// ============================================================
+// Two things worth proving here beyond "the buttons work":
+//
+//   - a vote reaches the other participant without a reload, which is the
+//     `poll_updated` nudge plus a per-viewer refetch (the tally cannot be
+//     broadcast, because which option is *mine* differs per reader)
+//   - a poll is not offered in a secret chat. The server refuses one, so the
+//     failure mode without this is a user composing a poll and being told no
+//     after the fact.
+
+const PASSWORD = 'a-sufficiently-long-test-password';
+
+function uniqueUsername(prefix) {
+  return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
+}
+
+async function register(page, username) {
+  await page.goto('/');
+  await page.getByRole('button', { name: /start a private chat/i }).first().click();
+  await page.getByPlaceholder('Choose a username').fill(username);
+  await page.getByPlaceholder('Min 12 characters').fill(PASSWORD);
+  await page.getByPlaceholder('Re-enter your password').fill(PASSWORD);
+  await page.getByRole('button', { name: /create secure account/i }).click();
+  await expect(page.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });
+}
+
+async function startChat(page, peerUsername, mode = 'cloud') {
+  await page.getByPlaceholder('Search users...').fill(peerUsername);
+  if (mode === 'secret') {
+    await page.getByRole('button', { name: `Start a secret chat with ${peerUsername}` })
+      .click({ timeout: 20_000 });
+  } else {
+    await page.getByText(peerUsername, { exact: false }).first().click({ timeout: 20_000 });
+  }
+  await expect(page.getByPlaceholder('Type a message...')).toBeVisible({ timeout: 20_000 });
+}
+
+async function setup(browser, mode = 'cloud') {
+  const aliceCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const bobCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const alice = await aliceCtx.newPage();
+  const bob = await bobCtx.newPage();
+
+  const aliceName = uniqueUsername('pfa');
+  const bobName = uniqueUsername('pfb');
+
+  await register(alice, aliceName);
+  await register(bob, bobName);
+  await startChat(alice, bobName, mode);
+
+  return { aliceCtx, bobCtx, alice, bob, aliceName, bobName };
+}
+
+test.describe('polls', () => {
+  test('a poll is created, voted on, and the vote reaches the other side', async ({ browser }) => {
+    const ctx = await setup(browser);
+    const { alice, bob, aliceName } = ctx;
+
+    try {
+      const question = `lunch? ${Date.now()}`;
+
+      await alice.getByTitle('Create a poll').click();
+      await alice.getByPlaceholder('Ask a question').fill(question);
+      await alice.getByPlaceholder('Option 1').fill('Ramen');
+      await alice.getByPlaceholder('Option 2').fill('Tacos');
+      await alice.getByRole('button', { name: 'Create poll' }).click();
+
+      await expect(alice.getByText(question)).toBeVisible({ timeout: 20_000 });
+
+      // Bob opens the conversation and sees the poll.
+      await bob.getByText(aliceName, { exact: false }).first().click({ timeout: 20_000 });
+      await expect(bob.getByText(question)).toBeVisible({ timeout: 20_000 });
+
+      // Before voting, no tally is shown — seeing it first would bias the answer.
+      await expect(bob.getByText('No votes yet')).toBeVisible({ timeout: 10_000 });
+
+      await bob.getByRole('button', { name: /Ramen/ }).click();
+
+      // Bob sees his own result immediately from the vote response...
+      await expect(bob.getByText('1 vote')).toBeVisible({ timeout: 15_000 });
+      // ...and Alice sees it without reloading, via poll_updated.
+      await expect(alice.getByText('1 vote')).toBeVisible({ timeout: 20_000 });
+    } finally {
+      await ctx.aliceCtx.close();
+      await ctx.bobCtx.close();
+    }
+  });
+
+  test('a secret chat is not offered a poll', async ({ browser }) => {
+    // The server refuses server-side polls in secret chats, so offering the
+    // button would let a user compose one and only then be told no.
+    const ctx = await setup(browser, 'secret');
+    const { alice } = ctx;
+
+    try {
+      await expect(alice.getByTitle('Create a poll')).toHaveCount(0);
+    } finally {
+      await ctx.aliceCtx.close();
+      await ctx.bobCtx.close();
+    }
+  });
+});
+
+test.describe('folders', () => {
+  test('a folder filters the chat list and deleting it keeps the chats', async ({ browser }) => {
+    const ctx = await setup(browser);
+    const { alice, bobName } = ctx;
+
+    try {
+      // A third party, so the folder has something to exclude.
+      const carolCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+      const carol = await carolCtx.newPage();
+      const carolName = uniqueUsername('pfc');
+      await register(carol, carolName);
+
+      await startChat(alice, carolName);
+
+      // Both conversations are in the list to begin with.
+      await expect(alice.getByRole('button', { name: new RegExp(bobName) }).first())
+        .toBeVisible({ timeout: 20_000 });
+
+      await alice.getByTitle('New folder').click();
+      await alice.getByPlaceholder('Folder name').fill('Work');
+      await alice.getByRole('checkbox').first().check();
+      await alice.getByRole('button', { name: 'Save' }).click();
+
+      await alice.getByRole('button', { name: 'Work', exact: true }).click();
+
+      // Exactly one chat survives the filter.
+      const filtered = alice.locator('button').filter({ hasText: new RegExp(`${bobName}|${carolName}`) });
+      await expect(filtered).toHaveCount(1, { timeout: 15_000 });
+
+      // Deleting the folder restores the full list — folders never own chats.
+      alice.once('dialog', (d) => d.accept());
+      await alice.getByTitle('Delete this folder').click();
+      await expect(alice.getByRole('button', { name: 'All', exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(
+        alice.locator('button').filter({ hasText: new RegExp(`${bobName}|${carolName}`) })
+      ).toHaveCount(2, { timeout: 15_000 });
+
+      await carolCtx.close();
+    } finally {
+      await ctx.aliceCtx.close();
+      await ctx.bobCtx.close();
+    }
+  });
+});

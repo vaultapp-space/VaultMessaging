@@ -1,23 +1,39 @@
 <script>
+  import { draggable } from '../lib/chat/draggable.js';
+  import { clickOutside } from '../lib/actions/clickOutside.js';
+  import { stripJpegExif, stripPngMetadata } from '../lib/chat/metadata.js';
+  import { encryptAndSend as sendEncrypted, sendMessage as sendToChat } from '../lib/chat/send.js';
+  import { markChatRead, createPoll, updateChatSettings, markStickerUsed } from '../lib/api/http.js';
+  import StickerPicker from './StickerPicker.svelte';
+  import VoiceChatBar from './VoiceChatBar.svelte';
+  import TopicBar from './TopicBar.svelte';
+  import { createTextEnvelope, createMediaEnvelope, MessageType } from '$shared/envelope.js';
+  import { capabilities } from '$shared/capabilities.js';
+  import { toggleReaction } from '../lib/chat/reactions.js';
+  import {
+    saveDraftFor, draftFor, refreshPresence, presence, describePresence,
+    blockedUsers, toggleBlock,
+  } from '../lib/chat/chatSettings.js';
+  import { editMessage } from '../lib/chat/edit.js';
+  import { deleteMessage as deleteMsg, togglePin, canDeleteForEveryone } from '../lib/chat/actions.js';
+  import {
+    forwardMessages, createInvite, listInvites, revokeInvite,
+    fetchRights, setMemberRole, banMember,
+  } from '../lib/api/http.js';
+  import { encryptSignalingPayload as encryptSignaling } from '../lib/chat/sessions.js';
   import { onMount, afterUpdate, onDestroy, tick } from 'svelte';
-  import { get } from 'svelte/store';
-  import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, groupSenderKeys, groupKeyRecipients, historyKey, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall, recentCalls, vaultMasterKey } from '../lib/stores/session.js';
-  import { messagesByPeer, addMessage, addMessages, addOptimisticMessage, confirmMessage, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
-  import { sendMessage, fetchMessages, fetchKeyBundle, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, leaveGroup, removeGroupMember } from '../lib/api/http.js';
-  import { sendTyping, wsConnected, onWsEvent } from '../lib/api/ws.js';
-  import { RatchetSession } from '../lib/crypto/ratchet.js';
-  import { x3dhInitiate, deriveInitialKeys } from '../lib/crypto/x3dh.js';
-  import { exportPublicKeyBase64, encrypt as encryptSelf, encryptFile, generateKeyPair, signData, encryptChunk, decryptChunk } from '../lib/crypto/keys.js';
-  import { SenderKeySession } from '../lib/crypto/senderkeys.js';
-  import { randomHex, toBase64, fromBase64 } from '../lib/crypto/utils.js';
+  import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall } from '../lib/stores/session.js';
+  import { messagesByPeer, addMessages, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
+  import { fetchMessages, fetchChatMessages, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, leaveGroup, removeGroupMember } from '../lib/api/http.js';
+  import { sendTyping, onWsEvent } from '../lib/api/ws.js';
+  import { exportPublicKeyBase64, encrypt as encryptFile, generateKeyPair, signData, encryptChunk } from '../lib/crypto/keys.js';
   import { getAvatarGradient } from '../lib/avatar.js';
-  import { syncCloudVault } from '../lib/crypto/sync.js';
   import MessageBubble from './MessageBubble.svelte';
   import {
     localStreamStore, remoteStreamStore, micMuted, cameraOff, remoteMicMuted, remoteCameraOff,
     isScreenSharing, verificationWords, p2pFileTransferState, isScreenShareSupported, dataChannelReady,
     startCall as webrtcStartCall, hangupCall as webrtcHangupCall,
-    toggleMic as webrtcToggleMic, toggleCamera as webrtcToggleCamera, toggleScreenShare, stopScreenShare,
+    toggleMic as webrtcToggleMic, toggleCamera as webrtcToggleCamera, toggleScreenShare,
     startP2PFileSend as webrtcStartP2PFileSend
   } from '../lib/webrtc.js';
 
@@ -27,7 +43,6 @@
   let loading = false;
   let ttlMinutes = 1440; // Default 24h
   let showTtlSelector = false;
-  const initLocks = new Map();
 
   // Optimistic & Scroll helpers
   let lastMessageCount = 0;
@@ -48,6 +63,28 @@
 
   // Reactive: get messages for active peer
   $: peerMessages = $activePeer ? ($messagesByPeer.get($activePeer.id) || []) : [];
+
+  // Album membership, computed once for the whole list rather than per bubble.
+  // A run is *consecutive* messages sharing a groupedId — the same rule
+  // Telegram uses, and the reason a later unrelated send never joins an
+  // earlier album even if the id somehow repeated.
+  $: albumRuns = (() => {
+    const first = new Map();   // index -> run length, for the first of a run
+    const inRun = new Set();   // every index that belongs to some run
+    let i = 0;
+    while (i < peerMessages.length) {
+      const gid = peerMessages[i].groupedId;
+      if (gid == null) { i += 1; continue; }
+      let j = i;
+      while (j + 1 < peerMessages.length && peerMessages[j + 1].groupedId === gid) j += 1;
+      if (j > i) {
+        first.set(i, j - i + 1);
+        for (let k = i; k <= j; k++) inRun.add(k);
+      }
+      i = j + 1;
+    }
+    return { first, inRun };
+  })();
   $: isTyping = $activePeer ? $typingUsers.has($activePeer.id) : false;
 
   $: currentRatchet = $activePeer ? $ratchetSessions.get($activePeer.id) : null;
@@ -121,58 +158,6 @@
   let callWindowSize = 'normal'; // 'normal' | 'large' | 'fullscreen'
   let position = { x: 0, y: 0 };
   let isDragging = false;
-  let dragStart = { x: 0, y: 0 };
-  let initialPosition = { x: 0, y: 0 };
-
-  function handleMouseDown(e) {
-    if (e.button !== 0) return;
-    if (e.target.closest('button') || e.target.closest('video')) return;
-    isDragging = true;
-    dragStart = { x: e.clientX, y: e.clientY };
-    initialPosition = { ...position };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }
-
-  function handleMouseMove(e) {
-    if (!isDragging) return;
-    position = {
-      x: initialPosition.x + (e.clientX - dragStart.x),
-      y: initialPosition.y + (e.clientY - dragStart.y)
-    };
-  }
-
-  function handleMouseUp() {
-    isDragging = false;
-    window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('mouseup', handleMouseUp);
-  }
-
-  function handleTouchStart(e) {
-    if (e.target.closest('button') || e.target.closest('video')) return;
-    isDragging = true;
-    const touch = e.touches[0];
-    dragStart = { x: touch.clientX, y: touch.clientY };
-    initialPosition = { ...position };
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
-    window.addEventListener('touchend', handleTouchEnd);
-  }
-
-  function handleTouchMove(e) {
-    if (!isDragging) return;
-    e.preventDefault(); // Prevent body scroll while dragging
-    const touch = e.touches[0];
-    position = {
-      x: initialPosition.x + (touch.clientX - dragStart.x),
-      y: initialPosition.y + (touch.clientY - dragStart.y)
-    };
-  }
-
-  function handleTouchEnd() {
-    isDragging = false;
-    window.removeEventListener('touchmove', handleTouchMove);
-    window.removeEventListener('touchend', handleTouchEnd);
-  }
 
   function toggleMic() {
     webrtcToggleMic();
@@ -227,7 +212,7 @@
   let recordSeconds = 0;
   let recordInterval = null;
 
-  let burnOnReadActive = false;
+  const burnOnReadActive = false;
 
   // Try to restore IndexedDB backup on login/load
   $: if ($currentUser && $localBackupEnabled && $localBackupPassphrase && !$messagesByPeer.has($activePeer?.id)) {
@@ -301,6 +286,7 @@
           });
         });
       }
+      await markConversationRead();
     } catch (err) {
       console.error('Failed to load messages:', err);
     } finally {
@@ -309,7 +295,54 @@
     }
   }
 
+  // Marks everything currently in the conversation as read.
+  //
+  // Read receipts were previously unreachable: the server handled a per-message
+  // 'read' websocket ack and MessageBubble rendered a read tick, but no client
+  // code ever sent one. This uses the watermark endpoint instead — one call per
+  // chat open rather than one per message — which is also what clears the
+  // unread badge for this user's other devices.
+  async function markConversationRead() {
+    const chatId = $activePeer?.chatId;
+    if (!chatId) return; // legacy conversation with no chat row yet
+
+    const messages = $messagesByPeer.get($activePeer.id) || [];
+    const maxSeq = messages.reduce((max, m) => (m.seq > max ? m.seq : max), 0);
+    if (maxSeq <= 0) return;
+
+    try {
+      const { unreadCount } = await markChatRead(chatId, maxSeq);
+      conversations.update(cs => {
+        const conv = cs.find(c => c.chatId === chatId);
+        if (conv) {
+          conv.unreadCount = unreadCount;
+          conv.hasUndelivered = unreadCount > 0;
+        }
+        return [...cs];
+      });
+    } catch (err) {
+      // Never let a failed receipt break opening a conversation.
+      console.error('Failed to mark chat read:', err);
+    }
+  }
+
   async function loadMessagesData() {
+    // Cloud chats read their history from the chat model, which returns
+    // plaintext columns. The legacy pairwise endpoint below returns ciphertext
+    // and marks everything `encrypted: true`, so routing a cloud chat through
+    // it produced an empty conversation on every reopen — live messages
+    // arrived over the socket and nothing else ever did.
+    if ($activePeer.mode === 'cloud' && $activePeer.chatId) {
+      const cloud = await fetchChatMessages($activePeer.chatId, { topicId: activeTopicId });
+      hasMore = cloud.hasMore;
+      if (cloud.messages?.length) {
+        // Already in the normalized shape the store expects, so it is passed
+        // through rather than re-mapped.
+        addMessages($activePeer.id, cloud.messages);
+      }
+      return { hasMore: cloud.hasMore, messages: cloud.messages };
+    }
+
     const data = await fetchMessages($activePeer.id);
     hasMore = data.hasMore;
     if (data.messages && data.messages.length > 0) {
@@ -333,338 +366,375 @@
     return data;
   }
 
-  async function getOrCreateRatchetForUser(userId, username) {
-    const sessions = get(ratchetSessions);
+  // webrtc.js invokes this as (peerId, payload). The peer's username is not
+  // part of that contract, so it is bound here where it is known.
+  function encryptSignalingPayload(peerId, payloadObj) {
+    return encryptSignaling(peerId, payloadObj, callingPeer || $activePeer?.username);
+  }
 
-    if (sessions.has(userId)) {
-      return { ratchet: sessions.get(userId), isNew: false };
+  // What this conversation supports, from its mode. Used to hide affordances
+  // that would be meaningless or misleading in the other mode.
+  $: chatCaps = capabilities({ mode: $activePeer?.mode || 'secret' });
+
+  // True when this conversation has had messages before but they have since
+  // expired — as opposed to a chat that was never used. Comes from the chat
+  // list, where isEmpty means the chat row outlived its contents.
+  $: conversationExpired = Boolean($activePeer?.isEmpty && $activePeer?.lastMessageAt);
+
+  // The message currently being replied to, or null. Cleared on send, on
+  // cancel, and whenever the conversation changes — a reply bar left over
+  // from another chat would silently attach the reply to the wrong message.
+  let composerEl;
+  let replyingTo = null;
+  // The message being edited, or null. Mutually exclusive with replying:
+  // the composer can only be doing one thing at a time.
+  let editingMessage = null;
+  $: if ($activePeer) { void $activePeer.id; replyingTo = null; editingMessage = null; }
+
+  function startReply(message) {
+    editingMessage = null;
+    replyingTo = message;
+    composerEl?.focus();
+  }
+
+  function startEdit(message) {
+    replyingTo = null;
+    editingMessage = message;
+    messageText = message.text || '';
+    composerEl?.focus();
+  }
+
+  function cancelEdit() {
+    editingMessage = null;
+    messageText = '';
+  }
+
+  function cancelReply() {
+    replyingTo = null;
+  }
+
+  // Scrolls to a message by its per-chat seq and flashes it, so tapping a
+  // quoted preview lands you on the original.
+  async function jumpToSeq(seq) {
+    const target = messagesContainer?.querySelector(`[data-seq="${seq}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.classList.add('reply-flash');
+    setTimeout(() => target.classList.remove('reply-flash'), 1200);
+  }
+
+  // Finds the quoted message so the preview can render its text.
+  function quotedMessage(seq) {
+    if (!seq) return null;
+    return peerMessages.find((m) => m.seq === seq) || null;
+  }
+
+  // ─── Invites and rights ─────────────────────────────────
+  // Replaces the old `joinKey`, which was a permanent bearer secret: anyone
+  // who ever saw it could rejoin forever, with no way to withdraw it.
+  let myRights = [];
+  let invites = [];
+  let loadingInvites = false;
+
+  $: canManageInvites = myRights.includes('manageInvites');
+  $: canBan = myRights.includes('ban');
+  $: canPromote = myRights.includes('promote');
+
+  // Rights are resolved server-side; this is only a UI hint.
+  $: if ($activePeer?.chatId) void loadRights($activePeer.chatId);
+
+  async function loadRights(chatId) {
+    try {
+      myRights = (await fetchRights(chatId)).rights;
+    } catch {
+      myRights = [];
     }
+  }
 
-    const _ikp = get(identityKeyPair);
-    if (!_ikp) {
-      throw new Error('No identity key pair available');
+  async function loadInvites() {
+    if (!$activePeer?.chatId || !canManageInvites) return;
+    loadingInvites = true;
+    try {
+      invites = (await listInvites($activePeer.chatId)).invites;
+    } catch (err) {
+      console.error('Failed to load invites:', err);
+      invites = [];
+    } finally {
+      loadingInvites = false;
     }
+  }
 
-    const bundle = await fetchKeyBundle(username);
-    const { sharedSecret, ephemeralKeyPair, ephemeralPublicKey } = await x3dhInitiate(_ikp, bundle);
-    const { rootKey, chainKey } = await deriveInitialKeys(sharedSecret);
+  async function makeInvite({ expiresHours = null, usageLimit = null } = {}) {
+    try {
+      const invite = await createInvite($activePeer.chatId, {
+        expiresAt: expiresHours
+          ? new Date(Date.now() + expiresHours * 3600_000).toISOString()
+          : null,
+        usageLimit,
+      });
+      invites = [invite, ...invites];
+      await copyInvite(invite.hash);
+    } catch (err) {
+      console.error('Failed to create invite:', err);
+      alert('Could not create an invite link');
+    }
+  }
 
-    const ratchet = new RatchetSession();
-    await ratchet.initAsSender(rootKey, chainKey, bundle.signedPrekey, bundle.identityKey);
+  async function copyInvite(hash) {
+    const link = `${window.location.origin}/join/${hash}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      inviteCopied = hash;
+      setTimeout(() => { if (inviteCopied === hash) inviteCopied = null; }, 2000);
+    } catch {
+      // Clipboard can be denied; showing the link is the fallback.
+      prompt('Copy this invite link:', link);
+    }
+  }
+  let inviteCopied = null;
 
-    ratchetSessions.update(map => {
-      map.set(userId, ratchet);
-      return new Map(map);
-    });
+  async function doRevokeInvite(hash) {
+    if (!confirm('Revoke this link? Anyone still holding it will no longer be able to join.')) return;
+    try {
+      await revokeInvite($activePeer.chatId, hash);
+      invites = invites.map((i) => (i.hash === hash ? { ...i, revoked: true } : i));
+    } catch (err) {
+      console.error('Failed to revoke invite:', err);
+    }
+  }
 
-    const ecdhPub = await exportPublicKeyBase64(_ikp.ecdh.publicKey);
-    const ecdsaPub = await exportPublicKeyBase64(_ikp.ecdsa.publicKey);
-    const ownIdentityPub = btoa(JSON.stringify({ ecdh: ecdhPub, ecdsa: ecdsaPub }));
+  async function promote(member) {
+    try {
+      await setMemberRole($activePeer.chatId, member.id, 'admin');
+      alert(`${member.username} is now an admin`);
+    } catch (err) {
+      console.error('Failed to promote:', err);
+      alert('Could not change that member\'s role');
+    }
+  }
 
+  async function ban(member) {
+    if (!confirm(`Ban ${member.username}? They will be removed and cannot rejoin with an invite link.`)) return;
+    try {
+      await banMember($activePeer.chatId, member.id);
+      activePeer.update((p) => {
+        if (p?.members) p.members = p.members.filter((m) => m.id !== member.id);
+        return p;
+      });
+    } catch (err) {
+      console.error('Failed to ban:', err);
+      alert('Could not ban that member');
+    }
+  }
+
+  function describeInvite(invite) {
+    if (invite.revoked) return 'revoked';
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) return 'expired';
+    const used = invite.usage_limit
+      ? `${invite.usage_count}/${invite.usage_limit} used`
+      : `${invite.usage_count} used`;
+    return used;
+  }
+
+  // ─── Blocking ───────────────────────────────────────────
+  let showChatMenu = false;
+
+  $: peerBlocked = $activePeer && !$activePeer.isGroup
+    && $blockedUsers.has($activePeer.id);
+
+  async function handleToggleBlock() {
+    showChatMenu = false;
+    if (!$activePeer || $activePeer.isGroup) return;
+
+    const blocking = !peerBlocked;
+    if (blocking && !confirm(
+      `Block ${$activePeer.username}?\n\nThey will not be able to message you, and you will not be able to message them. They are not told that you blocked them.`
+    )) return;
+
+    try {
+      await toggleBlock($activePeer.id);
+    } catch (err) {
+      console.error('Failed to change block state:', err);
+      alert('Could not update block settings');
+    }
+  }
+
+  // ─── Forwarding ─────────────────────────────────────────
+  // Only cloud chats can be forwarded into: the server copies the body, and
+  // it has no plaintext to copy for a secret destination. Those are filtered
+  // out of the picker rather than failing after the user has chosen one.
+  let forwardingMessage = null;
+
+  function startForward(message) {
+    forwardingMessage = message;
+  }
+
+  $: forwardTargets = $conversations.filter(
+    (c) => c.chatId && c.mode === 'cloud' && c.chatId !== $activePeer?.chatId
+  );
+
+  async function doForward(target) {
+    const message = forwardingMessage;
+    forwardingMessage = null;
+    if (!message?.seq || !$activePeer?.chatId) return;
+
+    try {
+      await forwardMessages($activePeer.chatId, target.chatId, [message.seq]);
+    } catch (err) {
+      console.error('Failed to forward:', err);
+      alert('Failed to forward message');
+    }
+  }
+
+  // ─── Drafts ─────────────────────────────────────────────
+  // Restored when a conversation opens, saved as you type (debounced), and
+  // cleared on send. Cloud chats sync theirs so a half-written message
+  // follows you between devices; secret chats keep theirs on the device,
+  // because a draft is plaintext.
+  let draftTimer;
+  let draftLoadedFor = null;
+
+  $: if ($activePeer && $activePeer.id !== draftLoadedFor) {
+    draftLoadedFor = $activePeer.id;
+    const existing = draftFor($activePeer);
+    if (existing && !messageText) messageText = existing;
+  }
+
+  function scheduleDraftSave() {
+    if (!$activePeer?.chatId || editingMessage) return;
+    clearTimeout(draftTimer);
+    const body = messageText;
+    draftTimer = setTimeout(() => saveDraftFor($activePeer, body), 600);
+  }
+
+  // ─── Presence ───────────────────────────────────────────
+  $: peerPresence = $activePeer && !$activePeer.isGroup
+    ? $presence.get($activePeer.id)
+    : null;
+
+  $: if ($activePeer && !$activePeer.isGroup) refreshPresence([$activePeer.id]);
+
+  function chatRef() {
+    return { id: $activePeer.chatId || $activePeer.id, mode: $activePeer.mode || 'secret' };
+  }
+
+  function actionContext() {
     return {
-      ratchet,
-      isNew: true,
-      x3dhParams: {
-        ik: ownIdentityPub,
-        ek: ephemeralPublicKey,
-        opk: bundle.oneTimePrekey
-      }
+      storeKey: $activePeer.id,
+      peer: $activePeer,
+      currentUser: $currentUser,
+      ttlMinutes,
+      chatId: $activePeer.chatId,
     };
   }
 
-  async function encryptSignalingPayload(peerId, payloadObj) {
-    const { ratchet, isNew, x3dhParams } = await getOrCreateRatchetForUser(peerId, callingPeer || $activePeer?.username);
-    const textToEncrypt = JSON.stringify(payloadObj);
-    const { header, iv, ciphertext } = await ratchet.ratchetEncrypt(textToEncrypt);
+  // Deleting is the one action here that destroys something, so it asks
+  // first — and it distinguishes the two meanings of the word rather than
+  // silently picking one. Only the author is offered "for everyone".
+  async function handleDelete(message) {
+    const mine = canDeleteForEveryone(message, $currentUser?.id);
+    const forEveryone = mine
+      ? confirm('Delete this message for everyone? This cannot be undone.\n\nCancel to remove it only from your view.')
+      : false;
 
-    const packagedCiphertext = btoa(JSON.stringify({
-      bob: { ct: ciphertext, iv: iv }
-    }));
+    if (!mine && !confirm('Remove this message from your view? Others will still see it.')) return;
 
-    const packagedEphemeralHeader = JSON.stringify(isNew ? {
-      type: 'x3dh',
-      ik: x3dhParams.ik,
-      ek: x3dhParams.ek,
-      opk: x3dhParams.opk,
-      rk: header.publicKey
-    } : {
-      type: 'ratchet',
-      rk: header.publicKey
-    });
-
-    return {
-      ciphertext: packagedCiphertext,
-      ephemeralKey: packagedEphemeralHeader,
-      messageNumber: header.messageNumber,
-      previousChain: header.previousChainLength,
-      iv: iv
-    };
+    try {
+      await deleteMsg(chatRef(), message, { forEveryone, ...actionContext() });
+    } catch (err) {
+      console.error('Failed to delete message:', err);
+    }
   }
 
-  async function encryptAndSend(text, isAttachment = false) {
-    const tempId = `temp-${randomHex(8)}`;
-
-    let attachmentId = null;
-    if (isAttachment) {
-      try {
-        const parsed = JSON.parse(text);
-        attachmentId = parsed.id;
-      } catch (err) {}
+  async function handleTogglePin(message) {
+    try {
+      await togglePin(chatRef(), message, actionContext());
+    } catch (err) {
+      console.error('Failed to pin message:', err);
     }
+  }
 
-    addOptimisticMessage($activePeer.id, {
-      id: tempId,
-      senderId: $currentUser.id,
-      text: text,
-      encrypted: false,
-      sentAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + ttlMinutes * 60000).toISOString(),
+  // Reacting works in both modes: cloud posts to the reactions endpoint,
+  // secret sends an encrypted t:'op' envelope that peers apply locally. The
+  // bubble calls this and never learns which happened.
+  async function handleToggleReaction(message, emoji) {
+    if (!$activePeer?.chatId) return;
+    try {
+      await toggleReaction(
+        { id: $activePeer.chatId, mode: $activePeer.mode || 'secret' },
+        message,
+        emoji,
+        {
+          storeKey: $activePeer.id,
+          peer: $activePeer,
+          currentUser: $currentUser,
+          ttlMinutes,
+        }
+      );
+    } catch (err) {
+      console.error('Failed to toggle reaction:', err);
+    }
+  }
+
+  // Binds the component's conversation context to the extracted send path.
+  function encryptAndSend(text, isAttachment = false) {
+    return sendEncrypted(text, isAttachment, {
+      peer: $activePeer,
+      currentUser: $currentUser,
+      ttlMinutes,
     });
-
-    if ($activePeer.isGroup) {
-      // 1. Get or create our own Sender Key for this group
-      const mySessionKey = `${$activePeer.id}:${$currentUser.id}`;
-      let mySession = $groupSenderKeys.get(mySessionKey);
-      if (!mySession) {
-        mySession = new SenderKeySession($currentUser.id, $activePeer.id);
-        await mySession.initSelf();
-        groupSenderKeys.update(m => { m.set(mySessionKey, mySession); return m; });
-      }
-
-      const otherMembers = $activePeer.members.filter(m => m.id !== $currentUser.id);
-
-      // 2. Distribute our Sender Key to any current member who doesn't have it yet
-      // (new session, or a member who joined after we last distributed) — not just
-      // the first time we ever create a session for this group.
-      const alreadySent = $groupKeyRecipients.get(mySessionKey) || new Set();
-      const pendingMembers = otherMembers.filter(m => !alreadySent.has(m.id));
-
-      if (pendingMembers.length > 0) {
-        const pack = await mySession.exportDistributionPackage();
-        const distributionPayload = JSON.stringify({
-          type: 'senderkey_distribution',
-          groupId: $activePeer.id,
-          pack
-        });
-
-        await Promise.all(pendingMembers.map(async (member) => {
-          try {
-            const { ratchet, isNew, x3dhParams } = await getOrCreateRatchetForUser(member.id, member.username);
-            const { header, iv, ciphertext } = await ratchet.ratchetEncrypt(distributionPayload);
-
-            let selfCiphertext = null;
-            let selfIv = null;
-            const _hk = get(historyKey);
-            if (_hk) {
-              const encSelf = await encryptSelf(_hk, distributionPayload);
-              selfCiphertext = encSelf.ciphertext;
-              selfIv = encSelf.iv;
-            }
-
-            const packagedCiphertext = btoa(JSON.stringify({
-              bob: { ct: ciphertext, iv: iv },
-              self: { ct: selfCiphertext, iv: selfIv }
-            }));
-
-            const packagedEphemeralHeader = JSON.stringify(isNew ? {
-              type: 'x3dh',
-              ik: x3dhParams.ik,
-              ek: x3dhParams.ek,
-              opk: x3dhParams.opk,
-              rk: header.publicKey
-            } : {
-              type: 'ratchet',
-              rk: header.publicKey
-            });
-
-            await sendMessage({
-              recipientId: member.id,
-              ciphertext: packagedCiphertext,
-              ephemeralKey: packagedEphemeralHeader,
-              messageNumber: header.messageNumber,
-              previousChain: header.previousChainLength,
-              ttlMinutes,
-              iv: iv,
-              groupId: $activePeer.id.replace('group-', '')
-            });
-
-            groupKeyRecipients.update(m => {
-              const set = m.get(mySessionKey) || new Set();
-              set.add(member.id);
-              m.set(mySessionKey, set);
-              return m;
-            });
-          } catch (e) {
-            console.error(`Failed to distribute group Sender Key to ${member.username}:`, e);
-          }
-        }));
-      }
-
-      // 3. Encrypt the group message payload ONCE using the Sender Key
-      const packet = await mySession.encrypt(text);
-
-      let selfCiphertext = null;
-      let selfIv = null;
-      const _hk = get(historyKey);
-      if (_hk) {
-        const encSelf = await encryptSelf(_hk, text);
-        selfCiphertext = encSelf.ciphertext;
-        selfIv = encSelf.iv;
-      }
-
-      const packagedCiphertext = btoa(JSON.stringify({
-        bob: {
-          ct: packet.ciphertext,
-          iv: packet.iv,
-          senderKey: {
-            messageNumber: packet.messageNumber,
-            signature: packet.signature,
-            groupId: packet.groupId,
-            senderId: packet.senderId
-          }
-        },
-        self: { ct: selfCiphertext, iv: selfIv }
-      }));
-
-      // 4. Dispatch the encrypted ciphertext to all group members
-      const sendPromises = otherMembers.map(async (member) => {
-        try {
-          return await sendMessage({
-            recipientId: member.id,
-            ciphertext: packagedCiphertext,
-            ephemeralKey: JSON.stringify({ type: 'senderkey' }),
-            messageNumber: packet.messageNumber,
-            previousChain: 0,
-            ttlMinutes,
-            iv: packet.iv,
-            groupId: $activePeer.id.replace('group-', ''),
-            // Only send the key when there actually is an attachment — an
-            // explicit null is rejected by the server's UUID validation.
-            ...(attachmentId ? { attachmentId } : {})
-          });
-        } catch (e) {
-          console.error(`Failed to send SenderKey group message to ${member.username}:`, e);
-        }
-      });
-
-      const results = await Promise.all(sendPromises);
-      const successResult = results.find(r => r !== undefined);
-
-      if (!successResult && otherMembers.length > 0) {
-        throw new Error('Failed to send group message.');
-      }
-
-      // Best-effort cloud backup — must never cause the message/attachment
-      // itself (already successfully sent above) to be reported as failed.
-      try {
-        await syncCloudVault();
-      } catch (syncErr) {
-        console.error('Cloud vault sync failed after send:', syncErr);
-      }
-
-      // No other members to deliver to (e.g. you're the sole remaining
-      // member of the group) — confirm locally using the optimistic values
-      // instead of a server-assigned id/timestamp.
-      const confirmedAt = successResult ? successResult.sentAt : new Date().toISOString();
-      confirmMessage($activePeer.id, tempId, {
-        id: successResult ? successResult.id : tempId,
-        sentAt: confirmedAt,
-        expiresAt: successResult ? successResult.expiresAt : new Date(Date.now() + ttlMinutes * 60000).toISOString(),
-        delivered: true
-      });
-
-      conversations.update(convs => {
-        const existing = convs.find(c => c.peerId === $activePeer.id);
-        if (existing) {
-          existing.lastMessageAt = confirmedAt;
-          const idx = convs.indexOf(existing);
-          if (idx > 0) {
-            convs.splice(idx, 1);
-            convs.unshift(existing);
-          }
-        }
-        return [...convs];
-      });
-
-    } else {
-      const { ratchet, isNew, x3dhParams } = await getOrCreateRatchetForUser($activePeer.id, $activePeer.username);
-      const { header, iv, ciphertext } = await ratchet.ratchetEncrypt(text);
-
-      let selfCiphertext = null;
-      let selfIv = null;
-      const _hk = get(historyKey);
-      if (_hk) {
-        const encSelf = await encryptSelf(_hk, text);
-        selfCiphertext = encSelf.ciphertext;
-        selfIv = encSelf.iv;
-      }
-
-      const packagedCiphertext = btoa(JSON.stringify({
-        bob: { ct: ciphertext, iv: iv },
-        self: { ct: selfCiphertext, iv: selfIv }
-      }));
-
-      const packagedEphemeralHeader = JSON.stringify(isNew ? {
-        type: 'x3dh',
-        ik: x3dhParams.ik,
-        ek: x3dhParams.ek,
-        opk: x3dhParams.opk,
-        rk: header.publicKey
-      } : {
-        type: 'ratchet',
-        rk: header.publicKey
-      });
-
-      const result = await sendMessage({
-        recipientId: $activePeer.id,
-        ciphertext: packagedCiphertext,
-        ephemeralKey: packagedEphemeralHeader,
-        messageNumber: header.messageNumber,
-        previousChain: header.previousChainLength,
-        ttlMinutes,
-        iv: iv,
-        ...(attachmentId ? { attachmentId } : {})
-      });
-
-      // Best-effort cloud backup — must never cause the message/attachment
-      // itself (already successfully sent above) to be reported as failed.
-      try {
-        await syncCloudVault();
-      } catch (syncErr) {
-        console.error('Cloud vault sync failed after send:', syncErr);
-      }
-
-      confirmMessage($activePeer.id, tempId, {
-        id: result.id,
-        sentAt: result.sentAt,
-        expiresAt: result.expiresAt,
-        delivered: result.delivered
-      });
-
-      conversations.update(convs => {
-        const existing = convs.find(c => c.peerId === $activePeer.id);
-        if (existing) {
-          existing.lastMessageAt = result.sentAt;
-          const idx = convs.indexOf(existing);
-          if (idx > 0) {
-            convs.splice(idx, 1);
-            convs.unshift(existing);
-          }
-        }
-        return [...convs];
-      });
-    }
   }
 
   async function handleSend() {
     if (!messageText.trim() || sendingMessage) return;
+    if (peerBlocked) return;
 
     const text = messageText.trim();
+    const editTarget = editingMessage;
     messageText = '';
     sendingMessage = true;
 
     try {
-      await encryptAndSend(text);
+      if (editTarget) {
+        editingMessage = null;
+        await editMessage(
+          { id: $activePeer.chatId || $activePeer.id, mode: $activePeer.mode || 'secret' },
+          editTarget,
+          text,
+          {
+            storeKey: $activePeer.id,
+            peer: $activePeer,
+            currentUser: $currentUser,
+            ttlMinutes,
+            chatId: $activePeer.chatId,
+          }
+        );
+        return;
+      }
+
+      // Goes through the dual-mode fork: sendMessage decides from chat.mode
+      // whether this is encrypted through the ratchet or posted as a cloud
+      // message. Everything above this line is mode-agnostic.
+      await sendToChat(
+        { id: $activePeer.chatId || $activePeer.id, mode: $activePeer.mode || 'secret' },
+        createTextEnvelope(text, {
+          replyTo: replyingTo?.seq
+            ? { chatId: $activePeer.chatId, seq: replyingTo.seq }
+            : null,
+          viewOnce: viewOnceActive,
+        }),
+        {
+          peer: $activePeer, currentUser: $currentUser, ttlMinutes,
+          chatId: $activePeer.chatId,
+          // Cloud only. A secret chat has no server-side topic model, and
+          // forums are a cloud-group feature.
+          topicId: activeTopicId,
+        }
+      );
+      replyingTo = null;
+      viewOnceActive = false;
+      clearTimeout(draftTimer);
+      if ($activePeer?.chatId) saveDraftFor($activePeer, '');
     } catch (err) {
       console.error('Failed to send message:', err);
       alert('Failed to send message');
@@ -674,6 +744,13 @@
   }
 
   function handleKeydown(e) {
+    // Escape backs out of edit or reply mode, which is what every messenger
+    // does and what a user will try first.
+    if (e.key === 'Escape') {
+      if (editingMessage) { cancelEdit(); return; }
+      if (replyingTo) { cancelReply(); return; }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -681,6 +758,7 @@
   }
 
   function handleInput() {
+    scheduleDraftSave();
     // Throttled typing indicator — at most once every 2s
     if ($activePeer) {
       const now = Date.now();
@@ -702,12 +780,17 @@
     loadingOlder = true;
     try {
       const oldestMsg = peerMessages[0];
-      const data = await fetchMessages($activePeer.id, 50, oldestMsg.sentAt);
+      const isCloud = $activePeer.mode === 'cloud' && $activePeer.chatId;
+      const data = isCloud
+        ? await fetchChatMessages($activePeer.chatId, { before: oldestMsg.seq })
+        : await fetchMessages($activePeer.id, 50, oldestMsg.sentAt);
       if (data.messages && data.messages.length > 0) {
         const oldScrollHeight = messagesContainer.scrollHeight;
         const oldScrollTop = messagesContainer.scrollTop;
-        
-        addMessages($activePeer.id, data.messages.map(msg => ({
+
+        // Cloud history is already in the store's shape; only the legacy
+        // ciphertext rows need mapping.
+        addMessages($activePeer.id, isCloud ? data.messages : data.messages.map(msg => ({
           id: msg.id,
           senderId: msg.sender_id,
           senderUsername: msg.sender_username,
@@ -815,123 +898,180 @@
   }
 
   let fileInput;
-  let sendingFile = false;
 
-  function stripJpegExif(arrayBuffer) {
-    const view = new DataView(arrayBuffer);
-    if (view.byteLength < 4 || view.getUint16(0) !== 0xFFD8) {
-      return arrayBuffer; // Not a JPEG
-    }
-    
-    let offset = 2;
-    const length = view.byteLength;
-    const newSegments = [new Uint8Array(arrayBuffer.slice(0, 2))]; // Start with SOI (FFD8)
-    
-    while (offset < length) {
-      if (offset + 2 > length) break;
-      const marker = view.getUint16(offset);
-      
-      if ((marker & 0xFF00) === 0xFF00) {
-        if (marker === 0xFFD9) {
-          // EOI (End of Image)
-          newSegments.push(new Uint8Array(arrayBuffer.slice(offset)));
-          break;
-        }
-        
-        if (offset + 4 > length) {
-          newSegments.push(new Uint8Array(arrayBuffer.slice(offset)));
-          break;
-        }
-        const segmentLength = view.getUint16(offset + 2) + 2;
-        if (offset + segmentLength > length) {
-          newSegments.push(new Uint8Array(arrayBuffer.slice(offset)));
-          break;
-        }
-        
-        // If it is APP1 (EXIF / Metadata / GPS) marker FFE1, skip it!
-        if (marker === 0xFFE1) {
-          // Skip segment
-        } else {
-          // Keep segment
-          newSegments.push(new Uint8Array(arrayBuffer.slice(offset, offset + segmentLength)));
-        }
-        offset += segmentLength;
-      } else {
-        // SOS or entropy-coded data, runs to the end
-        newSegments.push(new Uint8Array(arrayBuffer.slice(offset)));
-        break;
-      }
-    }
-    
-    const totalLength = newSegments.reduce((sum, seg) => sum + seg.length, 0);
-    const cleanBuffer = new Uint8Array(totalLength);
-    let writeOffset = 0;
-    for (const seg of newSegments) {
-      cleanBuffer.set(seg, writeOffset);
-      writeOffset += seg.length;
-    }
-    return cleanBuffer.buffer;
+  // ─── Polls ────────────────────────────────────────────────
+  // Cloud only. The capability table lists polls as universal because the
+  // envelope can carry one either way, but the secret-chat path would have to
+  // tally votes client-side through `t:'op'` messages and that is not built —
+  // the server refuses a poll in a secret chat, so the button is not offered
+  // there rather than failing after the user has typed one out.
+  let showPollComposer = false;
+  let pollQuestion = '';
+  let pollOptions = ['', ''];
+  let pollAnonymous = true;
+  let pollMultiple = false;
+  let pollError = '';
+  let creatingPoll = false;
+
+  $: canPoll = $activePeer?.mode === 'cloud' && $activePeer?.chatId;
+
+  // ─── Forum topics ─────────────────────────────────────────
+  // The selected topic narrows the message list and tags what is sent. Reset
+  // whenever the conversation changes, or a topic from the previous group
+  // would silently file the next message into the wrong thread.
+  let activeTopicId = null;
+  $: if ($activePeer) { void $activePeer.id; activeTopicId = null; }
+
+  function selectTopic(topicId) {
+    activeTopicId = topicId;
+    // The store is keyed by peer, not by topic, so switching topics has to
+    // reload rather than filter what is already held.
+    loadMessages();
   }
 
-  function stripPngMetadata(arrayBuffer) {
-    const view = new DataView(arrayBuffer);
-    if (view.byteLength < 8 || view.getUint32(0) !== 0x89504E47 || view.getUint32(4) !== 0x0D0A1A0A) {
-      return arrayBuffer; // Not a PNG
+  // ─── Chat theme ───────────────────────────────────────────
+  // A name from a fixed list, never a colour: the value round-trips through
+  // the server and back out to the other participant's client, so accepting
+  // arbitrary CSS would hand anyone you talk to a styling primitive in your
+  // browser. The swatches below are only for the picker.
+  const CHAT_THEMES = [
+    { name: null,      label: 'Default', swatch: '#10b981' },
+    { name: 'ocean',   label: 'Ocean',   swatch: '#0ea5e9' },
+    { name: 'sunset',  label: 'Sunset',  swatch: '#f97316' },
+    { name: 'orchid',  label: 'Orchid',  swatch: '#a855f7' },
+    { name: 'rose',    label: 'Rose',    swatch: '#f43f5e' },
+    { name: 'slate',   label: 'Slate',   swatch: '#64748b' },
+  ];
+
+  let chatTheme = null;
+  // Re-read from the conversation whenever the open chat changes, so the
+  // previous chat's accent does not bleed into the next one.
+  $: chatTheme = $conversations.find((c) => c.chatId === $activePeer?.chatId)?.theme ?? null;
+
+  async function applyTheme(name) {
+    if (!$activePeer?.chatId) return;
+    const previous = chatTheme;
+    chatTheme = name;
+    conversations.update((convs) => convs.map(
+      (c) => (c.chatId === $activePeer.chatId ? { ...c, theme: name } : c)
+    ));
+    try {
+      await updateChatSettings($activePeer.chatId, { theme: name });
+    } catch (err) {
+      console.error('Failed to save chat theme:', err);
+      chatTheme = previous;
     }
-    
-    let offset = 8;
-    const length = view.byteLength;
-    const newSegments = [new Uint8Array(arrayBuffer.slice(0, 8))]; // PNG Signature
-    
-    while (offset < length) {
-      if (offset + 12 > length) {
-        newSegments.push(new Uint8Array(arrayBuffer.slice(offset)));
-        break;
-      }
-      const chunkLength = view.getUint32(offset);
-      const chunkType = String.fromCharCode(
-        view.getUint8(offset + 4),
-        view.getUint8(offset + 5),
-        view.getUint8(offset + 6),
-        view.getUint8(offset + 7)
+  }
+
+  // ─── Stickers ─────────────────────────────────────────────
+  // Works in both modes. A sticker message carries a *reference* to the
+  // sticker, so in a secret chat it goes through the ratchet like any other
+  // envelope and the server never learns that a sticker was sent, let alone
+  // which one. That is why the recents call is made by this client rather
+  // than inferred server-side from the send.
+  let showStickers = false;
+
+  async function sendSticker(sticker) {
+    showStickers = false;
+    if (!$activePeer) return;
+    try {
+      await sendToChat(
+        { id: $activePeer.chatId || $activePeer.id, mode: $activePeer.mode || 'secret' },
+        createMediaEnvelope(MessageType.STICKER, {
+          stickerId: sticker.id,
+          fileId: sticker.fileId,
+          emoji: sticker.emoji,
+          width: sticker.width,
+          height: sticker.height,
+        }),
+        { peer: $activePeer, currentUser: $currentUser, ttlMinutes, chatId: $activePeer.chatId }
       );
-      
-      const fullChunkLength = 12 + chunkLength;
-      if (offset + fullChunkLength > length) {
-        newSegments.push(new Uint8Array(arrayBuffer.slice(offset)));
-        break;
-      }
-      
-      // List of metadata chunk types to skip
-      const metadataChunks = ['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME', 'dIHg'];
-      
-      if (metadataChunks.includes(chunkType)) {
-        // Skip metadata chunk
-      } else {
-        // Keep chunk
-        newSegments.push(new Uint8Array(arrayBuffer.slice(offset, offset + fullChunkLength)));
-      }
-      
-      offset += fullChunkLength;
+      // Best-effort: a missing recents entry is not worth failing a send over.
+      markStickerUsed(sticker.id).catch(() => {});
+    } catch (err) {
+      console.error('Failed to send sticker:', err);
+      alert('Failed to send sticker');
     }
-    
-    const totalLength = newSegments.reduce((sum, seg) => sum + seg.length, 0);
-    const cleanBuffer = new Uint8Array(totalLength);
-    let writeOffset = 0;
-    for (const seg of newSegments) {
-      cleanBuffer.set(seg, writeOffset);
-      writeOffset += seg.length;
+  }
+
+  // ─── View-once ────────────────────────────────────────────
+  // Cloud only, and for a real reason: the guarantee is that the *server*
+  // clears the content once it has been opened. A secret chat's server holds
+  // only ciphertext, so there is nothing for it to clear — burn-on-read is
+  // the honest equivalent there, and it is already labelled as client-side.
+  $: canViewOnce = $activePeer?.mode === 'cloud' && $activePeer?.chatId;
+  let viewOnceActive = false;
+  // Turning it off when leaving a cloud chat stops the toggle silently
+  // persisting into a conversation that cannot honour it.
+  $: if (!canViewOnce) viewOnceActive = false;
+
+  function openPollComposer() {
+    pollQuestion = '';
+    pollOptions = ['', ''];
+    pollAnonymous = true;
+    pollMultiple = false;
+    pollError = '';
+    showPollComposer = true;
+  }
+
+  async function submitPoll() {
+    const question = pollQuestion.trim();
+    const options = pollOptions.map((o) => o.trim()).filter(Boolean);
+    if (!question) { pollError = 'Give the poll a question.'; return; }
+    if (options.length < 2) { pollError = 'A poll needs at least two options.'; return; }
+
+    creatingPoll = true;
+    pollError = '';
+    try {
+      await createPoll($activePeer.chatId, {
+        question, options,
+        isAnonymous: pollAnonymous,
+        allowsMultiple: pollMultiple,
+      });
+      // The poll arrives through the normal message fanout, so there is
+      // nothing to insert here.
+      showPollComposer = false;
+    } catch (err) {
+      console.error('Failed to create poll:', err);
+      pollError = 'Could not create the poll.';
+    } finally {
+      creatingPoll = false;
     }
-    return cleanBuffer.buffer;
+  }
+  let sendingFile = false;
+
+  // Picks the envelope type from the mime type, so a photo, a video and a
+  // generic file are distinguishable without re-sniffing later.
+  function mediaKindFor(mimeType) {
+    if (!mimeType) return MessageType.DOCUMENT;
+    if (mimeType.startsWith('image/')) return MessageType.PHOTO;
+    if (mimeType.startsWith('video/')) return MessageType.VIDEO;
+    if (mimeType.startsWith('audio/')) return MessageType.AUDIO;
+    return MessageType.DOCUMENT;
   }
 
   async function handleFileChange(e) {
-    const file = e.target.files[0];
-    if (!file || !$activePeer) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0 || !$activePeer) return;
 
+    // Several files picked at once become an album: one shared id the
+    // message list grids on. A single file gets no id, so an ordinary send
+    // produces exactly the payload it always did.
+    const albumId = files.length > 1 ? String(Date.now()) : null;
+
+    try {
+      for (const file of files) {
+        await sendOneFile(file, albumId);
+      }
+    } finally {
+      if (fileInput) fileInput.value = '';
+    }
+  }
+
+  async function sendOneFile(file, groupedId = null) {
     // Support uploads up to 10MB!
     if (file.size > 10 * 1024 * 1024) {
-      alert('Attachment size exceeds 10MB limit');
+      alert(`${file.name} exceeds the 10MB limit`);
       return;
     }
 
@@ -997,26 +1137,31 @@
         await uploadAttachmentChunk(attachmentId, index, chunkBase64);
       }
 
-      // 6. Send E2EE attachment metadata message
-      const attachmentPayload = JSON.stringify({
-        type: 'attachment',
-        id: attachmentId,
-        key: keyBase64,
-        iv: ivBase64,
-        filename: file.name,
-        mimeType: file.type,
-        chunked: true,
-        totalChunks: totalChunks,
-        burnOnRead: burnOnReadActive
-      });
-
-      await encryptAndSend(attachmentPayload, true);
+      // 6. Send the attachment metadata as a media envelope.
+      //
+      // Goes through the same fork as text. With no groupedId the secret path
+      // still serialises this to the exact legacy `{type:'attachment', …}`
+      // payload, so clients that predate the envelope keep working; an album
+      // carries structure and travels as a full envelope.
+      await sendToChat(
+        { id: $activePeer.chatId || $activePeer.id, mode: $activePeer.mode || 'secret' },
+        createMediaEnvelope(mediaKindFor(file.type), {
+          id: attachmentId,
+          key: keyBase64,
+          iv: ivBase64,
+          filename: file.name,
+          mimeType: file.type,
+          chunked: true,
+          totalChunks: totalChunks,
+          burnOnRead: burnOnReadActive,
+        }, { groupedId, viewOnce: viewOnceActive }),
+        { peer: $activePeer, currentUser: $currentUser, ttlMinutes, chatId: $activePeer.chatId }
+      );
     } catch (err) {
       console.error('Failed to send E2E attachment:', err);
       alert('Failed to send E2E attachment');
     } finally {
       sendingFile = false;
-      if (fileInput) fileInput.value = '';
     }
   }
 
@@ -1088,17 +1233,18 @@
       const { keyBase64, ivBase64, ciphertextBase64 } = await encryptFile(arrayBuffer);
       const uploadRes = await uploadAttachment('voicenote.webm', 'audio/webm', ciphertextBase64, burnOnReadActive);
 
-      const attachmentPayload = JSON.stringify({
-        type: 'attachment',
-        id: uploadRes.id,
-        key: keyBase64,
-        iv: ivBase64,
-        filename: 'voicenote.webm',
-        mimeType: 'audio/webm',
-        burnOnRead: burnOnReadActive
-      });
-
-      await encryptAndSend(attachmentPayload, true);
+      await sendToChat(
+        { id: $activePeer.chatId || $activePeer.id, mode: $activePeer.mode || 'secret' },
+        createMediaEnvelope(MessageType.VOICE, {
+          id: uploadRes.id,
+          key: keyBase64,
+          iv: ivBase64,
+          filename: 'voicenote.webm',
+          mimeType: 'audio/webm',
+          burnOnRead: burnOnReadActive,
+        }),
+        { peer: $activePeer, currentUser: $currentUser, ttlMinutes, chatId: $activePeer.chatId }
+      );
     } catch (err) {
       console.error('Failed to send E2EE voice note:', err);
       alert('Failed to send voice note');
@@ -1147,12 +1293,7 @@
     // different conversation or back to the empty state). Call teardown is
     // driven entirely by the activeCall store inside lib/webrtc.js.
 
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
-    }
+    // Drag listeners are torn down by the draggable action's destroy().
   });
 
   function goBack() {
@@ -1161,9 +1302,18 @@
   }
 </script>
 
-<div class="flex-1 flex flex-col bg-vault-black h-full animate-fade-in relative">
+<!-- The theme scopes to this pane, not the document: it recolours the open
+     conversation without restyling the sidebar or anything else. -->
+<div
+  class="flex-1 flex flex-col bg-vault-black h-full animate-fade-in relative"
+  data-chat-theme={chatTheme || undefined}
+>
   <!-- Chat Header -->
-  <div class="flex items-center justify-between px-4 py-3 border-b border-vault-border glass-strong">
+  <!-- relative z-40: the message list below is a later sibling with its own
+       stacking context (`relative`), so without this the header's popovers
+       paint underneath it. They stay visible but stop receiving clicks, which
+       looks like a dead button rather than a z-index problem. -->
+  <div class="flex items-center justify-between px-4 py-3 border-b border-vault-border glass-strong relative z-40">
     <div class="flex items-center gap-3">
       <!-- Back button (mobile) -->
       <button
@@ -1191,19 +1341,36 @@
             </svg>
           {/if}
         </div>
-        {#if !$activePeer.isGroup}
+        {#if !$activePeer.isGroup && chatCaps.has('safetyNumbers')}
           <button
             on:click={() => { if (!isTyping) showSafetyNumberModal = true; }}
             class="text-[10px] text-vault-text-dim flex items-center gap-1 hover:text-vault-accent transition-colors cursor-pointer text-left focus:outline-none"
             title="Click to verify fingerprint"
             disabled={isTyping}
           >
-            <svg class="w-3 h-3 text-vault-text-dim flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <svg class="w-3 h-3 text-vault-accent flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
-            Fingerprint safety numbers
+            End-to-end encrypted · verify
           </button>
+        {:else if !$activePeer.isGroup}
+          <!-- Cloud chat. Offering "fingerprint safety numbers" here would be
+               actively misleading: there is no ratchet to verify, and the
+               server can read this conversation. Say so plainly. -->
+          <div class="text-[10px] text-vault-text-dim flex items-center gap-1" title="Stored on the server so it can sync across your devices">
+            {#if peerPresence && describePresence(peerPresence)}
+              {#if peerPresence.online}
+                <span class="w-1.5 h-1.5 rounded-full bg-vault-success inline-block"></span>
+              {/if}
+              <span>{describePresence(peerPresence)}</span>
+              <span aria-hidden="true">·</span>
+            {/if}
+            <svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+            </svg>
+            Cloud chat · syncs across devices
+          </div>
         {:else}
           <button
             on:click={() => showMembersModal = true}
@@ -1246,6 +1413,64 @@
         </svg>
       </button>
 
+      <!-- Outside the private-chat guard on purpose: themes apply to groups
+           too, and only the blocking entry inside is one-to-one. -->
+      <div class="relative">
+        <button
+          on:click={() => showChatMenu = !showChatMenu}
+          class="p-2 rounded-lg {showChatMenu ? 'text-vault-accent bg-vault-elevated' : 'text-vault-text-dim'} hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+          title="More options"
+          aria-label="More options"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="19" r="1.7" />
+          </svg>
+        </button>
+
+        {#if showChatMenu}
+          <!-- `fixed`, not `absolute`: the header sits inside an
+               overflow-hidden container, which clips an absolutely
+               positioned popover. It stays in the DOM but is never visible,
+               so a click on it waits forever. -->
+          <div
+            class="fixed right-4 top-16 z-[60] w-52 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
+            use:clickOutside={() => showChatMenu = false}
+          >
+            {#if $activePeer.chatId}
+              <div class="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-vault-muted">
+                Theme
+              </div>
+              <div class="px-2 pb-2 flex items-center gap-1.5 flex-wrap">
+                {#each CHAT_THEMES as option (option.name ?? 'default')}
+                  <button
+                    on:click={() => applyTheme(option.name)}
+                    title={option.label}
+                    aria-label={option.label}
+                    aria-pressed={chatTheme === option.name}
+                    class="w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 focus:outline-none
+                      {chatTheme === option.name ? 'border-vault-text' : 'border-transparent'}"
+                    style="background: {option.swatch}"
+                  ></button>
+                {/each}
+              </div>
+              <!-- Unlike everything a chat carries, this is a preference
+                   rather than content, so it is not subject to the 24h rule
+                   and survives the messages it was picked for. -->
+              <div class="border-t border-vault-border my-1"></div>
+            {/if}
+
+            {#if !$activePeer.isGroup}
+              <button
+                on:click={handleToggleBlock}
+                class="w-full text-left px-3 py-2 text-xs {peerBlocked ? 'text-vault-text' : 'text-vault-danger'} hover:bg-vault-elevated transition-colors focus:outline-none"
+              >
+                {peerBlocked ? `Unblock ${$activePeer.username}` : `Block ${$activePeer.username}`}
+              </button>
+            {/if}
+          </div>
+        {/if}
+      </div>
+
       {#if !$activePeer.isGroup}
         <button
           on:click={() => startCall('audio')}
@@ -1279,6 +1504,19 @@
       {/if}
     </div>
   </div>
+
+  <!-- Group voice chat. Groups only: a 1:1 call already has its own path,
+       and a room model on top of it would be two ways to do one thing. -->
+  {#if $activePeer.isGroup && $activePeer.chatId}
+    <VoiceChatBar chatId={$activePeer.chatId} />
+    <TopicBar
+      chatId={$activePeer.chatId}
+      isForum={Boolean($activePeer.isForum)}
+      canModerate={$activePeer.createdBy === $currentUser?.id}
+      {activeTopicId}
+      onSelect={selectTopic}
+    />
+  {/if}
 
   <!-- Search Overlay panel -->
   {#if searchActive}
@@ -1390,6 +1628,15 @@
     on:scroll={handleScroll}
     class="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative"
   >
+    {#if peerBlocked}
+      <div class="mx-4 mt-3 mb-1 px-3 py-2 rounded-xl bg-vault-danger/10 border border-vault-danger/30 text-center">
+        <p class="text-xs text-vault-danger font-medium">You blocked {$activePeer.username}</p>
+        <p class="text-[10px] text-vault-text-dim mt-0.5">
+          Neither of you can send messages here. Unblock from the menu above to resume.
+        </p>
+      </div>
+    {/if}
+
     {#if loading}
       <div class="flex justify-center py-8">
         <div class="flex items-center gap-2 text-xs text-vault-text-dim">
@@ -1401,17 +1648,36 @@
         </div>
       </div>
     {:else if peerMessages.length === 0}
+      <!-- Two distinct empty states. A conversation that once had messages is
+           not the same as a brand-new one: after the 24h expiry the chat row
+           survives but its contents are gone, and saying "start a secure
+           conversation" there reads as the app having lost the history
+           rather than deliberately discarding it. -->
       <div class="flex flex-col items-center justify-center h-full text-center py-16">
         <div class="w-16 h-16 rounded-2xl bg-vault-elevated border border-vault-border flex items-center justify-center mb-4">
-          <svg class="w-8 h-8 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-            <path d="M9.5 12l2 2 3.5-3.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+          {#if conversationExpired}
+            <svg class="w-8 h-8 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          {:else}
+            <svg class="w-8 h-8 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+              <path d="M9.5 12l2 2 3.5-3.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          {/if}
         </div>
-        <p class="text-sm text-vault-text-secondary mb-1">Start a secure conversation</p>
-        <p class="text-xs text-vault-text-dim max-w-[240px]">
-          All messages are encrypted and ephemeral. Your chat history will vanish if you close the application.
-        </p>
+        {#if conversationExpired}
+          <p class="text-sm text-vault-text-secondary mb-1">Messages have expired</p>
+          <p class="text-xs text-vault-text-dim max-w-[260px]">
+            Everything sent here was deleted 24 hours after it was sent. The conversation is still open — send a message to pick it back up.
+          </p>
+        {:else}
+          <p class="text-sm text-vault-text-secondary mb-1">Start a secure conversation</p>
+          <p class="text-xs text-vault-text-dim max-w-[240px]">
+            All messages are encrypted and ephemeral. Messages are deleted 24 hours after they are sent.
+          </p>
+        {/if}
       </div>
     {:else}
       {#if loadingOlder}
@@ -1426,23 +1692,39 @@
         </div>
       {/if}
       {#each peerMessages as msg, i (msg.id)}
+        <!-- An album opens a grid that its remaining members render into,
+             so consecutive files read as one attachment rather than a
+             column of separate bubbles. -->
+        {#if albumRuns.first.has(i)}
+          <div class="text-[10px] text-vault-text-dim px-2 pt-1">
+            Album · {albumRuns.first.get(i)} files
+          </div>
+        {/if}
+        <div class:album-item={albumRuns.inRun.has(i)}>
         <MessageBubble
+          onToggleReaction={handleToggleReaction}
+          onReply={startReply}
+          onEdit={startEdit}
+          onDelete={handleDelete}
+          onTogglePin={handleTogglePin}
+          onForward={startForward}
+          onJumpToSeq={jumpToSeq}
+          quoted={quotedMessage(msg.replyToSeq)}
           message={msg}
           isOwn={msg.senderId === $currentUser?.id}
           showAvatar={i === 0 || peerMessages[i - 1]?.senderId !== msg.senderId}
           searchQuery={searchQuery}
         />
+        </div>
       {/each}
     {/if}
 
     <!-- Video Call Grid -->
     {#if isCallActive && callType === 'video'}
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         role="region"
         aria-label="Video Call Panel"
-        on:mousedown={handleMouseDown}
-        on:touchstart={handleTouchStart}
+        use:draggable={{ position, onMove: (p) => (position = p), onDragChange: (d) => (isDragging = d) }}
         style={callWindowSize === 'fullscreen' 
           ? 'width: 100vw; height: 100vh; height: 100dvh; left: 0; top: 0;' 
           : `transform: translate(${position.x}px, ${position.y}px); cursor: ${isDragging ? 'grabbing' : 'grab'};`}
@@ -1775,6 +2057,7 @@
     <div class="flex items-end gap-1.5 md:gap-2">
       <input
         type="file"
+        multiple
         bind:this={fileInput}
         on:change={handleFileChange}
         class="hidden"
@@ -1797,6 +2080,65 @@
           </svg>
         {/if}
       </button>
+
+      <div class="relative flex-shrink-0">
+        <button
+          on:click={() => (showStickers = !showStickers)}
+          disabled={sendingMessage || sendingFile}
+          class="w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all cursor-pointer focus:outline-none
+            {showStickers
+              ? 'bg-vault-accent/20 text-vault-accent'
+              : 'bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border'}"
+          title="Stickers"
+        >
+          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 1 1-9-9c0 4 1 5 5 5s5 1 5 4z" />
+            <path d="M12 21c4-4 5-5 9-9" />
+          </svg>
+        </button>
+
+        {#if showStickers}
+          <!-- Anchored above the composer; `bottom-full` keeps it from being
+               clipped by the message list's own stacking context. -->
+          <div class="absolute bottom-full left-0 mb-2 z-50">
+            <StickerPicker
+              onPick={sendSticker}
+              onClose={() => (showStickers = false)}
+            />
+          </div>
+        {/if}
+      </div>
+
+      {#if canViewOnce}
+        <button
+          on:click={() => (viewOnceActive = !viewOnceActive)}
+          disabled={sendingMessage || sendingFile}
+          class="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center transition-all cursor-pointer focus:outline-none
+            {viewOnceActive
+              ? 'bg-vault-accent/20 text-vault-accent'
+              : 'bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border'}"
+          title={viewOnceActive ? 'View once: on — the next message is destroyed after it is opened' : 'Send so it can only be viewed once'}
+          aria-pressed={viewOnceActive}
+        >
+          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
+      {/if}
+
+      {#if canPoll}
+        <button
+          on:click={openPollComposer}
+          disabled={sendingMessage || sendingFile}
+          class="flex-shrink-0 w-9 h-9 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center bg-vault-elevated text-vault-text-dim hover:text-vault-text hover:bg-vault-border transition-all cursor-pointer focus:outline-none"
+          title="Create a poll"
+        >
+          <svg class="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M18 20V10M12 20V4M6 20v-6" />
+          </svg>
+        </button>
+      {/if}
 
       {#if isRecording}
         <div class="flex-1 flex items-center justify-between px-3 py-2 bg-vault-danger/10 border border-vault-danger/20 rounded-xl animate-pulse text-vault-danger">
@@ -1821,14 +2163,64 @@
         </div>
       {:else}
         <div class="flex-1 relative">
+          {#if editingMessage}
+            <div class="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg bg-vault-elevated border-l-2 border-vault-warning">
+              <svg class="w-3.5 h-3.5 text-vault-warning flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              <div class="flex-1 min-w-0">
+                <div class="text-[10px] text-vault-warning font-medium">Editing message</div>
+                <div class="text-[11px] text-vault-text-dim truncate">{editingMessage.text}</div>
+              </div>
+              <button
+                on:click={cancelEdit}
+                class="flex-shrink-0 p-1 rounded text-vault-text-dim hover:text-vault-text transition-colors focus:outline-none"
+                aria-label="Cancel edit"
+                title="Cancel edit"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          {/if}
+
+          {#if replyingTo}
+            <div class="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg bg-vault-elevated border-l-2 border-vault-accent">
+              <svg class="w-3.5 h-3.5 text-vault-accent flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 17 4 12 9 7" />
+                <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+              </svg>
+              <div class="flex-1 min-w-0">
+                <div class="text-[10px] text-vault-accent font-medium">
+                  Replying to {replyingTo.senderId === $currentUser?.id ? 'yourself' : $activePeer.username}
+                </div>
+                <div class="text-[11px] text-vault-text-dim truncate">
+                  {replyingTo.text || 'Attachment'}
+                </div>
+              </div>
+              <button
+                on:click={cancelReply}
+                class="flex-shrink-0 p-1 rounded text-vault-text-dim hover:text-vault-text transition-colors focus:outline-none"
+                aria-label="Cancel reply"
+                title="Cancel reply"
+              >
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          {/if}
           <textarea
+            bind:this={composerEl}
             bind:value={messageText}
             on:keydown={handleKeydown}
             on:input={handleInput}
-            placeholder="Type a message..."
+            placeholder={peerBlocked ? 'You blocked this user' : 'Type a message...'}
             rows="1"
-            class="input resize-none py-2.5 pr-10 min-h-[40px] max-h-[120px] text-sm bg-vault-elevated border-vault-border-subtle"
-            disabled={sendingMessage}
+            class="input resize-none py-2.5 pr-10 min-h-[40px] max-h-[120px] text-sm bg-vault-elevated border-vault-border-subtle disabled:opacity-50"
+            disabled={sendingMessage || peerBlocked}
           ></textarea>
         </div>
 
@@ -2014,13 +2406,36 @@
                 <div class="text-[9px] text-vault-accent">You</div>
               {/if}
             </div>
-            {#if $activePeer.createdBy === $currentUser?.id && member.id !== $currentUser?.id}
-              <button
-                on:click={() => handleRemoveMember(member.id, member.username)}
-                class="text-[10px] text-vault-danger hover:underline focus:outline-none cursor-pointer flex-shrink-0"
-              >
-                Remove
-              </button>
+            <!-- Moderation, gated on rights the *server* resolved. The
+                 buttons hidden here are also refused server-side; this only
+                 avoids offering an action that would fail. -->
+            {#if member.id !== $currentUser?.id}
+              <div class="flex items-center gap-2 flex-shrink-0">
+                {#if canPromote}
+                  <button
+                    on:click={() => promote(member)}
+                    class="text-[10px] text-vault-accent hover:underline focus:outline-none cursor-pointer"
+                  >
+                    Make admin
+                  </button>
+                {/if}
+                {#if canBan}
+                  <button
+                    on:click={() => ban(member)}
+                    class="text-[10px] text-vault-danger hover:underline focus:outline-none cursor-pointer"
+                    title="Removes them and prevents rejoining with any invite link"
+                  >
+                    Ban
+                  </button>
+                {:else if $activePeer.createdBy === $currentUser?.id}
+                  <button
+                    on:click={() => handleRemoveMember(member.id, member.username)}
+                    class="text-[10px] text-vault-danger hover:underline focus:outline-none cursor-pointer"
+                  >
+                    Remove
+                  </button>
+                {/if}
+              </div>
             {/if}
           </div>
         {/each}
@@ -2035,28 +2450,222 @@
         </button>
       </div>
 
-      <!-- Group Invite Key Section -->
-      <div class="border-t border-vault-border mt-4 pt-4 space-y-2">
-        <span class="text-[10px] text-vault-text-dim block uppercase font-bold tracking-wider">Group Join Key</span>
-        <div class="flex items-center gap-2 p-2 bg-vault-elevated border border-vault-border rounded-xl">
-          <input
-            type="text"
-            readonly
-            value={$activePeer.joinKey || ''}
-            class="bg-transparent border-none text-[10px] font-mono text-vault-text focus:outline-none w-full select-all"
-          />
-          <button
-            on:click={() => {
-              navigator.clipboard.writeText($activePeer.joinKey || '');
-              alert('Group Join Key copied to clipboard!');
-            }}
-            class="text-[10px] text-vault-accent hover:underline focus:outline-none font-semibold whitespace-nowrap cursor-pointer"
-          >
-            Copy
-          </button>
+      <!-- Invite links.
+           Replaces the old join key, which could never be withdrawn: anyone
+           who had ever seen it could rejoin indefinitely. These expire, can be
+           limited by use count, and can be revoked. -->
+      {#if canManageInvites}
+        <div class="border-t border-vault-border mt-4 pt-4 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] text-vault-text-dim uppercase font-bold tracking-wider">Invite links</span>
+            <button
+              on:click={loadInvites}
+              class="text-[10px] text-vault-accent hover:underline focus:outline-none"
+            >
+              {invites.length || loadingInvites ? 'Refresh' : 'Show links'}
+            </button>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              on:click={() => makeInvite({ expiresHours: 24 })}
+              class="px-2 py-1 rounded-lg bg-vault-elevated border border-vault-border text-[10px] text-vault-text hover:border-vault-accent transition-colors focus:outline-none"
+            >
+              New link · 24h
+            </button>
+            <button
+              on:click={() => makeInvite({ usageLimit: 1 })}
+              class="px-2 py-1 rounded-lg bg-vault-elevated border border-vault-border text-[10px] text-vault-text hover:border-vault-accent transition-colors focus:outline-none"
+            >
+              New link · single use
+            </button>
+            <button
+              on:click={() => makeInvite()}
+              class="px-2 py-1 rounded-lg bg-vault-elevated border border-vault-border text-[10px] text-vault-text hover:border-vault-accent transition-colors focus:outline-none"
+            >
+              New link · no limit
+            </button>
+          </div>
+
+          {#if loadingInvites}
+            <p class="text-[9px] text-vault-text-dim">Loading…</p>
+          {:else if invites.length > 0}
+            <div class="space-y-1 max-h-40 overflow-y-auto">
+              {#each invites as invite (invite.hash)}
+                <div class="flex items-center gap-2 p-1.5 bg-vault-elevated border border-vault-border rounded-lg">
+                  <div class="flex-1 min-w-0">
+                    <div class="text-[10px] font-mono text-vault-text truncate {invite.revoked ? 'line-through opacity-50' : ''}">
+                      …{invite.hash.slice(-10)}
+                    </div>
+                    <div class="text-[9px] text-vault-text-dim">{describeInvite(invite)}</div>
+                  </div>
+                  {#if !invite.revoked}
+                    <button
+                      on:click={() => copyInvite(invite.hash)}
+                      class="text-[10px] text-vault-accent hover:underline focus:outline-none whitespace-nowrap"
+                    >
+                      {inviteCopied === invite.hash ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      on:click={() => doRevokeInvite(invite.hash)}
+                      class="text-[10px] text-vault-danger hover:underline focus:outline-none whitespace-nowrap"
+                    >
+                      Revoke
+                    </button>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <p class="text-[9px] text-vault-text-dim leading-relaxed">
+            Revoking a link stops anyone still holding it from joining. Banned members cannot rejoin with any link.
+          </p>
         </div>
-        <p class="text-[9px] text-vault-text-dim leading-relaxed">Share this unique key. Anyone with this key can paste it to join this secure group chat instantly.</p>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+<!-- Forward picker -->
+{#if forwardingMessage}
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/70 backdrop-blur-sm p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Forward message"
+  >
+    <div class="w-full max-w-sm rounded-2xl bg-vault-surface border border-vault-border p-4" use:clickOutside={() => forwardingMessage = null}>
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-vault-text">Forward to…</h3>
+        <button
+          on:click={() => forwardingMessage = null}
+          class="p-1 rounded text-vault-text-dim hover:text-vault-text focus:outline-none"
+          aria-label="Close"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <p class="text-[11px] text-vault-text-dim mb-3 truncate">{forwardingMessage.text}</p>
+
+      {#if forwardTargets.length === 0}
+        <!-- Secret chats are absent by design: forwarding copies the message
+             body server-side, and there is no plaintext body to copy into an
+             encrypted conversation. Saying so beats an empty list. -->
+        <p class="text-xs text-vault-text-dim py-4 text-center">
+          No chats available. Messages can only be forwarded into cloud chats.
+        </p>
+      {:else}
+        <div class="max-h-64 overflow-y-auto space-y-1">
+          {#each forwardTargets as target (target.chatId)}
+            <button
+              on:click={() => doForward(target)}
+              class="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-vault-elevated transition-colors text-left focus:outline-none"
+            >
+              <div
+                class="w-7 h-7 rounded-lg flex items-center justify-center text-vault-white text-xs font-semibold flex-shrink-0"
+                style="background: {getAvatarGradient(target.peerUsername || '?')}"
+              >
+                {(target.peerUsername || '?')[0].toUpperCase()}
+              </div>
+              <span class="text-sm text-vault-text truncate">{target.peerUsername}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
+{#if showPollComposer}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+    on:click|self={() => (showPollComposer = false)}
+  >
+    <div class="w-full max-w-md rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-vault-text">New poll</h3>
+        <button
+          on:click={() => (showPollComposer = false)}
+          class="text-vault-text-dim hover:text-vault-text focus:outline-none"
+          aria-label="Close"
+        >✕</button>
+      </div>
+
+      <input
+        bind:value={pollQuestion}
+        placeholder="Ask a question"
+        maxlength="300"
+        class="w-full px-3 py-2 rounded-lg bg-vault-elevated border border-vault-border text-sm text-vault-text focus:outline-none focus:border-vault-accent"
+      />
+
+      <div class="flex flex-col gap-1.5">
+        {#each pollOptions as _, i}
+          <div class="flex items-center gap-1.5">
+            <input
+              bind:value={pollOptions[i]}
+              placeholder={`Option ${i + 1}`}
+              maxlength="100"
+              class="flex-1 px-3 py-1.5 rounded-lg bg-vault-elevated border border-vault-border text-sm text-vault-text focus:outline-none focus:border-vault-accent"
+            />
+            {#if pollOptions.length > 2}
+              <button
+                on:click={() => (pollOptions = pollOptions.filter((_, j) => j !== i))}
+                class="text-vault-text-dim hover:text-vault-danger text-xs focus:outline-none"
+                aria-label={`Remove option ${i + 1}`}
+              >✕</button>
+            {/if}
+          </div>
+        {/each}
+        {#if pollOptions.length < 10}
+          <button
+            on:click={() => (pollOptions = [...pollOptions, ''])}
+            class="self-start text-[11px] text-vault-accent hover:underline focus:outline-none"
+          >Add option</button>
+        {/if}
+      </div>
+
+      <label class="flex items-center gap-2 text-xs text-vault-text-dim">
+        <input type="checkbox" bind:checked={pollAnonymous} /> Anonymous
+      </label>
+      <label class="flex items-center gap-2 text-xs text-vault-text-dim">
+        <input type="checkbox" bind:checked={pollMultiple} /> Allow multiple answers
+      </label>
+
+      <!-- Nothing here is exempt from the 24h rule: the poll row is tied to
+           its message by foreign key and is deleted along with it. -->
+      <p class="text-[10px] text-vault-muted">
+        The poll disappears with its message after 24 hours.
+      </p>
+
+      {#if pollError}
+        <div class="text-[11px] text-vault-danger">{pollError}</div>
+      {/if}
+
+      <div class="flex justify-end gap-2">
+        <button
+          on:click={() => (showPollComposer = false)}
+          class="px-3 py-1.5 rounded-lg text-xs text-vault-text-dim hover:text-vault-text focus:outline-none"
+        >Cancel</button>
+        <button
+          on:click={submitPoll}
+          disabled={creatingPoll}
+          class="px-3 py-1.5 rounded-lg text-xs bg-vault-accent text-vault-black font-medium disabled:opacity-50 focus:outline-none"
+        >{creatingPoll ? 'Creating…' : 'Create poll'}</button>
       </div>
     </div>
   </div>
 {/if}
+
+<style>
+  /* Album members sit tighter than ordinary messages so a run of files
+     reads as one attachment rather than a column of separate sends. */
+  .album-item :global(.mb-4) {
+    margin-bottom: 0.125rem;
+  }
+</style>

@@ -1,134 +1,54 @@
 // ============================================================
-// Vault — Fastify Server Entrypoint
+// Vault — Server Process Entrypoint
 // ============================================================
-
-import Fastify from 'fastify';
-import fastifyCors from '@fastify/cors';
-import fastifyCookie from '@fastify/cookie';
-import fastifyWebSocket from '@fastify/websocket';
-import fastifyFormBody from '@fastify/formbody';
-import fastifyRateLimit from '@fastify/rate-limit';
-import fastifyHelmet from '@fastify/helmet';
+// Process-level concerns only: open connections, bind the port, run the
+// reaper, handle signals. The application itself is assembled by
+// buildApp() in app.js, which knows nothing about any of this.
 
 import config from './config.js';
-import store from './store.js';
-import authPlugin from './plugins/auth.js';
-import authRoutes from './routes/auth.routes.js';
-import keysRoutes from './routes/keys.routes.js';
-import messageRoutes from './routes/messages.routes.js';
-import wsRoutes from './routes/ws.routes.js';
-import attachmentRoutes from './routes/attachments.routes.js';
-import groupRoutes from './routes/groups.routes.js';
-import chunkRoutes from './routes/chunks.routes.js';
-import pushRoutes from './routes/push.routes.js';
-import turnRoutes from './routes/turn.routes.js';
+import { createStore } from './store.js';
+import { buildApp } from './app.js';
 
-const fastify = Fastify({
-  logger: {
-    level: 'info',
-    transport: {
-      target: 'pino-pretty',
-      options: { colorize: true },
-    },
-  },
-  // Default (1 MiB) is too small for encrypted attachment chunks: a 1MB
-  // chunk becomes ~1.33MB after base64 encoding, plus JSON overhead.
-  bodyLimit: 6 * 1024 * 1024,
-  // Behind nginx (127.0.0.1 -> this process), so req.ip reflects the real
-  // client via X-Forwarded-For instead of always being the proxy's own
-  // address — otherwise every client buckets under one IP for rate
-  // limiting, making per-attacker limits useless and enabling a trivial
-  // self-DoS. Safe only because port 3001 is not reachable directly from
-  // the internet (verified: no path to Fastify except through nginx).
-  trustProxy: true,
-});
+const store = createStore();
 
-// ─── Global Plugins ─────────────────────────────────────────
+// Fail fast and legibly if the database has not been migrated, rather than
+// letting individual routes error on missing tables at request time.
+try {
+  await store.schemaReady;
+} catch (err) {
+  console.error(err.message);
+  await store.close().catch(() => {});
+  process.exit(1);
+}
 
-const isProd = process.env.NODE_ENV === 'production';
+const fastify = await buildApp({ store, config });
 
-await fastify.register(fastifyHelmet, {
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:", "https://api.qrserver.com"],
-      connectSrc: isProd
-        ? ["'self'", "wss:", "https://vaultapp.space", "https://www.vaultapp.space"]
-        : ["'self'", "ws:", "wss:", "http://localhost:3001"],
-      fontSrc: ["'self'", "https:", "data:"],
-      objectSrc: ["'none'"],
-      upgradeInsecureRequests: [],
-    },
-  },
-});
-
-await fastify.register(fastifyCors, {
-  origin: (origin, cb) => {
-    const isDev = process.env.NODE_ENV !== 'production';
-    if (!origin || origin === config.clientOrigin || origin === 'https://vaultapp.space' || origin === 'https://www.vaultapp.space' || (isDev && (origin.startsWith('http://localhost:') || origin.match(/^http:\/\/\d+\.\d+\.\d+\.\d+:5173$/) || origin.endsWith(':5173')))) {
-      cb(null, true);
-      return;
-    }
-    cb(new Error('Not allowed by CORS'), false);
-  },
-  credentials: true,
-});
-
-await fastify.register(fastifyCookie);
-await fastify.register(fastifyFormBody);
-await fastify.register(fastifyWebSocket);
-await fastify.register(fastifyRateLimit, config.rateLimit);
-
-// Decorate with the in-memory store
-fastify.decorate('store', store);
-
-// Auth plugin (JWT + authenticate decorator)
-await fastify.register(authPlugin);
-
-// ─── Routes ─────────────────────────────────────────────────
-
-await fastify.register(authRoutes);
-await fastify.register(keysRoutes);
-await fastify.register(pushRoutes);
-await fastify.register(messageRoutes);
-await fastify.register(wsRoutes);
-await fastify.register(attachmentRoutes);
-await fastify.register(groupRoutes);
-await fastify.register(chunkRoutes);
-await fastify.register(turnRoutes);
-
-// ─── Reaper Worker (24h hard deletion) ──────────────────────
+// ─── Reaper Worker (expired message/attachment deletion) ────
 
 const reaperInterval = setInterval(async () => {
   try {
     const reaped = await store.reap();
     if (reaped > 0) {
-      fastify.log.info(`Reaper: purged ${reaped} expired items`);
+      // Messages expire but chats do not, so unread counters must be brought
+      // back in line with what actually remains — otherwise a chat sits at
+      // "3 unread" with an empty message list.
+      const corrected = await store.chats.reconcileUnread();
+      fastify.log.info(
+        `Reaper: purged ${reaped} expired items, corrected ${corrected} unread counters`
+      );
     }
+    // Recorded on every pass, not only when something was deleted: an idle
+    // hour with nothing to reap is still a healthy reaper, and treating it as
+    // silence would fire the alarm on a quiet night.
+    fastify.recordReaperRun({ rowsDeleted: reaped });
   } catch (err) {
     fastify.log.error(err, 'Reaper task failed');
+    // The failure is recorded as well as logged. The reaper is the only thing
+    // bounding database size *and* the only thing enforcing the 24-hour rule,
+    // so a stall has to surface on /health rather than in a log nobody reads.
+    fastify.recordReaperRun({ error: err });
   }
 }, config.reaperIntervalMs);
-
-// ─── Health Check ───────────────────────────────────────────
-
-fastify.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
-
-// ─── Network Stats ─────────────────────────────────────────
-// Only ever report real, measured values here — no invented "relay count"
-// or "latency" figures. Both used to be hardcoded constants dressed up
-// with client-side random jitter to look live, which is exactly the kind
-// of misleading stat this app's zero-knowledge claims should not tolerate.
-fastify.get('/api/network/stats', async () => {
-  const activeConnections = fastify.websocketServer?.clients?.size || 0;
-  return {
-    status: 'ok',
-    activeConnections: Math.max(activeConnections, 1),
-    timestamp: new Date().toISOString()
-  };
-});
 
 // ─── Start ──────────────────────────────────────────────────
 
@@ -138,13 +58,48 @@ try {
 } catch (err) {
   fastify.log.error(err);
   clearInterval(reaperInterval);
+  await store.close().catch(() => {});
   process.exit(1);
 }
 
-// Graceful shutdown
+// Graceful shutdown.
+//
+// fastify.close() can block forever on sockets it does not track. A rejected
+// WebSocket upgrade is enough to cause it: @fastify/cors answers a bad-Origin
+// upgrade with a 500, the TCP connection is left open, and close() then waits
+// on it indefinitely — so any unauthenticated client can permanently prevent
+// this process from shutting down cleanly by sending one such request. The
+// timeout below bounds the graceful phase and then forces the remainder shut.
+const SHUTDOWN_GRACE_MS = parseInt(process.env.SHUTDOWN_GRACE_MS || '5000', 10);
+
 const shutdown = async () => {
   clearInterval(reaperInterval);
-  await fastify.close();
+
+  // Stage 1: at the end of the grace period, drop any remaining sockets.
+  const forceClose = setTimeout(() => {
+    fastify.log.warn('Graceful shutdown timed out; forcing remaining connections closed');
+    try { fastify.server.closeAllConnections?.(); } catch {}
+  }, SHUTDOWN_GRACE_MS);
+  forceClose.unref?.();
+
+  // Stage 2: even that is not always enough — @fastify/websocket's own close
+  // hook can stay pending — so exit unconditionally shortly after. A shutdown
+  // that never completes is worse than one that drops a few sockets.
+  const hardExit = setTimeout(() => {
+    fastify.log.warn('Shutdown did not complete; exiting immediately');
+    process.exit(0);
+  }, SHUTDOWN_GRACE_MS + 2000);
+  hardExit.unref?.();
+
+  try {
+    await fastify.close();
+  } catch (err) {
+    fastify.log.error(err, 'Error during fastify.close()');
+  }
+  clearTimeout(forceClose);
+  clearTimeout(hardExit);
+
+  await store.close().catch(() => {});
   process.exit(0);
 };
 

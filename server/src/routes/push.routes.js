@@ -76,8 +76,13 @@ async function pushRoutes(fastify) {
     const payload = JSON.stringify(payloadObj);
 
     for (const subStr of subscriptions) {
+      // Declared outside the try so the catch can still reference the
+      // endpoint. Previously this was a const inside the try, so the 410
+      // branch below threw a ReferenceError instead of logging — which
+      // aborted the whole loop and skipped every remaining subscription.
+      let sub = null;
       try {
-        const sub = JSON.parse(subStr);
+        sub = JSON.parse(subStr);
         fastify.log.info({ endpoint: sub.endpoint }, 'Dispatching E2EE push notification...');
 
         await webpush.sendNotification(sub, payload);
@@ -88,7 +93,7 @@ async function pushRoutes(fastify) {
             `DELETE FROM push_subscriptions WHERE subscription = $1`,
             [subStr]
           );
-          fastify.log.info({ endpoint: sub.endpoint }, 'Removed expired push subscription');
+          fastify.log.info({ endpoint: sub?.endpoint }, 'Removed expired push subscription');
         } else {
           fastify.log.error(err, 'Failed to dispatch push notification payload');
         }

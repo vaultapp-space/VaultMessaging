@@ -90,19 +90,41 @@ export async function importECDSAPublicKey(rawBytes) {
 }
 
 /**
- * Perform ECDH key agreement and derive an AES-256-GCM key via HKDF.
+ * Perform ECDH key agreement and run the result through HKDF.
+ *
+ * The `info` parameter provides domain separation: the same key pair used in
+ * two different contexts produces two unrelated secrets. This previously
+ * accepted `info`, documented it, and then ignored it — the body returned the
+ * raw ECDH output. x3dh.js has always passed 'x3dh-dh1'/'dh2'/'dh3' expecting
+ * separation it was not getting. That was benign only because each of those
+ * three agreements happens to use a different key pair; it was a trap waiting
+ * for the first caller who reused one.
+ *
  * @param {CryptoKey} privateKey - Our ECDH private key
  * @param {CryptoKey} peerPublicKey - Peer's ECDH public key
- * @param {string} info - Context info for HKDF
+ * @param {string} info - Context label, mixed into the derivation
  * @returns {Promise<Uint8Array>} - 32 bytes of derived key material
  */
 export async function deriveSharedBits(privateKey, peerPublicKey, info = 'vault-e2ee') {
-  const bits = await crypto.subtle.deriveBits(
+  const shared = await crypto.subtle.deriveBits(
     { name: 'ECDH', public: peerPublicKey },
     privateKey,
     256
   );
-  return new Uint8Array(bits);
+
+  const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveBits']);
+  const derived = await crypto.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(32),
+      info: new TextEncoder().encode(info),
+    },
+    hkdfKey,
+    256
+  );
+
+  return new Uint8Array(derived);
 }
 
 /**

@@ -1,0 +1,132 @@
+============================================================
+VAULT MESSAGING — FREQUENTLY ASKED QUESTIONS
+============================================================
+
+GENERAL
+------------------------------------------------------------
+
+Q: What is Vault?
+A: Vault is a privacy-first, end-to-end encrypted messenger. It combines
+   double-ratcheted E2EE text/group messaging with private, peer-to-peer
+   encrypted voice and video calls. Zero PII is required to sign up, and
+   messages auto-delete within 24 hours.
+
+Q: Do I need an email address or phone number to sign up?
+A: No. Registration only asks for a username and a password. Vault does
+   not collect or store email addresses, phone numbers, or any other
+   personally identifying information.
+
+Q: Is Vault open source?
+A: The client and server source is publicly viewable on GitHub. A formal
+   open-source license has not been applied yet, so treat it as
+   source-available rather than fully open-source for now.
+
+Q: Who runs the servers? Can I self-host?
+A: Today, a single set of servers operated by the Vault team relays
+   signaling and encrypted payloads. It is not yet a federated or
+   self-hostable network. The server design is zero-knowledge by
+   architecture (it only ever sees ciphertext and routing metadata), but
+   it is currently centralized.
+
+
+WHAT VAULT CAN DO
+------------------------------------------------------------
+
+Q: What messaging features does it support?
+A: - One-on-one messaging encrypted with the Double Ratchet protocol,
+     with sessions negotiated via X3DH (Extended Triple Diffie-Hellman)
+     so you can message someone securely even while they're offline.
+   - Group messaging using the Signal Sender Keys protocol.
+   - In-conversation message search.
+   - Custom per-message expiration ("self-destruct") timers, on top of
+     the default 24-hour TTL.
+   - Ephemeral, burn-on-read file/media attachments with chunked
+     upload/download for large files.
+
+Q: Does it support voice and video calls?
+A: Yes. Calls are peer-to-peer over WebRTC, encrypted end-to-end using a
+   key negotiated over the same Double Ratchet session as your messages.
+   The server only ever relays encrypted SDP/ICE signaling — never your
+   audio or video. A persistent mini call bar keeps a call connected
+   while you navigate between other conversations.
+
+Q: How do backups and multi-device work?
+A: - Passphrase-encrypted cloud vault backup, so you can restore your
+     identity and message history on a new device with your password.
+   - Optional biometric unlock (FaceID/TouchID) via WebAuthn PRF, so you
+     don't have to type your password every time.
+   - QR-code based session sync to migrate or link a second device
+     without re-typing anything.
+
+Q: Do I get notified of new messages when the app is closed?
+A: Yes, via Web Push (VAPID) notifications for offline delivery.
+
+Q: Is there a wallet in the app?
+A: There's a "Wallet" section with two parts:
+   - A VAULT (VLT) launcher that opens the real, separately-hosted VLT
+     web wallet (webwallet.vaultapp.space) in a new tab. VLT is Vault's
+     own privacy cryptocurrency (see below).
+   - A multi-chain (ETH/Solana/Bitcoin/etc.) wallet UI is present but its
+     underlying crypto/blockchain functionality has been removed pending
+     a rebuild — it is currently a non-functional placeholder.
+
+
+PRIVACY & SECURITY MODEL
+------------------------------------------------------------
+
+Q: Can Vault's servers read my messages?
+A: No. The server only ever stores and forwards encrypted blobs — it has
+   no access to plaintext messages, attachments, or private keys.
+
+Q: Where do my encryption keys live?
+A: Long-term and session keys live exclusively in volatile browser
+   memory by default. Closing the tab destroys them immediately. Nothing
+   is written to disk unless you explicitly enable encrypted local or
+   cloud backup.
+
+Q: What happens to messages after 24 hours?
+A: Messages carry a server-enforced 24-hour time-to-live and are
+   hard-deleted by a periodic reaper process, regardless of whether
+   you've read them.
+
+Q: What happens if the server goes down?
+A: Real-time delivery and call signaling pause until it's back — there's
+   no peer-to-peer fallback for initial connection setup today. Your
+   identity keys, message history, and local backups are unaffected,
+   since none of that lives on the server.
+
+
+VAULT COIN (VLT)
+------------------------------------------------------------
+
+Q: What is VAULT (VLT)?
+A: VLT is Vault's own untraceable, privacy-first cryptocurrency, built on
+   a CryptoNote core with Ring Signatures, Ring Confidential Transactions
+   (RingCT), and dual-key stealth addresses — every sender, receiver, and
+   amount is obfuscated at the protocol level by default.
+
+Q: Is VLT the same product as Vault Messenger?
+A: They share a name, philosophy, and domain, but are two separate
+   products today. Vault Messenger does not have a built-in VLT wallet or
+   in-chat payment feature — sending/receiving VLT happens through the
+   dedicated web wallet or desktop GUI wallet. Deeper integration is on
+   the roadmap, not shipped.
+
+Q: Is VLT listed on any exchange?
+A: Not yet — mainnet is in active development.
+
+Q: Where can I get a VLT wallet?
+A: The official web wallet (webwallet.vaultapp.space, linked from the
+   in-app Wallet section and the VaultCoin page) or a desktop GUI wallet
+   from the vault-wallets GitHub repo.
+
+
+TECH STACK (for the curious)
+------------------------------------------------------------
+
+Q: What is this built with?
+A: Frontend: Svelte 5, Vite, Tailwind CSS.
+   Backend: Fastify, PostgreSQL, Redis.
+   Cryptography: Web Crypto API (ECDH/ECDSA P-256, AES-GCM, HKDF,
+   Argon2id) — all running client-side in the browser.
+   Realtime: WebSocket for messaging/signaling, WebRTC for calls.

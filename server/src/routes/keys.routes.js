@@ -96,18 +96,12 @@ async function keysRoutes(fastify) {
   }, async (request, reply) => {
     const { identityKey, signedPrekey, prekeySig, oneTimePrekeys } = request.body;
     
-    // Check if there are active connections already (Session Collision)
-    const activeConns = fastify.store.getConnections(request.user.id);
-    if (activeConns && activeConns.size > 0) {
-      for (const socket of activeConns) {
-        if (socket.readyState === 1) {
-          socket.send(JSON.stringify({
-            type: 'session_collision',
-            message: 'Session updated from another device. Your keys have been overwritten.'
-          }));
-        }
-      }
-    }
+    // Warn any device already holding this identity that its keys are being
+    // replaced (Session Collision).
+    await fastify.fanout.deliverToUser(request.user.id, {
+      type: 'session_collision',
+      message: 'Session updated from another device. Your keys have been overwritten.'
+    });
 
     await fastify.store.updateUserKeys(request.user.id, {
       identityKey,

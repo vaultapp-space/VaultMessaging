@@ -1,0 +1,36 @@
+# Local parity with CI. Brings up the two backing services the server test
+# suite needs, on the default ports the app already expects.
+#
+#   docker compose -f docker-compose.test.yml up -d
+#   cd server && npm test
+#
+# The suite creates and migrates its own `vault_test` database; it never
+# touches the `vault` development database.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vault
+      POSTGRES_PASSWORD: vault_dev_pass
+      POSTGRES_DB: vault
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vault"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    # Tests are disposable; keeping the data in memory makes them much faster.
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20

@@ -10,3 +10,7 @@ vps_key.pem
 promotional_materials/
 backups/
 
+
+# Playwright
+test-results/
+playwright-report/

@@ -30,6 +30,18 @@ async function authPlugin(fastify) {
         return reply.code(401).send({ error: 'Session expired' });
       }
 
+      // A revoked device must stop working immediately, not whenever its
+      // 24h token happens to expire. Checked here rather than only at
+      // sign-out time because the revoking user is on a *different* device:
+      // the one being revoked has no idea it happened.
+      if (session.deviceId) {
+        if (await fastify.store.devices.isRevoked(session.deviceId)) {
+          await fastify.store.deleteSession(request.user.jti);
+          return reply.code(401).send({ error: 'This device was signed out' });
+        }
+        request.deviceId = session.deviceId;
+      }
+
       // Touch session last-seen
       await fastify.store.touchSession(request.user.jti);
     } catch (err) {

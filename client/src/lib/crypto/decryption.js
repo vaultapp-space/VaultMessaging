@@ -103,7 +103,7 @@ export async function decryptMessage(msg) {
       // Parse key agreement metadata from ephemeralKey field
       const ephData = JSON.parse(msg.ephemeralKey);
 
-      let sessions = get(ratchetSessions);
+      const sessions = get(ratchetSessions);
       let ratchet = sessions.get(msg.senderId);
 
       // Protocol Healing: If the incoming message is an X3DH initiation,
@@ -195,6 +195,36 @@ export async function decryptMessage(msg) {
         parsed.bob.ct
       );
 
+      // Group Sender Keys are distributed over this pairwise ratchet, so a
+      // distribution package arrives here rather than through the sender-key
+      // branch above. Without this, the package was rendered to the user as
+      // raw JSON and never imported — which meant every subsequent group
+      // message from that sender failed to decrypt, because the sender-key
+      // session it needs was never created.
+      try {
+        const payload = JSON.parse(decrypted);
+        if (payload && payload.type === 'senderkey_distribution') {
+          const innerSessionKey = `${payload.groupId}:${msg.senderId}`;
+          let innerSession = get(groupSenderKeys).get(innerSessionKey);
+          if (!innerSession) {
+            innerSession = new SenderKeySession(msg.senderId, payload.groupId);
+          }
+          await innerSession.importDistributionPackage(payload.pack);
+          groupSenderKeys.update((m) => { m.set(innerSessionKey, innerSession); return m; });
+
+          await syncCloudVault();
+
+          return {
+            ...msg,
+            text: '🔒 Group session key received.',
+            encrypted: false,
+            isControlMessage: true
+          };
+        }
+      } catch {
+        // Ordinary text is not JSON; fall through and render it as-is.
+      }
+
       await syncCloudVault();
 
       return {
@@ -223,7 +253,7 @@ export async function decryptSignalingPayload(senderId, data) {
 
   try {
     const ephData = JSON.parse(data.ephemeralKey);
-    let sessions = get(ratchetSessions);
+    const sessions = get(ratchetSessions);
     let ratchet = sessions.get(senderId);
 
     if (ephData.type === 'x3dh') {

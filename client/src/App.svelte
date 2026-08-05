@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { currentUser, isLoading, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, vaultMasterKey, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
+  import { currentUser, isLoading, setUser, activeView, pendingChatId, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, vaultMasterKey, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
   import { getMe, replenishPrekeys } from './lib/api/http.js';
   import { decryptSyncPayload, generateOneTimePrekeys } from './lib/crypto/keys.js';
   import { fromBase64 } from './lib/crypto/utils.js';
@@ -72,6 +72,35 @@
     mounted = true;
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    // /join/<hash> — an invite link someone was sent.
+    //
+    // Handled here rather than in Chat.svelte because that component only
+    // mounts once the chat view is active, and the app always opens on the
+    // landing page: a pasted invite link would otherwise do nothing at all.
+    // The URL is cleared afterwards so a refresh cannot redeem a single-use
+    // link a second time.
+    const joinMatch = window.location.pathname.match(/^\/join\/([A-Za-z0-9_-]+)$/);
+    if (joinMatch) {
+      try {
+        const user = await getMe();
+        setUser(user);
+        const res = await fetch(`/api/invites/${joinMatch[1]}/join`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error((await res.json()).error || 'invite is not valid');
+        const joined = await res.json();
+        pendingChatId.set(joined?.id ?? null);
+        activeView.set('chat');
+      } catch (err) {
+        console.error('Failed to join via invite:', err);
+        alert('That invite link is no longer valid.');
+      }
+      window.history.replaceState({}, document.title, '/');
+      isLoading.set(false);
+      return;
     }
 
     // Check for QR Sync params in URL. syncId is a single-use, short-TTL

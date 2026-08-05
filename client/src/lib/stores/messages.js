@@ -2,8 +2,88 @@
 // Vault — Message Store (Volatile Memory Only)
 // ============================================================
 
-import { writable, derived, get } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { decryptMessage } from '../crypto/decryption.js';
+import { normalizeMessage } from '../chat/normalize.js';
+import { applyReactionOp } from '../chat/reactions.js';
+import { applyEdit } from '../chat/edit.js';
+import { tombstoneLocally, setPinned } from '../chat/actions.js';
+import { MessageType, OpKind } from '$shared/envelope.js';
+
+// Brings a message into the shared shape regardless of which mode it came
+// from: a cloud message arrives with plaintext columns, a secret one only
+// after its ratchet has run.
+//
+// The normalized fields are overlaid onto the raw message rather than
+// replacing it. Consumers still read fields normalize() does not model —
+// groupId/groupName/groupMembers for group fan-out, and the transient
+// status/optimistic/decrypting flags the UI sets — and dropping those would
+// break group rendering and the sending spinner.
+function withEnvelope(raw, decryptedText = null) {
+  const normalized = normalizeMessage(raw, { decryptedText });
+  return normalized ? { ...raw, ...normalized } : raw;
+}
+
+// Operations (reactions, edits, deletes…) arrive in secret chats as ordinary
+// encrypted messages carrying a `t:'op'` envelope. They must be *applied* and
+// then dropped — rendering one would show the recipient a raw operation where
+// a message should be.
+//
+// This only *detects* an op. Applying it has to happen after the enclosing
+// messagesByPeer.update() has returned: applying inside would mean calling
+// update() re-entrantly, and the outer callback's return value then overwrites
+// whatever the inner one wrote. That failure is silent — the op is consumed,
+// nothing renders, and no error is logged anywhere.
+function isOperation(message) {
+  const envelope = message?.envelope;
+  return Boolean(envelope && envelope.t === MessageType.OP && envelope.op);
+}
+
+// In a secret chat there is no server to enforce who may edit what, so the
+// check has to happen here: an edit is applied only when the sender of the op
+// is the author of the message it targets.
+function applyEditIfAuthor(peerId, senderId, op) {
+  const messages = get(messagesByPeer).get(peerId) || [];
+  const target = messages.find((m) => m.seq === op.seq);
+  if (!target || target.senderId !== senderId) return;
+  applyEdit(peerId, { seq: op.seq, body: op.body });
+}
+
+function applyDeleteIfAuthor(peerId, senderId, op) {
+  const messages = get(messagesByPeer).get(peerId) || [];
+  const target = messages.find((m) => m.seq === op.seq);
+  if (!target || target.senderId !== senderId) return;
+  tombstoneLocally(peerId, op.seq);
+}
+
+// Applies ops collected during an update, once that update has committed.
+// Unknown kinds are swallowed rather than displayed: a future client sending
+// an op this build does not understand should be invisible, not garbage in
+// the transcript.
+function applyOperations(peerId, ops) {
+  for (const { op, senderId } of ops) {
+    if (op.kind === OpKind.REACT || op.kind === OpKind.UNREACT) {
+      applyReactionOp(peerId, {
+        seq: op.seq,
+        emoji: op.emoji,
+        userId: senderId,
+        add: op.kind === OpKind.REACT,
+      });
+    } else if (op.kind === OpKind.DELETE) {
+      // Same authorship rule as edit: only the author may unsend, and in a
+      // secret chat there is no server to enforce it.
+      applyDeleteIfAuthor(peerId, senderId, op);
+    } else if (op.kind === OpKind.PIN || op.kind === OpKind.UNPIN) {
+      // Pinning is a shared surface — any member may pin — so no author check.
+      setPinned(peerId, op.seq, op.kind === OpKind.PIN ? new Date().toISOString() : null);
+    } else if (op.kind === OpKind.EDIT) {
+      // Only the author's own edit is honoured. Without this check any member
+      // of a group could rewrite anyone else's message by sending an edit op,
+      // since there is no server to arbitrate in a secret chat.
+      applyEditIfAuthor(peerId, senderId, op);
+    }
+  }
+}
 
 // Map<peerId, Message[]> — all in volatile memory
 export const messagesByPeer = writable(new Map());
@@ -23,6 +103,28 @@ export const typingUsers = writable(new Map()); // peerId → timestamp
 export function addMessage(peerId, message) {
   // O(1) duplicate check instead of O(n) .find()
   if (knownMessageIds.has(message.id)) return;
+
+  // The id check alone is not enough for a message this client sent itself.
+  // It goes into the list optimistically under a temporary id, and the server
+  // fans the real one back out to every member — the sender included, because
+  // that broadcast is also what syncs the message to their other devices. If
+  // it wins the race against the HTTP response, the same message is in the
+  // list twice under two different ids.
+  //
+  // `clientRandomId` is the sender's own tag for the send, echoed back, so
+  // the match is exact rather than a guess; `(chatId, seq)` catches a message
+  // that arrives twice by any other route, such as history overlapping a
+  // send still in flight.
+  const existing = get(messagesByPeer).get(peerId) || [];
+  const isOwnEcho = message.clientRandomId != null
+    && existing.some((m) => m.clientRandomId === message.clientRandomId);
+  const alreadyHere = message.chatId && message.seq != null
+    && existing.some((m) => m.chatId === message.chatId && m.seq === message.seq);
+  if (isOwnEcho || alreadyHere) {
+    knownMessageIds.add(message.id);
+    return;
+  }
+
   knownMessageIds.add(message.id);
 
   if (message.encrypted) {
@@ -31,7 +133,9 @@ export function addMessage(peerId, message) {
 
   messagesByPeer.update(map => {
     const messages = map.get(peerId) || [];
-    messages.push(message);
+    // A cloud message is already plaintext and can be shaped immediately;
+    // a secret one is shaped below, once decryption has run.
+    messages.push(message.encrypted ? message : withEnvelope(message));
     messages.sort((a, b) => a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : 0);
     map.set(peerId, messages);
     return new Map(map);
@@ -40,15 +144,23 @@ export function addMessage(peerId, message) {
   // If encrypted, decrypt asynchronously and update in place
   if (message.encrypted) {
     decryptMessage(message).then(decryptedMsg => {
+      const pendingOps = [];
       messagesByPeer.update(map => {
         const messages = map.get(peerId) || [];
         const idx = messages.findIndex(m => m.id === message.id);
         if (idx !== -1) {
-          messages[idx] = { ...decryptedMsg, decrypting: false };
+          const shaped = { ...withEnvelope(decryptedMsg, decryptedMsg.text), decrypting: false };
+          if (isOperation(shaped)) {
+            pendingOps.push({ op: shaped.envelope.op, senderId: shaped.senderId });
+            messages.splice(idx, 1);   // consumed, never rendered
+          } else {
+            messages[idx] = shaped;
+          }
         }
         map.set(peerId, messages);
         return new Map(map);
       });
+      applyOperations(peerId, pendingOps);
     });
   }
 }
@@ -58,9 +170,23 @@ export function addMessage(peerId, message) {
  * Use this when processing batches (e.g., pending messages, history loads).
  */
 export function addMessages(peerId, newMessages) {
+  // History can overlap with a send still in flight: the message is in the
+  // list under a temporary id and comes back from the server under its real
+  // one. `(chatId, seq)` is the identity the ids do not yet agree on.
+  const present = get(messagesByPeer).get(peerId) || [];
+  const seenSeqs = new Set(
+    present.filter(m => m.chatId && m.seq != null).map(m => `${m.chatId}:${m.seq}`)
+  );
+
   // Filter out duplicates in one pass
   const toAdd = newMessages.filter(m => {
     if (knownMessageIds.has(m.id)) return false;
+    const key = m.chatId && m.seq != null ? `${m.chatId}:${m.seq}` : null;
+    if (key && seenSeqs.has(key)) {
+      knownMessageIds.add(m.id);
+      return false;
+    }
+    if (key) seenSeqs.add(key);
     knownMessageIds.add(m.id);
     if (m.encrypted) {
       m.decrypting = true;
@@ -72,7 +198,7 @@ export function addMessages(peerId, newMessages) {
 
   messagesByPeer.update(map => {
     const messages = map.get(peerId) || [];
-    messages.push(...toAdd);
+    messages.push(...toAdd.map(m => (m.encrypted ? m : withEnvelope(m))));
     messages.sort((a, b) => a.sentAt < b.sentAt ? -1 : a.sentAt > b.sentAt ? 1 : 0);
     map.set(peerId, messages);
     return new Map(map);
@@ -82,17 +208,24 @@ export function addMessages(peerId, newMessages) {
   const encrypted = toAdd.filter(m => m.encrypted);
   if (encrypted.length > 0) {
     Promise.all(encrypted.map(m => decryptMessage(m))).then(decryptedMsgs => {
+      const pendingOps = [];
       messagesByPeer.update(map => {
         const messages = map.get(peerId) || [];
         for (const decrypted of decryptedMsgs) {
           const idx = messages.findIndex(m => m.id === decrypted.id);
-          if (idx !== -1) {
-            messages[idx] = { ...decrypted, decrypting: false };
+          if (idx === -1) continue;
+          const shaped = { ...withEnvelope(decrypted, decrypted.text), decrypting: false };
+          if (isOperation(shaped)) {
+            pendingOps.push({ op: shaped.envelope.op, senderId: shaped.senderId });
+            messages.splice(idx, 1);
+          } else {
+            messages[idx] = shaped;
           }
         }
         map.set(peerId, messages);
         return new Map(map);
       });
+      applyOperations(peerId, pendingOps);
     });
   }
 }
@@ -121,9 +254,23 @@ export function confirmMessage(peerId, tempId, serverData) {
   messagesByPeer.update(map => {
     const messages = map.get(peerId) || [];
     const idx = messages.findIndex(m => m.id === tempId);
-    if (idx !== -1) {
+    if (idx === -1) {
+      map.set(peerId, messages);
+      return new Map(map);
+    }
+
+    // The other half of the race: the broadcast already inserted this message
+    // under its real id, so promoting the optimistic copy would leave two of
+    // it. Drop the placeholder and keep the server's version.
+    const alreadyArrived = serverData.seq != null && messages.some(
+      (m, i) => i !== idx && m.chatId === serverData.chatId && m.seq === serverData.seq
+    );
+    if (alreadyArrived) {
+      messages.splice(idx, 1);
+    } else {
       messages[idx] = { ...messages[idx], ...serverData, optimistic: false, status: 'sent' };
     }
+
     map.set(peerId, messages);
     return new Map(map);
   });

@@ -13,7 +13,7 @@ import {
   encrypt,
   decrypt,
 } from './keys.js';
-import { arraysEqual, fromBase64, toBase64 } from './utils.js';
+import { fromBase64, toBase64 } from './utils.js';
 
 const CK_MSG  = new Uint8Array([0x01]); // Chain key → message key constant
 const CK_NEXT = new Uint8Array([0x02]); // Chain key → next chain key constant

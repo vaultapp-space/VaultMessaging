@@ -1,0 +1,14 @@
+{
+  "name": "vault-messaging",
+  "private": true,
+  "type": "module",
+  "description": "Workspace root — holds the cross-cutting end-to-end tests. The client and server keep their own package.json and are installed independently.",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:install": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}

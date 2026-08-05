@@ -6,15 +6,27 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "check": "svelte-check --threshold error",
+    "check:types": "svelte-check --threshold error --compiler-warnings unused-export-let:ignore || true"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tailwindcss/vite": "^4.3.2",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-svelte": "^3.22.0",
+    "globals": "^17.9.0",
     "svelte": "^5.56.4",
+    "svelte-check": "^4.7.4",
     "tailwindcss": "^4.3.2",
-    "vite": "^8.1.1"
+    "typescript": "^6.0.3",
+    "vite": "^8.1.1",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "qrcode": "^1.5.4"

@@ -94,6 +94,14 @@ export function connectWebSocket() {
         return;
       }
 
+      // Watermark form: everything up to maxSeq in this chat has been read.
+      // One event per chat open instead of one per message, and it also
+      // reaches the reader's own other devices so their badge clears too.
+      if (data.type === 'read_history') {
+        markChatReadUpTo(data.chatId, data.userId, data.maxSeq);
+        return;
+      }
+
       // Dispatch to registered handlers
       dispatch(data.type, data.data || data);
     } catch (err) {
@@ -131,6 +139,47 @@ function scheduleReconnect() {
 /**
  * Send a message via WebSocket.
  */
+// Applies a read watermark: marks the caller's own sent messages as read up
+// to `maxSeq`, and clears the unread badge when the reader is us.
+function markChatReadUpTo(chatId, readerId, maxSeq) {
+  Promise.all([
+    import('../stores/messages.js'),
+    import('../stores/session.js'),
+  ]).then(([{ messagesByPeer, conversations }, { currentUser }]) => {
+    const me = get(currentUser)?.id;
+    messagesByPeer.update((map) => {
+      for (const [peerId, messages] of map.entries()) {
+        let touched = false;
+        for (const m of messages) {
+          if (m.chatId !== chatId) continue;
+          if (m.senderId === readerId) continue;   // the reader's own messages
+          if ((m.seq ?? 0) > maxSeq) continue;
+          if (m.status === 'read') continue;
+          m.status = 'read';
+          m.read = true;
+          touched = true;
+        }
+        if (touched) map.set(peerId, [...messages]);
+      }
+      return new Map(map);
+    });
+
+    // The server broadcasts this to every member, so the badge must only
+    // clear when *we* are the reader. Without this check, a peer opening the
+    // conversation would silently clear our own unread count.
+    if (readerId === me) {
+      conversations.update((cs) => {
+        const conv = cs.find((c) => c.chatId === chatId);
+        if (conv) {
+          conv.unreadCount = 0;
+          conv.hasUndelivered = false;
+        }
+        return [...cs];
+      });
+    }
+  }).catch((err) => console.error('[WS] read_history handling failed:', err));
+}
+
 export function wsSend(data) {
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(data));

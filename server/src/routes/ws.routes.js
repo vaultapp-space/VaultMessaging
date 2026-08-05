@@ -77,12 +77,15 @@ function startHeartbeat(socket) {
 
 async function wsRoutes(fastify) {
   fastify.get('/ws', { websocket: true }, async (socket, request) => {
-    // Verify Origin header to prevent Cross-Site WebSocket Hijacking (CSWSH)
+    // Verify Origin header to prevent Cross-Site WebSocket Hijacking (CSWSH).
+    //
+    // This is the authoritative check for upgrades: app.js deliberately lets
+    // websocket upgrades past the CORS layer so this runs and can close with a
+    // meaningful code, rather than CORS answering with a 500 and leaving a
+    // half-open socket behind. Both use fastify.isOriginAllowed, so there is
+    // one origin policy rather than two that can drift.
     const origin = request.headers.origin;
-    const isDev = process.env.NODE_ENV !== 'production';
-    const isAllowedOrigin = !origin || origin === config.clientOrigin || 
-      origin === 'https://vaultapp.space' || origin === 'https://www.vaultapp.space' ||
-      (isDev && (origin.startsWith('http://localhost:') || origin.match(/^http:\/\/\d+\.\d+\.\d+\.\d+:5173$/) || origin.endsWith(':5173')));
+    const isAllowedOrigin = fastify.isOriginAllowed(origin);
 
     if (origin && !isAllowedOrigin) {
       fastify.log.warn({ origin }, 'WebSocket connection rejected: Origin mismatch');
@@ -195,14 +198,32 @@ async function wsRoutes(fastify) {
 
       // ─── TYPING indicator ─────────────────────────────────────
       if (data.type === WS_EVENTS.TYPING && data.recipientId) {
-        const recipientSockets = fastify.store.getConnections(data.recipientId);
-        const payload = JSON.stringify({
+        await fastify.fanout.deliverToUser(data.recipientId, {
           type: WS_EVENTS.TYPING,
           senderId: userId,
         });
-        for (const s of recipientSockets) {
-          try { s.send(payload); } catch {}
+        return;
+      }
+
+      // ─── Channel viewing ──────────────────────────────────────
+      // A client announces which channel it is looking at, and posts are
+      // written to whoever is watching. This is what keeps a channel post at
+      // O(1) writes: the alternative — delivering to every subscriber — turns
+      // one post to a large channel into hundreds of thousands of sends.
+      //
+      // Authorised before joining the viewer set, or the set itself becomes a
+      // way to read a private channel by asking politely.
+      if (data.type === 'watch_channel' && data.chatId) {
+        if (!UUID_RE.test(data.chatId)) return;
+        if (await fastify.store.channels.canRead(data.chatId, userId)) {
+          fastify.store.registry.watchChannel(data.chatId, socket);
         }
+        return;
+      }
+
+      if (data.type === 'unwatch_channel' && data.chatId) {
+        if (!UUID_RE.test(data.chatId)) return;
+        fastify.store.registry.unwatchChannel(data.chatId, socket);
         return;
       }
 
@@ -260,15 +281,8 @@ async function wsRoutes(fastify) {
           fastify.store.clearPendingInvitesInvolving(userId);
         }
 
-        const recipientSockets = fastify.store.getConnections(data.recipientId);
-        fastify.log.info({ type: data.type, recipientId: data.recipientId, socketCount: recipientSockets.size }, 'Forwarding WebRTC signaling event');
-        const payload = JSON.stringify({
-          ...data,
-          senderId: userId,
-        });
-        for (const s of recipientSockets) {
-          try { s.send(payload); } catch {}
-        }
+        fastify.log.info({ type: data.type, recipientId: data.recipientId }, 'Forwarding WebRTC signaling event');
+        await fastify.fanout.deliverToUser(data.recipientId, { ...data, senderId: userId });
         return;
       }
 
@@ -278,15 +292,11 @@ async function wsRoutes(fastify) {
         const msg = await fastify.store.getMessage(data.messageId);
         if (msg && msg.recipient_id === userId) {
           await fastify.store.markDelivered(data.messageId);
-          const senderSockets = fastify.store.getConnections(msg.sender_id);
-          const payload = JSON.stringify({
+          await fastify.fanout.deliverToUser(msg.sender_id, {
             type: WS_EVENTS.DELIVERED,
             messageId: data.messageId,
             recipientId: userId
           });
-          for (const s of senderSockets) {
-            try { s.send(payload); } catch {}
-          }
         }
         return;
       }
@@ -297,15 +307,11 @@ async function wsRoutes(fastify) {
         const msg = await fastify.store.getMessage(data.messageId);
         if (msg && msg.recipient_id === userId) {
           await fastify.store.markRead(data.messageId);
-          const senderSockets = fastify.store.getConnections(msg.sender_id);
-          const payload = JSON.stringify({
+          await fastify.fanout.deliverToUser(msg.sender_id, {
             type: 'read',
             messageId: data.messageId,
             recipientId: userId
           });
-          for (const s of senderSockets) {
-            try { s.send(payload); } catch {}
-          }
         }
         return;
       }
@@ -315,18 +321,19 @@ async function wsRoutes(fastify) {
     socket.on('close', () => {
       if (authTimeout) clearTimeout(authTimeout);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
+      // A socket that goes away without this stays in every channel viewer
+      // set it ever joined, and each post then writes to a dead socket.
+      fastify.store.registry.unwatchAll(socket);
       if (userId) {
         // Automatic WebRTC Call Cleanup
         const activeCallPeer = fastify.store.getActiveCall(userId);
         if (activeCallPeer) {
-          const peerSockets = fastify.store.getConnections(activeCallPeer);
-          const payload = JSON.stringify({
+          // Fire-and-forget: the close handler is synchronous, and a peer
+          // that cannot be reached is exactly the case this is cleaning up.
+          void fastify.fanout.deliverToUser(activeCallPeer, {
             type: 'call_hangup',
             senderId: userId
           });
-          for (const s of peerSockets) {
-            try { s.send(payload); } catch {}
-          }
           fastify.store.unregisterCall(userId);
         }
         fastify.store.clearPendingInvitesInvolving(userId);

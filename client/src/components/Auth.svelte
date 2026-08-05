@@ -1,5 +1,6 @@
 <script>
   import { currentUser, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, vaultMasterKey, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { describeThisDevice } from '../lib/device.js';
   import { register, login, updateKeys, fetchSalt, saveEncryptedVault } from '../lib/api/http.js';
   import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, deriveMasterKeyBits, deriveServerAuthSecret, encryptIdentityVault, decryptIdentityVault } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
@@ -123,6 +124,7 @@
       // ever sees authSecret, a one-way derivation of the master key it
       // cannot reverse — never the real password.
       const user = await register({
+        ...describeThisDevice(),
         username,
         password: authSecret,
         identityKey: identityKeyBase64,
@@ -175,7 +177,7 @@
       const hk = await deriveHistoryKey(masterKeyBase64, salt);
       historyKey.set(hk);
 
-      const user = await login(username, authSecret);
+      const user = await login(username, authSecret, describeThisDevice());
       vaultMasterKey.set(masterKeyBase64);
 
       let ikp_ecdh, ikp_ecdsa, spk;

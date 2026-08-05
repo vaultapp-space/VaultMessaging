@@ -38,6 +38,23 @@ export const activeView = writable('landing');        // 'landing' | 'auth' | 'c
 export const activePeer = writable(null);          // { id, username } — currently open chat
 export const sidebarOpen = writable(true);
 
+// Set when the app is opened via an invite link, so the chat list can open
+// the conversation the user just joined rather than dropping them into an
+// unexplained list.
+export const pendingChatId = writable(null);
+
+// How far this client has caught up in the account's update log. Reconnecting
+// asks for everything past it, which is what replaces the old per-message
+// `delivered` flag — a boolean that has no single answer once an account has
+// more than one device.
+export const syncPts = writable(0);
+
+// The channel currently open, if any. Channels are a separate pane from
+// conversations rather than a kind of `activePeer`: a channel has
+// subscribers instead of members, posts instead of messages, and none of the
+// per-peer machinery (ratchets, typing, calls) applies to one.
+export const activeChannelId = writable(null);
+
 export const activeCall = writable(null); // null or { status: 'incoming'|'ongoing', peerId, peerUsername, type, direction, currentCallKey }
 export const recentCalls = writable([]);   // call logs
 

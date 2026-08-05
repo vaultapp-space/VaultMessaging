@@ -8,7 +8,6 @@ import {
   exportPublicKeyBase64,
   importPublicKey,
   deriveSharedBits,
-  deriveAESKey,
 } from './keys.js';
 import { concat, fromBase64 } from './utils.js';
 

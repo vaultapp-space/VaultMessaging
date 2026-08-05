@@ -37,6 +37,12 @@ async function authRoutes(fastify) {
           oneTimePrekeys: { type: 'array', items: { type: 'string', maxLength: 500 }, minItems: 1, maxItems: 100 },
           salt:           { type: 'string', maxLength: 50 },   // base64 salt
           encryptedVault: { type: 'string', maxLength: 50000 },
+          // Self-reported and cosmetic: it only ever labels a row in the
+          // owner's own Active Sessions list. Nothing is authorised by it,
+          // so a client lying here achieves nothing but a confusing label.
+          deviceName:     { type: 'string', maxLength: 64 },
+          platform:       { type: 'string', maxLength: 32 },
+          appVersion:     { type: 'string', maxLength: 32 },
         },
       },
     },
@@ -66,6 +72,15 @@ async function authRoutes(fastify) {
     // Upload one-time prekeys
     await fastify.store.uploadPrekeys(user.id, oneTimePrekeys);
 
+    // Every session belongs to a device, so the account owner can see what
+    // is signed in and sign any of it out.
+    const device = await fastify.store.devices.register(user.id, {
+      name: request.body.deviceName ?? null,
+      platform: request.body.platform ?? null,
+      appVersion: request.body.appVersion ?? null,
+      ip: request.ip ?? null,
+    });
+
     // Issue JWT as HTTP-only cookie
     const jti = uuidv4();
     const token = fastify.jwt.sign(
@@ -74,7 +89,7 @@ async function authRoutes(fastify) {
     );
 
     // Create server-side session
-    await fastify.store.createSession(jti, user.id);
+    await fastify.store.createSession(jti, user.id, device.id);
 
     reply
       .setCookie(config.cookieName, token, {
@@ -89,6 +104,8 @@ async function authRoutes(fastify) {
         id: user.id,
         username: user.username,
         salt: user.salt,
+        deviceId: device.id,
+        pts: device.pts,
       });
   });
 
@@ -107,6 +124,12 @@ async function authRoutes(fastify) {
         properties: {
           username: { type: 'string' },
           password: { type: 'string' },
+          // Self-reported and cosmetic: it only ever labels a row in the
+          // owner's own Active Sessions list. Nothing is authorised by it,
+          // so a client lying here achieves nothing but a confusing label.
+          deviceName:     { type: 'string', maxLength: 64 },
+          platform:       { type: 'string', maxLength: 32 },
+          appVersion:     { type: 'string', maxLength: 32 },
         },
       },
     },
@@ -124,13 +147,20 @@ async function authRoutes(fastify) {
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
 
+    const device = await fastify.store.devices.register(user.id, {
+      name: request.body.deviceName ?? null,
+      platform: request.body.platform ?? null,
+      appVersion: request.body.appVersion ?? null,
+      ip: request.ip ?? null,
+    });
+
     const jti = uuidv4();
     const token = fastify.jwt.sign(
       { id: user.id, username: user.username, jti },
       { expiresIn: config.jwtExpiresIn }
     );
 
-    await fastify.store.createSession(jti, user.id);
+    await fastify.store.createSession(jti, user.id, device.id);
 
     reply
       .setCookie(config.cookieName, token, {
@@ -144,7 +174,9 @@ async function authRoutes(fastify) {
         id: user.id,
         username: user.username,
         encryptedVault: user.encrypted_vault || null,
-        salt: user.salt
+        salt: user.salt,
+        deviceId: device.id,
+        pts: device.pts,
       });
   });
 
@@ -186,7 +218,8 @@ async function authRoutes(fastify) {
       id: request.user.id,
       username: request.user.username,
       encryptedVault: user ? user.encrypted_vault : null,
-      salt: user ? user.salt : null
+      salt: user ? user.salt : null,
+      deviceId: request.deviceId ?? null,
     };
   });
 

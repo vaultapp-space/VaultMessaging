@@ -30,7 +30,7 @@
   let shown = 0;
   let typingSide = null;
   let ttls = mockMessages.map((m) => m.ttl);
-  let mockTimers = [];
+  const mockTimers = [];
   let tickTimer;
 
   function pad(n) { return String(n).padStart(2, '0'); }

@@ -5,7 +5,6 @@
 // ============================================================
 
 import { MAX_TTL_MINUTES, MAX_MESSAGE_SIZE_BYTES, UUID_PATTERN, MAX_USERNAME_LENGTH } from '../utils/constants.js';
-import config from '../config.js';
 
 async function messageRoutes(fastify) {
 
@@ -32,17 +31,32 @@ async function messageRoutes(fastify) {
           // applies to strings, so a real value is still validated).
           groupId:        { type: ['string', 'null'], pattern: UUID_PATTERN },
           attachmentId:   { type: ['string', 'null'], pattern: UUID_PATTERN },
+          // Optional: names the chat this message belongs to so it can be
+          // allocated a per-chat seq and therefore be referenced by
+          // reactions, replies and pins.
+          chatId:         { type: ['string', 'null'], pattern: UUID_PATTERN },
         },
       },
     },
   }, async (request, reply) => {
-    const { recipientId, ciphertext, ephemeralKey, messageNumber, previousChain, ttlMinutes, iv, groupId, attachmentId } = request.body;
+    const { recipientId, ciphertext, ephemeralKey, messageNumber, previousChain, ttlMinutes, iv, groupId, attachmentId, chatId } = request.body;
     const senderId = request.user.id;
 
     // Validate recipient exists
     const recipient = await fastify.store.getUserById(recipientId);
     if (!recipient) {
       return reply.code(404).send({ error: 'Recipient not found' });
+    }
+
+    // Blocking is enforced here rather than only recorded. It is checked in
+    // both directions: the blocker should not receive from the blocked, and
+    // the blocked should not be able to reach the blocker.
+    //
+    // 403 with a neutral message, deliberately — telling a sender "you have
+    // been blocked" hands them information the person who blocked them did
+    // not choose to share.
+    if (await fastify.repos.phase2.isBlockedBetween(senderId, recipientId)) {
+      return reply.code(403).send({ error: 'Message could not be delivered' });
     }
 
     // If tagged with a group, the sender must actually be a member —
@@ -69,13 +83,14 @@ async function messageRoutes(fastify) {
       expiresAt,
       iv,
       groupId,
-      attachmentId
+      attachmentId,
+      // Only honoured when the sender is actually in that chat.
+      chatId: chatId && await fastify.repos.chats.isMember(chatId, senderId) ? chatId : null,
     });
 
     // Attempt real-time WebSocket delivery
     let delivered = false;
-    const sockets = fastify.store.getConnections(recipientId);
-    if (sockets.size > 0) {
+    if (await fastify.store.registry.isOnline(recipientId)) {
       let groupName = null;
       let groupMembers = null;
       if (groupId) {
@@ -90,6 +105,8 @@ async function messageRoutes(fastify) {
         type: 'message',
         data: {
           id: msg.id,
+          chatId: msg.chat_id,
+          seq: msg.seq === null ? null : Number(msg.seq),
           senderId,
           senderUsername: request.user.username,
           ciphertext,
@@ -105,14 +122,7 @@ async function messageRoutes(fastify) {
         },
       });
 
-      for (const socket of sockets) {
-        try {
-          socket.send(payload);
-          delivered = true;
-        } catch (err) {
-          fastify.log.warn({ err }, 'Failed to deliver via WebSocket');
-        }
-      }
+      delivered = (await fastify.fanout.deliverToUser(recipientId, payload)) > 0;
     }
 
     // If not delivered, enqueue for later delivery. The message itself is
@@ -144,8 +154,7 @@ async function messageRoutes(fastify) {
     }
 
     // Send delivery confirmation back to sender's other connections
-    const senderSockets = fastify.store.getConnections(senderId);
-    if (senderSockets.size > 0) {
+    {
       const ack = JSON.stringify({
         type: 'sent',
         data: {
@@ -155,13 +164,13 @@ async function messageRoutes(fastify) {
           delivered,
         },
       });
-      for (const s of senderSockets) {
-        try { s.send(ack); } catch {}
-      }
+      await fastify.fanout.deliverToUser(senderId, ack);
     }
 
     return reply.code(201).send({
       id: msg.id,
+      chatId: msg.chat_id,
+      seq: msg.seq === null ? null : Number(msg.seq),
       sentAt: msg.sent_at,
       expiresAt: msg.expires_at,
       delivered,

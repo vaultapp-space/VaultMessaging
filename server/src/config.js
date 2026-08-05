@@ -26,6 +26,15 @@ const config = {
   rateLimit: {
     max: 100,
     timeWindow: '1 minute',
+    // End-to-end runs drive several registrations from one IP in quick
+    // succession and would otherwise trip the per-route 5/min register limit,
+    // failing for a reason that has nothing to do with what is under test.
+    // Giving every request its own bucket disables limiting without editing
+    // route configs. Refused outright in production: this switch would
+    // otherwise remove the abuse controls on the real service.
+    ...(process.env.RATE_LIMIT_DISABLED === '1' && process.env.NODE_ENV !== 'production'
+      ? { keyGenerator: () => Math.random().toString(36) }
+      : {}),
   },
 
   // TURN server (ephemeral credentials)

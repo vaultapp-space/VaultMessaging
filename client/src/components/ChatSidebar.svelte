@@ -1,9 +1,16 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, activePeer, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, activeCall, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { currentUser, activePeer, activeChannelId, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
-  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, joinGroup } from '../lib/api/http.js';
+  import { openPrivateChat, fetchFolders, createFolder, setFolderChats, deleteFolder,
+    fetchChannels, createChannel, searchChannels, subscribeChannel } from '../lib/api/http.js';
+  import {
+    setMuted, isMuted, setArchived, setPinnedToTop,
+    runSearch, hydrateDrafts, refreshPresence, presence, describePresence,
+  } from '../lib/chat/chatSettings.js';
+  import { clickOutside } from '../lib/actions/clickOutside.js';
+  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault } from '../lib/api/http.js';
   import { wsConnected } from '../lib/api/ws.js';
   import { getAvatarGradient } from '../lib/avatar.js';
   import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault } from '../lib/crypto/keys.js';
@@ -14,11 +21,13 @@
   import { toBase64 } from '../lib/crypto/utils.js';
   import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
   import WalletSettings from './WalletSettings.svelte';
+  import ActiveSessions from './ActiveSessions.svelte';
+  import BotManager from './BotManager.svelte';
+  import Stories from './Stories.svelte';
   import QRCode from 'qrcode';
 
   let showBackupModal = false;
   let theme = localStorage.getItem('vault_theme') || 'dark';
-  let settingsTab = 'general';
   let isSyncing = false;
   let syncError = '';
   let lastSyncedTime = new Date().toLocaleTimeString();
@@ -206,10 +215,98 @@
 
   let searchQuery = '';
   let searchResults = [];
+  // Read by the template below (search spinner); the svelte eslint processor
+  // does not track template usage for a plain `let`, hence the disable.
+  // eslint-disable-next-line no-unused-vars
   let searching = false;
 
   let showGroupModal = false;
   let activeTab = 'chats';
+
+  // ─── Global search ──────────────────────────────────────
+  // Searches message *content* across every cloud chat, as distinct from the
+  // user search above it. Secret chats cannot be included — they have no
+  // plaintext on the server — and the UI says so rather than quietly
+  // returning less than the user expects.
+  let showArchived = false;
+  let messageQuery = '';
+  let messageResults = [];
+  let searchingMessages = false;
+  let searchNotice = '';
+  let messageSearchTimer;
+
+  function handleMessageSearch(e) {
+    const query = e.target.value;
+    messageQuery = query;
+    clearTimeout(messageSearchTimer);
+
+    if (query.trim().length < 2) {
+      messageResults = [];
+      searchNotice = '';
+      return;
+    }
+
+    searchingMessages = true;
+    messageSearchTimer = setTimeout(async () => {
+      try {
+        const res = await runSearch(query);
+        messageResults = res.results || [];
+        searchNotice = res.excludesSecretChats
+          ? 'Searches your last 24 hours. Secret chats are not searchable.'
+          : '';
+      } catch (err) {
+        console.error('Search failed:', err);
+        messageResults = [];
+      } finally {
+        searchingMessages = false;
+      }
+    }, 300);
+  }
+
+  function openResult(result) {
+    const conv = $conversations.find(c => c.chatId === result.chatId);
+    if (!conv) return;
+    selectPeer({
+      id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup,
+      members: conv.members, chatId: conv.chatId, mode: conv.mode,
+    });
+    messageQuery = '';
+    messageResults = [];
+  }
+
+  // ─── Per-chat menu ──────────────────────────────────────
+  let openMenuFor = null;
+
+  async function doMute(conv) {
+    openMenuFor = null;
+    try { await setMuted(conv, !isMuted(conv)); }
+    catch (err) { console.error('Failed to mute:', err); }
+  }
+
+  async function doArchive(conv) {
+    openMenuFor = null;
+    try { await setArchived(conv, !conv.archived); }
+    catch (err) { console.error('Failed to archive:', err); }
+  }
+
+  async function doPinToTop(conv) {
+    openMenuFor = null;
+    try { await setPinnedToTop(conv, !conv.pinnedOrder); }
+    catch (err) { console.error('Failed to pin chat:', err); }
+  }
+
+  // Presence for the people actually on screen — polling every contact would
+  // be a request per second for information nobody is looking at.
+  $: visiblePeerIds = $conversations.filter(c => !c.isGroup).map(c => c.peerId);
+  let presenceTimer;
+  onMount(() => {
+    hydrateDrafts();
+    loadFolders();
+    loadChannels();
+    refreshPresence(visiblePeerIds);
+    presenceTimer = setInterval(() => refreshPresence(visiblePeerIds), 45000);
+    return () => clearInterval(presenceTimer);
+  });
   let groupName = '';
   let groupAddedUsers = [];
   let groupMembersSearch = [];
@@ -255,7 +352,6 @@
           peerUsername: res.name,
           isGroup: true,
           members: res.members,
-          joinKey: res.joinKey,
           createdBy: res.createdBy,
           lastMessageAt: null,
           hasUndelivered: false
@@ -268,7 +364,6 @@
         username: res.name,
         isGroup: true,
         members: res.members,
-        joinKey: res.joinKey,
         createdBy: res.createdBy
       });
 
@@ -279,43 +374,6 @@
     } catch (err) {
       console.error('Failed to create group:', err);
       alert('Failed to create group');
-    }
-  }
-
-  let joinKey = '';
-
-  async function submitJoinGroup() {
-    try {
-      const res = await joinGroup(joinKey);
-      
-      conversations.update(convs => {
-        const filtered = convs.filter(c => c.peerId !== `group-${res.id}`);
-        filtered.unshift({
-          peerId: `group-${res.id}`,
-          peerUsername: res.name,
-          isGroup: true,
-          members: res.members,
-          joinKey: res.joinKey,
-          lastMessageAt: null,
-          hasUndelivered: false
-        });
-        return filtered;
-      });
-
-      selectPeer({
-        id: `group-${res.id}`,
-        username: res.name,
-        isGroup: true,
-        members: res.members,
-        joinKey: res.joinKey
-      });
-
-      showGroupModal = false;
-      joinKey = '';
-      alert(`Successfully joined group: ${res.name}!`);
-    } catch (err) {
-      console.error('Failed to join group:', err);
-      alert(err.message || 'Failed to join group');
     }
   }
 
@@ -369,6 +427,177 @@
   }
   let searchTimeout;
 
+  // ─── Channels ─────────────────────────────────────────────
+  // Kept in their own section rather than mixed into the conversation list:
+  // a channel has subscribers rather than members and posts rather than
+  // messages, and folding it into `conversations` would mean every per-peer
+  // code path (ratchets, typing, calls) had to learn to skip it.
+  let channels = [];
+  let channelResults = [];
+  let showChannelModal = false;
+  let channelTitle = '';
+  let channelUsername = '';
+  let channelBusy = false;
+  let channelError = '';
+
+  async function loadChannels() {
+    try {
+      const res = await fetchChannels();
+      channels = res.channels ?? [];
+    } catch (err) {
+      console.error('Failed to load channels:', err);
+    }
+  }
+
+  async function makeChannel() {
+    const title = channelTitle.trim();
+    if (!title || channelBusy) return;
+    channelBusy = true;
+    channelError = '';
+    try {
+      const channel = await createChannel({
+        title,
+        // Blank means private: reachable only by invite, not by knowing its
+        // id. A username is what makes a channel publicly readable.
+        username: channelUsername.trim() || null,
+      });
+      await loadChannels();
+      showChannelModal = false;
+      channelTitle = '';
+      channelUsername = '';
+      activeChannelId.set(channel.id);
+      activePeer.set(null);
+    } catch (err) {
+      console.error('Failed to create channel:', err);
+      channelError = err?.message?.includes('taken')
+        ? 'That username is taken.'
+        : 'Could not create that channel.';
+    } finally {
+      channelBusy = false;
+    }
+  }
+
+  function openChannel(id) {
+    activePeer.set(null);
+    activeChannelId.set(id);
+    if (window.innerWidth < 768) sidebarOpen.set(false);
+  }
+
+  async function joinChannel(channel) {
+    try {
+      await subscribeChannel(channel.id);
+      await loadChannels();
+      openChannel(channel.id);
+      searchQuery = '';
+      channelResults = [];
+    } catch (err) {
+      console.error('Failed to subscribe:', err);
+    }
+  }
+
+  // ─── Folders ──────────────────────────────────────────────
+  // Explicit chat lists only. Telegram also supports rule-based folders
+  // ("all groups", "unread"); those are a separate feature and are not
+  // modelled here, so a folder is exactly the set of chats put into it.
+  let folders = [];
+  let activeFolderId = null;
+  let showFolderEditor = false;
+  let editingFolder = null;
+  let folderDraftTitle = '';
+  let folderDraftChats = new Set();
+  let folderBusy = false;
+
+  // A folder holds chat ids, but the conversation list is keyed by peer, so
+  // membership has to be resolved through chatId on every render.
+  $: activeFolder = folders.find((f) => f.id === activeFolderId) ?? null;
+  $: folderChatIds = new Set(activeFolder?.chatIds ?? []);
+  $: visibleConversations = $conversations.filter((conv) => {
+    if (Boolean(conv.archived) !== showArchived) return false;
+    if (!activeFolder) return true;
+    return conv.chatId && folderChatIds.has(conv.chatId);
+  });
+
+  async function loadFolders() {
+    try {
+      const res = await fetchFolders();
+      folders = res.folders ?? [];
+      // A folder can be deleted from another device; do not leave the list
+      // filtered by something that no longer exists.
+      if (activeFolderId && !folders.some((f) => f.id === activeFolderId)) {
+        activeFolderId = null;
+      }
+    } catch (err) {
+      console.error('Failed to load folders:', err);
+    }
+  }
+
+  function openFolderEditor(folder = null) {
+    editingFolder = folder;
+    folderDraftTitle = folder?.title ?? '';
+    folderDraftChats = new Set(folder?.chatIds ?? []);
+    showFolderEditor = true;
+  }
+
+  function toggleFolderChat(chatId) {
+    folderDraftChats = new Set(
+      folderDraftChats.has(chatId)
+        ? [...folderDraftChats].filter((id) => id !== chatId)
+        : [...folderDraftChats, chatId]
+    );
+  }
+
+  async function saveFolder() {
+    const title = folderDraftTitle.trim();
+    if (!title || folderBusy) return;
+    folderBusy = true;
+    try {
+      const folder = editingFolder ?? await createFolder(title);
+      await setFolderChats(folder.id, [...folderDraftChats]);
+      await loadFolders();
+      showFolderEditor = false;
+    } catch (err) {
+      console.error('Failed to save folder:', err);
+      alert('Could not save that folder.');
+    } finally {
+      folderBusy = false;
+    }
+  }
+
+  async function removeFolder(folderId) {
+    if (!confirm('Delete this folder? The chats in it are not affected.')) return;
+    try {
+      await deleteFolder(folderId);
+      if (activeFolderId === folderId) activeFolderId = null;
+      await loadFolders();
+    } catch (err) {
+      console.error('Failed to delete folder:', err);
+    }
+  }
+
+  // Opens a conversation with a user found through search.
+  //
+  // Cloud is the default, matching Telegram: the server can read these, which
+  // is what makes global search, link previews and syncing history to a second
+  // device possible. `secret` creates an end-to-end encrypted chat instead —
+  // the two are separate conversations and a pair can have both.
+  async function startChatWith(user, mode = 'cloud') {
+    try {
+      const chat = await openPrivateChat(user.id, mode);
+      selectPeer({
+        id: user.id,
+        username: user.username,
+        chatId: chat.id,
+        mode: chat.mode,
+        isGroup: false,
+      });
+    } catch (err) {
+      console.error('Failed to open chat:', err);
+      // Fall back to the implicit conversation rather than blocking the user;
+      // sending still works, it just has no chat row until the first message.
+      selectPeer({ id: user.id, username: user.username });
+    }
+  }
+
   function selectPeer(peer) {
     activePeer.set(peer);
     searchQuery = '';
@@ -386,6 +615,10 @@
         convs.unshift({
           peerId: peer.id,
           peerUsername: peer.username,
+          chatId: peer.chatId,
+          mode: peer.mode,
+          unreadCount: 0,
+          isEmpty: true,
           lastMessageAt: null,
           hasUndelivered: false,
           isGroup: peer.isGroup,
@@ -405,6 +638,7 @@
 
     if (query.length < 1) {
       searchResults = [];
+      channelResults = [];
       searching = false;
       return;
     }
@@ -416,6 +650,17 @@
         searchResults = data.users || [];
       } catch {
         searchResults = [];
+      }
+      try {
+        // The public channel directory shares the search box: a name typed
+        // here is as likely to be a channel as a person, and two boxes for
+        // one intent is worse than one list with two sections.
+        const found = await searchChannels(query);
+        channelResults = (found.channels || []).filter(
+          (c) => !channels.some((mine) => mine.id === c.id)
+        );
+      } catch {
+        channelResults = [];
       } finally {
         searching = false;
       }
@@ -545,28 +790,190 @@
       <div class="px-2 pb-2">
         <div class="text-[10px] text-vault-text-dim uppercase tracking-wider px-2 py-1">Users</div>
         {#each searchResults as user}
-          <button
-            on:click={() => selectPeer({ id: user.id, username: user.username })}
-            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-vault-elevated transition-all text-left animate-fade-in"
-          >
-            <div
-              class="w-9 h-9 rounded-xl flex items-center justify-center text-vault-white font-semibold text-sm flex-shrink-0 shadow-inner"
-              style="background: {getAvatarGradient(user.username)}"
+          <div class="w-full flex items-center gap-1 animate-fade-in">
+            <button
+              on:click={() => startChatWith(user, 'cloud')}
+              class="flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-vault-elevated transition-all text-left"
             >
-              {user.username[0].toUpperCase()}
-            </div>
-            <div>
-              <div class="text-sm text-vault-text font-medium">{user.username}</div>
-              <div class="text-[10px] text-vault-text-dim">Start encrypted chat</div>
-            </div>
-          </button>
+              <div
+                class="w-9 h-9 rounded-xl flex items-center justify-center text-vault-white font-semibold text-sm flex-shrink-0 shadow-inner"
+                style="background: {getAvatarGradient(user.username)}"
+              >
+                {user.username[0].toUpperCase()}
+              </div>
+              <div>
+                <div class="text-sm text-vault-text font-medium">{user.username}</div>
+                <div class="text-[10px] text-vault-text-dim">Start chat</div>
+              </div>
+            </button>
+            <!-- The secret-chat affordance sits beside the row rather than
+                 replacing it, so choosing E2EE is one deliberate tap and never
+                 something you land on by accident. -->
+            <button
+              on:click={() => startChatWith(user, 'secret')}
+              class="flex-shrink-0 p-2.5 rounded-xl text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+              title="Start a secret chat (end-to-end encrypted)"
+              aria-label="Start a secret chat with {user.username}"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </button>
+          </div>
         {/each}
       </div>
     {/if}
 
     <!-- Conversations List -->
     <div class="flex-1 overflow-y-auto px-2 py-1">
-      {#if $conversations.length === 0 && !searchQuery}
+      <!-- Message search, distinct from the user search above: this looks
+           inside conversations rather than for people. -->
+      <div class="px-3 pb-2">
+        <input
+          value={messageQuery}
+          on:input={handleMessageSearch}
+          placeholder="Search messages..."
+          class="input w-full text-xs py-1.5 bg-vault-elevated border-vault-border-subtle"
+        />
+      </div>
+
+      {#if messageQuery.trim().length >= 2}
+        <div class="px-2 pb-2">
+          {#if searchingMessages}
+            <p class="text-[10px] text-vault-text-dim px-1 py-2">Searching…</p>
+          {:else if messageResults.length === 0}
+            <p class="text-[10px] text-vault-text-dim px-1 py-2">No messages found</p>
+          {:else}
+            {#each messageResults as result (result.chatId + '-' + result.seq)}
+              <button
+                on:click={() => openResult(result)}
+                class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-vault-elevated transition-colors focus:outline-none"
+              >
+                <div class="text-[10px] text-vault-accent">{result.senderUsername || 'Unknown'}</div>
+                <div class="text-xs text-vault-text truncate">{result.body}</div>
+              </button>
+            {/each}
+          {/if}
+          {#if searchNotice}
+            <p class="text-[9px] text-vault-text-dim px-1 pt-1.5 italic">{searchNotice}</p>
+          {/if}
+        </div>
+      {/if}
+
+      <Stories />
+
+      {#if channelResults.length > 0}
+        <div class="px-2 pb-2">
+          <div class="text-[10px] uppercase tracking-wide text-vault-muted px-1 pb-1">
+            Channels
+          </div>
+          {#each channelResults as channel (channel.id)}
+            <button
+              on:click={() => joinChannel(channel)}
+              class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-vault-elevated text-left focus:outline-none"
+            >
+              <div
+                class="w-7 h-7 rounded-lg flex items-center justify-center text-vault-white text-[11px] font-semibold shrink-0"
+                style="background: {getAvatarGradient(channel.title)}"
+              >{channel.title[0].toUpperCase()}</div>
+              <div class="min-w-0">
+                <div class="text-xs text-vault-text truncate">{channel.title}</div>
+                <div class="text-[9px] text-vault-text-dim">
+                  @{channel.username} · {channel.subscribersCount} subscribers
+                </div>
+              </div>
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      {#if channels.length > 0 && !searchQuery}
+        <div class="px-2 pb-2">
+          <div class="flex items-center justify-between px-1 pb-1">
+            <span class="text-[10px] uppercase tracking-wide text-vault-muted">Channels</span>
+            <button
+              on:click={() => (showChannelModal = true)}
+              class="text-[10px] text-vault-accent hover:underline focus:outline-none"
+              title="New channel"
+            >New</button>
+          </div>
+          {#each channels as channel (channel.id)}
+            <button
+              on:click={() => openChannel(channel.id)}
+              class="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left focus:outline-none
+                {$activeChannelId === channel.id ? 'bg-vault-accent/10' : 'hover:bg-vault-elevated'}"
+            >
+              <div
+                class="w-7 h-7 rounded-lg flex items-center justify-center text-vault-white text-[11px] font-semibold shrink-0"
+                style="background: {getAvatarGradient(channel.title)}"
+              >{channel.title[0].toUpperCase()}</div>
+              <div class="min-w-0 flex-1">
+                <div class="text-xs text-vault-text truncate">{channel.title}</div>
+                <div class="text-[9px] text-vault-text-dim">
+                  {channel.subscribersCount} subscribers
+                </div>
+              </div>
+            </button>
+          {/each}
+        </div>
+      {:else if !searchQuery}
+        <button
+          on:click={() => (showChannelModal = true)}
+          class="w-full px-3 py-1.5 text-left text-[10px] text-vault-text-dim hover:text-vault-accent transition-colors focus:outline-none"
+        >Create a channel →</button>
+      {/if}
+
+      <!-- Folder tabs. Hidden until the user makes one, so the default
+           sidebar is unchanged for anyone who does not use folders. -->
+      <div class="flex items-center gap-1 px-2 pb-1.5 overflow-x-auto">
+        <button
+          on:click={() => (activeFolderId = null)}
+          class="shrink-0 px-2 py-1 rounded-lg text-[11px] transition-colors focus:outline-none
+            {activeFolderId === null ? 'bg-vault-accent/15 text-vault-accent' : 'text-vault-text-dim hover:text-vault-text'}"
+        >All</button>
+        {#each folders as folder (folder.id)}
+          <button
+            on:click={() => (activeFolderId = folder.id)}
+            on:dblclick={() => openFolderEditor(folder)}
+            title="Double-click to edit"
+            class="shrink-0 px-2 py-1 rounded-lg text-[11px] transition-colors focus:outline-none
+              {activeFolderId === folder.id ? 'bg-vault-accent/15 text-vault-accent' : 'text-vault-text-dim hover:text-vault-text'}"
+          >{folder.title}</button>
+        {/each}
+        <button
+          on:click={() => openFolderEditor()}
+          class="shrink-0 px-2 py-1 rounded-lg text-[11px] text-vault-text-dim hover:text-vault-accent focus:outline-none"
+          title="New folder"
+        >+</button>
+        {#if activeFolder}
+          <button
+            on:click={() => removeFolder(activeFolder.id)}
+            class="shrink-0 px-2 py-1 rounded-lg text-[11px] text-vault-text-dim hover:text-vault-danger focus:outline-none"
+            title="Delete this folder"
+          >Delete</button>
+        {/if}
+      </div>
+
+      <!-- Archived toggle -->
+      {#if $conversations.some(c => c.archived) || showArchived}
+        <button
+          on:click={() => showArchived = !showArchived}
+          class="w-full px-3 py-1.5 text-left text-[10px] text-vault-text-dim hover:text-vault-accent transition-colors focus:outline-none"
+        >
+          {showArchived ? '← Back to chats' : 'Archived chats →'}
+        </button>
+      {/if}
+
+      {#if activeFolder && visibleConversations.length === 0 && !searchQuery}
+        <div class="text-center py-12 px-4">
+          <p class="text-xs text-vault-text-dim">Nothing in {activeFolder.title}</p>
+          <button
+            on:click={() => openFolderEditor(activeFolder)}
+            class="text-[10px] text-vault-accent hover:underline mt-1 focus:outline-none"
+          >Add chats to it</button>
+        </div>
+      {:else if $conversations.length === 0 && !searchQuery}
         <div class="text-center py-12 px-4">
           <div class="w-12 h-12 rounded-2xl bg-vault-elevated flex items-center justify-center mx-auto mb-3">
             <svg class="w-6 h-6 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -577,11 +984,13 @@
           <p class="text-[10px] text-vault-text-dim mt-1">Search for a user to start chatting</p>
         </div>
       {:else}
-        {#each $conversations as conv (conv.peerId)}
+        {#each visibleConversations as conv (conv.peerId)}
           {@const isActive = $activePeer?.id === conv.peerId}
           {@const isTyping = $typingUsers.has(conv.peerId)}
+          {@const presenceEntry = conv.isGroup ? null : $presence.get(conv.peerId)}
+          <div class="relative group/row">
           <button
-            on:click={() => selectPeer({ id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup, members: conv.members, joinKey: conv.joinKey, createdBy: conv.createdBy })}
+            on:click={() => selectPeer({ id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup, members: conv.members, createdBy: conv.createdBy, chatId: conv.chatId, mode: conv.mode, isEmpty: conv.isEmpty, lastMessageAt: conv.lastMessageAt, isForum: conv.isForum })}
             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left mb-0.5 group
               {isActive ? 'bg-vault-accent/10 border border-vault-accent/20' : 'hover:bg-vault-elevated border border-transparent'}"
           >
@@ -592,7 +1001,13 @@
               >
                 {conv.peerUsername[0].toUpperCase()}
               </div>
-              {#if conv.hasUndelivered}
+              <!-- A numeric badge, now that chat_read_state tracks a real
+                   count rather than a boolean "something is undelivered". -->
+              {#if conv.unreadCount > 0}
+                <div class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-vault-accent border-2 border-vault-surface flex items-center justify-center text-[10px] font-semibold text-vault-black leading-none">
+                  {conv.unreadCount > 99 ? '99+' : conv.unreadCount}
+                </div>
+              {:else if conv.hasUndelivered}
                 <div class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-vault-accent border-2 border-vault-surface"></div>
               {/if}
             </div>
@@ -600,17 +1015,52 @@
             <!-- Content -->
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between">
-                <span class="text-sm font-medium {isActive ? 'text-vault-accent' : 'text-vault-text'} truncate">
-                  {conv.peerUsername}
+                <span class="text-sm font-medium {isActive ? 'text-vault-accent' : 'text-vault-text'} truncate flex items-center gap-1">
+                  <!-- Secret chats must be distinguishable at a glance: the
+                       mode is the entire security story of the conversation,
+                       and a user should never have to guess which kind they
+                       are typing into. -->
+                  {#if conv.mode === 'secret'}
+                    <svg class="w-3 h-3 flex-shrink-0 text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-label="End-to-end encrypted">
+                      <rect x="3" y="11" width="18" height="11" rx="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  {/if}
+                  <span class="truncate">{conv.peerUsername}</span>
                 </span>
-                <span class="text-[10px] text-vault-text-dim flex-shrink-0 ml-2">
+                <span class="text-[10px] text-vault-text-dim flex-shrink-0 ml-2 flex items-center gap-1">
+                  {#if conv.pinnedOrder}
+                    <svg class="w-2.5 h-2.5 text-vault-accent" viewBox="0 0 24 24" fill="currentColor" aria-label="Pinned to top">
+                      <path d="M16 3v6l2 3v2h-5v7l-1 1-1-1v-7H6v-2l2-3V3h8z" />
+                    </svg>
+                  {/if}
+                  {#if isMuted(conv)}
+                    <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="Muted">
+                      <path d="M18.63 13A17.9 17.9 0 0 1 18 8M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14M18 8a6 6 0 0 0-9.33-5M1 1l22 22" stroke-linecap="round" />
+                    </svg>
+                  {/if}
                   {formatTime(conv.lastMessageAt)}
                 </span>
               </div>
-              <div class="text-xs text-vault-text-dim truncate mt-0.5">
+              {#if presenceEntry?.online}
+              <span class="sr-only">online</span>
+            {/if}
+            <div class="text-xs text-vault-text-dim truncate mt-0.5">
                 {#if isTyping}
                   <span class="text-vault-accent flex items-center gap-1">
                     typing<span class="typing-dots"><span></span><span></span><span></span></span>
+                  </span>
+                {:else if conv.draft}
+                  <span class="flex items-center gap-1 text-vault-warning">
+                    <span class="italic">Draft:</span>
+                    <span class="truncate">{conv.draft}</span>
+                  </span>
+                {:else if presenceEntry && describePresence(presenceEntry)}
+                  <span class="flex items-center gap-1">
+                    {#if presenceEntry.online}
+                      <span class="w-1.5 h-1.5 rounded-full bg-vault-success inline-block"></span>
+                    {/if}
+                    {describePresence(presenceEntry)}
                   </span>
                 {:else}
                   <span class="flex items-center gap-1">
@@ -624,6 +1074,47 @@
               </div>
             </div>
           </button>
+
+          <!-- Per-chat menu. Sits outside the row button rather than inside
+               it: nesting interactive elements breaks keyboard navigation and
+               is invalid HTML. -->
+          <button
+            on:click|stopPropagation={() => openMenuFor = openMenuFor === conv.peerId ? null : conv.peerId}
+            class="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-vault-text-dim opacity-0 group-hover/row:opacity-100 focus:opacity-100 hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+            aria-label="Chat options for {conv.peerUsername}"
+            title="Chat options"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="12" cy="19" r="1.6" />
+            </svg>
+          </button>
+
+          {#if openMenuFor === conv.peerId}
+            <div
+              class="absolute right-1.5 top-10 z-30 w-44 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
+              use:clickOutside={() => openMenuFor = null}
+            >
+              <button
+                on:click={() => doPinToTop(conv)}
+                class="w-full text-left px-3 py-1.5 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none"
+              >
+                {conv.pinnedOrder ? 'Unpin from top' : 'Pin to top'}
+              </button>
+              <button
+                on:click={() => doMute(conv)}
+                class="w-full text-left px-3 py-1.5 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none"
+              >
+                {isMuted(conv) ? 'Unmute' : 'Mute notifications'}
+              </button>
+              <button
+                on:click={() => doArchive(conv)}
+                class="w-full text-left px-3 py-1.5 text-xs text-vault-text hover:bg-vault-elevated transition-colors focus:outline-none"
+              >
+                {conv.archived ? 'Unarchive' : 'Archive'}
+              </button>
+            </div>
+          {/if}
+          </div>
         {/each}
       {/if}
     </div>
@@ -732,6 +1223,10 @@
       </div>
 
       <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
+        <ActiveSessions />
+
+        <BotManager />
+
         <!-- Appearance Settings -->
         <div class="flex items-center justify-between border-b border-vault-border pb-4">
           <div>
@@ -1053,26 +1548,10 @@
           {/if}
         </div>
 
-        <!-- Join Group with Key -->
-        <div class="border-t border-vault-border pt-4">
-          <label for="group-join-key-input" class="text-xs font-semibold text-vault-text block mb-1">Join Group with Key</label>
-          <div class="flex gap-2">
-            <input
-              id="group-join-key-input"
-              type="text"
-              bind:value={joinKey}
-              placeholder="Paste group join key..."
-              class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle"
-            />
-            <button
-              on:click={submitJoinGroup}
-              disabled={!joinKey.trim()}
-              class="py-2 px-4 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none whitespace-nowrap cursor-pointer"
-            >
-              Join
-            </button>
-          </div>
-        </div>
+        <!-- The "Join Group with Key" box lived here. It took a permanent,
+             unrevocable bearer secret; invite links replaced it and the
+             column is gone as of migration 0016. Joining now happens by
+             opening an invite link, which App.svelte redeems. -->
       </div>
 
       <div class="px-5 py-3.5 bg-vault-elevated border-t border-vault-border flex justify-end gap-2">
@@ -1089,6 +1568,125 @@
         >
           Create
         </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showFolderEditor}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+    on:click|self={() => (showFolderEditor = false)}
+  >
+    <div class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-vault-text">
+          {editingFolder ? 'Edit folder' : 'New folder'}
+        </h3>
+        <button
+          on:click={() => (showFolderEditor = false)}
+          class="text-vault-text-dim hover:text-vault-text focus:outline-none"
+          aria-label="Close"
+        >✕</button>
+      </div>
+
+      <input
+        bind:value={folderDraftTitle}
+        placeholder="Folder name"
+        maxlength="60"
+        class="w-full px-3 py-2 rounded-lg bg-vault-elevated border border-vault-border text-sm text-vault-text focus:outline-none focus:border-vault-accent"
+      />
+
+      <div class="max-h-56 overflow-y-auto flex flex-col gap-0.5">
+        <!-- Only chats with a `chats` row can be filed: a conversation that
+             exists implicitly, before its first message, has no id to store. -->
+        {#each $conversations.filter(c => c.chatId) as conv (conv.peerId)}
+          <label class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-vault-elevated cursor-pointer">
+            <input
+              type="checkbox"
+              checked={folderDraftChats.has(conv.chatId)}
+              on:change={() => toggleFolderChat(conv.chatId)}
+            />
+            <span class="text-xs text-vault-text truncate">{conv.peerUsername}</span>
+          </label>
+        {/each}
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button
+          on:click={() => (showFolderEditor = false)}
+          class="px-3 py-1.5 rounded-lg text-xs text-vault-text-dim hover:text-vault-text focus:outline-none"
+        >Cancel</button>
+        <button
+          on:click={saveFolder}
+          disabled={folderBusy || !folderDraftTitle.trim()}
+          class="px-3 py-1.5 rounded-lg text-xs bg-vault-accent text-vault-black font-medium disabled:opacity-50 focus:outline-none"
+        >{folderBusy ? 'Saving…' : 'Save'}</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showChannelModal}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div
+    class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+    on:click|self={() => (showChannelModal = false)}
+  >
+    <div class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-vault-text">New channel</h3>
+        <button
+          on:click={() => (showChannelModal = false)}
+          class="text-vault-text-dim hover:text-vault-text focus:outline-none"
+          aria-label="Close"
+        >✕</button>
+      </div>
+
+      <input
+        bind:value={channelTitle}
+        placeholder="Channel name"
+        maxlength="128"
+        class="w-full px-3 py-2 rounded-lg bg-vault-elevated border border-vault-border text-sm text-vault-text focus:outline-none focus:border-vault-accent"
+      />
+
+      <div>
+        <input
+          bind:value={channelUsername}
+          placeholder="Public username (optional)"
+          maxlength="32"
+          class="w-full px-3 py-2 rounded-lg bg-vault-elevated border border-vault-border text-sm text-vault-text focus:outline-none focus:border-vault-accent"
+        />
+        <!-- Said plainly, because the difference is the whole privacy model
+             of the channel: a username makes it readable by anyone. -->
+        <p class="text-[10px] text-vault-muted mt-1">
+          With a username anyone can find and read this channel. Leave it blank
+          to keep it invite-only.
+        </p>
+      </div>
+
+      <p class="text-[10px] text-vault-muted">
+        Posts are deleted 24 hours after publishing, like every other message
+        here. A channel is a live feed, not an archive.
+      </p>
+
+      {#if channelError}
+        <div class="text-[11px] text-vault-danger">{channelError}</div>
+      {/if}
+
+      <div class="flex justify-end gap-2">
+        <button
+          on:click={() => (showChannelModal = false)}
+          class="px-3 py-1.5 rounded-lg text-xs text-vault-text-dim hover:text-vault-text focus:outline-none"
+        >Cancel</button>
+        <button
+          on:click={makeChannel}
+          disabled={channelBusy || !channelTitle.trim()}
+          class="px-3 py-1.5 rounded-lg text-xs bg-vault-accent text-vault-black font-medium disabled:opacity-50 focus:outline-none"
+        >{channelBusy ? 'Creating…' : 'Create'}</button>
       </div>
     </div>
   </div>

@@ -4,15 +4,12 @@
 // ============================================================
 
 import {
-  generateKeyPair,
   exportPublicKeyBase64,
-  importPublicKey,
   importECDSAPublicKey,
   deriveAESKey,
   hmacSHA256,
   encrypt,
-  decrypt,
-  signData
+  decrypt
 } from './keys.js';
 import { toBase64 } from './utils.js';
 

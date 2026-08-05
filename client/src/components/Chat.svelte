@@ -1,9 +1,13 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, clearSession, activePeer, sidebarOpen, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients } from '../lib/stores/session.js';
-  import { conversations, messagesByPeer, addMessage, addMessages, setTyping, typingUsers, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
-  import { fetchConversations, fetchPendingMessages, logout, searchUsers, getPrekeyCount, replenishPrekeys, fetchGroups } from '../lib/api/http.js';
+  import { currentUser, clearSession, activePeer, activeChannelId, pendingChatId, syncPts, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients } from '../lib/stores/session.js';
+  import { conversations, addMessage, addMessages, setTyping, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
+  import { setReactions } from '../lib/chat/reactions.js';
+  import { applyEdit } from '../lib/chat/edit.js';
+  import { tombstoneLocally, setPinned, setPreview, setPoll, consumeViewOnce } from '../lib/chat/actions.js';
+  import { hydrateBlocked } from '../lib/chat/chatSettings.js';
+  import { fetchPoll, fetchUpdates, fetchChats, fetchPendingMessages, logout, getPrekeyCount, replenishPrekeys } from '../lib/api/http.js';
   import { connectWebSocket, disconnectWebSocket, onWsEvent, wsConnected, wsError, wsSend } from '../lib/api/ws.js';
   import { generateOneTimePrekeys, importStaticKey } from '../lib/crypto/keys.js';
   import { decryptSignalingPayload } from '../lib/crypto/decryption.js';
@@ -11,9 +15,10 @@
   import { playOutgoingCallSound, playIncomingCallSound, stopCallSounds } from '../lib/callSounds.js';
   import ChatSidebar from './ChatSidebar.svelte';
   import ChatView from './ChatView.svelte';
+  import ChannelView from './ChannelView.svelte';
   import MiniCallBar from './MiniCallBar.svelte';
 
-  let unsubscribers = [];
+  const unsubscribers = [];
   let ping = 32;
   let pingInterval;
 
@@ -31,29 +36,106 @@
     stopCallSounds();
   }
 
+  // Maps a chat onto the shape the existing components already read. Keeping
+  // `peerId` in the old form ('group-<id>' for groups, the peer's user id for
+  // private chats) means the sidebar, ChatView and the send path keep working
+  // unchanged while the new fields ride alongside.
+  // The same peer shape ChatSidebar builds when a conversation row is clicked.
+  function toActivePeer(conv) {
+    return {
+      id: conv.peerId,
+      username: conv.peerUsername,
+      isGroup: conv.isGroup,
+      members: conv.members,
+      joinKey: conv.joinKey,
+      createdBy: conv.createdBy,
+      chatId: conv.chatId,
+      mode: conv.mode,
+      isEmpty: conv.isEmpty,
+      lastMessageAt: conv.lastMessageAt,
+      isForum: conv.isForum,
+    };
+  }
+
+  function toConversation(chat) {
+    const isGroup = chat.type === 'group';
+    return {
+      // New fields.
+      chatId: chat.id,
+      mode: chat.mode,
+      unreadCount: chat.unreadCount,
+      isEmpty: chat.isEmpty,
+      theme: chat.theme ?? null,
+      isForum: Boolean(chat.isForum),
+      lastSeq: chat.lastSeq,
+
+      // Existing shape.
+      peerId: isGroup ? `group-${chat.id}` : chat.peerId,
+      peerUsername: isGroup ? chat.title : chat.peerUsername,
+      isGroup,
+      members: chat.members || [],
+      membersCount: chat.membersCount,
+      joinKey: chat.joinKey,
+      createdBy: chat.createdBy,
+      lastMessageAt: chat.lastMessageAt,
+      hasUndelivered: chat.unreadCount > 0,
+    };
+  }
+
   onMount(async () => {
-    // 1. Fetch conversations & groups from server
+    // 1. Load the chat list from the chat model.
+    //
+    // This replaces the old pair of calls (/api/conversations + /api/groups),
+    // which derived conversations from message rows. That mattered: messages
+    // expire after 24h and chats do not, so a conversation used to disappear
+    // once it went quiet for a day. Reading /api/chats keeps it — empty —
+    // and brings real unread counts with it.
     try {
-      const data = await fetchConversations();
-      const groups = await fetchGroups();
-      const groupConvs = groups.map(g => ({
-        peerId: `group-${g.id}`,
-        peerUsername: g.name,
-        isGroup: true,
-        members: g.members,
-        joinKey: g.joinKey,
-        createdBy: g.createdBy,
-        lastMessageAt: null,
-        hasUndelivered: false
-      }));
-      conversations.set([...groupConvs, ...(data.conversations || [])]);
+      const { chats } = await fetchChats();
+      const convs = chats.map(toConversation);
+      conversations.set(convs);
+
+      // Arrived through an invite link: open what they joined, rather than
+      // dropping them into a list with no explanation of why it changed.
+      const joinedId = get(pendingChatId);
+      if (joinedId) {
+        pendingChatId.set(null);
+        const joined = convs.find(c => c.chatId === joinedId);
+        if (joined) activePeer.set(toActivePeer(joined));
+      }
     } catch (err) {
-      console.error('Failed to fetch conversations:', err);
+      console.error('Failed to fetch chats:', err);
+    }
+
+    // Blocked users are global state, not per-conversation: loading them here
+    // means the block is known before any chat is opened, and survives a
+    // reload rather than only appearing once you happen to open that chat.
+    hydrateBlocked();
+
+
+    // Start from wherever the account's log currently is. A first load has
+    // just fetched the chat list, so replaying the last day on top of it
+    // would duplicate everything it already has.
+    try {
+      const { pts } = await fetchUpdates(0);
+      syncPts.set(pts ?? 0);
+    } catch (err) {
+      console.error('Failed to read sync position:', err);
     }
 
     // 2. Connect WebSocket for real-time messaging
     // Cookie-based auth: JWT cookie sent automatically during upgrade
     connectWebSocket();
+
+    // Catch up whenever the socket comes back. Messages that arrived while
+    // it was down are replayed from the log; ones that were delivered live
+    // are dropped by the store's id check, so a replay that overlaps costs
+    // nothing but is never missing anything.
+    let wasConnected = false;
+    unsubscribers.push(wsConnected.subscribe((connected) => {
+      if (connected && wasConnected) catchUp();
+      wasConnected = connected;
+    }));
 
     // Setup Web Push notifications
     setupPushNotifications();
@@ -73,6 +155,15 @@
       onWsEvent('call_accept', handleGlobalCallAccept),
       onWsEvent('call_reject', handleGlobalCallReject),
       onWsEvent('call_hangup', handleGlobalCallHangup),
+      onWsEvent('reaction', handleReaction),
+      onWsEvent('message_edited', handleMessageEdited),
+      onWsEvent('message_deleted', handleMessageDeleted),
+      onWsEvent('message_pinned', handleMessagePinned),
+      onWsEvent('message_unpinned', handleMessageUnpinned),
+      onWsEvent('message_preview', handleMessagePreview),
+      onWsEvent('poll_updated', handlePollUpdated),
+      onWsEvent('message_consumed', handleMessageConsumed),
+      onWsEvent('device_revoked', handleDeviceRevoked),
       onWsEvent('group_updated', handleGroupUpdated),
       onWsEvent('group_removed', handleGroupRemoved),
     );
@@ -144,23 +235,163 @@
     }
   }
 
-  function handleIncomingMessage(data) {
-    const threadId = data.groupId ? `group-${data.groupId}` : data.senderId;
+  // Cloud-chat reactions arrive as their own event carrying the recomputed
+  // summary. Secret-chat reactions never come through here — they are ops
+  // inside encrypted messages, applied in the message store.
+  function handleReaction(data) {
+    const conv = get(conversations).find(c => c.chatId === data.chatId);
+    if (!conv) return;
+    setReactions(conv.peerId, data.seq, data.reactions);
+  }
 
-    addMessage(threadId, {
-      id: data.id,
-      senderId: data.senderId,
-      senderUsername: data.senderUsername,
-      text: data.ciphertext,
-      encrypted: true,
-      iv: data.iv,
-      ephemeralKey: data.ephemeralKey,
-      messageNumber: data.messageNumber,
-      previousChain: data.previousChain,
-      sentAt: data.sentAt,
-      expiresAt: data.expiresAt,
-      groupId: data.groupId
-    });
+  function handleMessageEdited(data) {
+    const conv = get(conversations).find(c => c.chatId === data.chatId);
+    if (!conv) return;
+    applyEdit(conv.peerId, { seq: data.seq, body: data.body, editedAt: data.editedAt });
+  }
+
+  function handleMessageDeleted(data) {
+    const conv = get(conversations).find(c => c.chatId === data.chatId);
+    if (conv) tombstoneLocally(conv.peerId, data.seq);
+  }
+
+  function handleMessagePinned(data) {
+    const conv = get(conversations).find(c => c.chatId === data.chatId);
+    if (conv) setPinned(conv.peerId, data.seq, new Date().toISOString());
+  }
+
+  function handleMessageUnpinned(data) {
+    const conv = get(conversations).find(c => c.chatId === data.chatId);
+    if (conv) setPinned(conv.peerId, data.seq, null);
+  }
+
+  function handleMessagePreview(data) {
+    const conv = get(conversations).find(c => c.chatId === data.chatId);
+    if (conv) setPreview(conv.peerId, data.seq, data.preview);
+  }
+
+  // A vote landed. The tally is viewer-specific — which option is *mine* —
+  // so the server cannot include it in the broadcast and each client fetches
+  // its own copy.
+  async function handlePollUpdated(data) {
+    const conv = get(conversations).find(c => c.chatId === data.chatId);
+    if (!conv) return;
+    try {
+      const { poll } = await fetchPoll(data.chatId, data.seq);
+      setPoll(conv.peerId, data.seq, poll);
+    } catch (err) {
+      console.error('Failed to refresh poll:', err);
+    }
+  }
+
+  // A view-once message was opened by its last remaining recipient. The
+  // server has already cleared it; this drops the local copy so a client that
+  // happens to be looking at it does not keep showing content the server no
+  // longer has.
+  function handleMessageConsumed(data) {
+    const conv = get(conversations).find(c => c.chatId === data.chatId);
+    if (conv) consumeViewOnce(conv.peerId, data.seq);
+  }
+
+  // This device was signed out from somewhere else. The token is already
+  // dead server-side; clearing local state is what stops the UI continuing
+  // to show an account it can no longer act on.
+  function handleDeviceRevoked() {
+    alert('This device was signed out from another session.');
+    clearSession();
+  }
+
+  // Catches up on everything missed while the socket was down.
+  //
+  // `tooLong` means the gap is bigger than the log can serve — with a 24h
+  // retention, mostly that the client was away for more than a day. Refetching
+  // the chat list is the right answer and a cheap one, because there is only
+  // ever a day of it to fetch.
+  async function catchUp() {
+    try {
+      const from = get(syncPts);
+      const { updates, pts, tooLong } = await fetchUpdates(from);
+
+      if (tooLong) {
+        const { chats } = await fetchChats();
+        conversations.set(chats.map(toConversation));
+        syncPts.set(pts ?? 0);
+        return;
+      }
+
+      for (const update of updates) {
+        if (update.kind === 'message') handleIncomingMessage(update);
+      }
+      syncPts.set(pts ?? from);
+    } catch (err) {
+      console.error('Failed to catch up after reconnect:', err);
+    }
+  }
+
+  function handleIncomingMessage(data) {
+    // The store is keyed by peer, so a message has to be filed against the
+    // *other* party — but the fanout reaches the sender too, and `senderId`
+    // is then the reader's own id. Resolving through the chat first puts a
+    // server-originated message the client did not insert optimistically
+    // (a poll, a scheduled send) into the right conversation instead of a
+    // phantom one keyed by the reader.
+    const conv = data.chatId
+      ? get(conversations).find(c => c.chatId === data.chatId)
+      : null;
+    const threadId = conv?.peerId
+      ?? (data.groupId ? `group-${data.groupId}` : data.senderId);
+
+    // A cloud message arrives already in plaintext — there is nothing to
+    // decrypt, and treating it as ciphertext would push it through the ratchet
+    // and fail. A secret message keeps the existing path exactly.
+    if (data.mode === 'cloud') {
+      addMessage(threadId, {
+        id: data.id,
+        chatId: data.chatId,
+        seq: data.seq,
+        senderId: data.senderId,
+        senderUsername: data.senderUsername,
+        mode: 'cloud',
+        messageType: data.messageType,
+        text: data.body,
+        body: data.body,
+        entities: data.entities,
+        media: data.media,
+        replyToSeq: data.replyToSeq,
+        preview: data.preview ?? null,
+        poll: data.poll ?? null,
+        // Lets the store recognise this as the echo of a send this client
+        // made itself, rather than a second message.
+        clientRandomId: data.clientRandomId ?? null,
+        viewOnce: Boolean(data.viewOnce),
+        // A bot's inline keyboard. Carried here as well as in history,
+        // because a message delivered live is deduplicated against the
+        // history fetch — whichever arrives first is the copy that renders,
+        // so both paths have to be complete.
+        replyMarkup: data.replyMarkup ?? null,
+        viaBot: Boolean(data.viaBot),
+        encrypted: false,
+        sentAt: data.sentAt,
+        expiresAt: data.expiresAt,
+      });
+    } else {
+      addMessage(threadId, {
+        id: data.id,
+        chatId: data.chatId,
+        seq: data.seq,
+        senderId: data.senderId,
+        senderUsername: data.senderUsername,
+        text: data.ciphertext,
+        encrypted: true,
+        iv: data.iv,
+        ephemeralKey: data.ephemeralKey,
+        messageNumber: data.messageNumber,
+        previousChain: data.previousChain,
+        sentAt: data.sentAt,
+        expiresAt: data.expiresAt,
+        groupId: data.groupId
+      });
+    }
 
     // Update conversations list (insertion-sort: move to front)
     conversations.update(convs => {
@@ -192,21 +423,37 @@
           joinKey: null,
           lastMessageAt: data.sentAt,
           hasUndelivered: !isCurrentlyActive,
+          unreadCount: isCurrentlyActive ? 0 : 1,
+          isEmpty: false,
+          // Carry the chat identity through. A conversation first seen via an
+          // incoming message used to be created without these, so anything
+          // keyed on the chat — reactions, read receipts, per-chat settings —
+          // silently did nothing until the next page load repopulated it from
+          // /api/chats.
+          chatId: data.chatId || (data.groupId ?? null),
+          mode: data.mode || (data.groupId ? 'secret' : undefined),
         });
         // The join key isn't sent with individual messages (it's a bearer
         // secret that lets anyone into the group, so it shouldn't ride
         // along with every message payload) — backfill it from the
         // authoritative group list for a conversation we're seeing for
         // the first time (e.g. just added to a new group).
-        if (data.groupId) {
-          fetchGroups().then(groups => {
-            const g = groups.find(g => g.id === data.groupId);
+        // Also covers a private chat seen for the first time: a secret
+        // message carries no chatId, so resolve it from the authoritative
+        // chat list rather than leaving the conversation half-formed.
+        {
+          fetchChats().then(({ chats }) => {
+            const g = data.groupId
+              ? chats.find(c => c.id === data.groupId)
+              : chats.find(c => c.peerId === data.senderId);
             if (!g) return;
             conversations.update(cs => {
               const conv = cs.find(c => c.peerId === threadId);
               if (conv) {
                 conv.joinKey = g.joinKey;
                 conv.createdBy = g.createdBy;
+                conv.chatId = g.id;
+                conv.mode = g.mode;
               }
               return [...cs];
             });
@@ -419,7 +666,7 @@
   function urlBase64ToUint8Array(base64String) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding)
-      .replace(/\-/g, '+')
+      .replace(/-/g, '+')
       .replace(/_/g, '/');
     const rawData = window.atob(base64);
     const outputArray = new Uint8Array(rawData.length);
@@ -445,7 +692,9 @@
   />
 
   <!-- Main Chat Area -->
-  {#if $activePeer}
+  {#if $activeChannelId}
+    <ChannelView chatId={$activeChannelId} onClose={() => activeChannelId.set(null)} />
+  {:else if $activePeer}
     <ChatView />
   {:else}
     <!-- Empty State -->
