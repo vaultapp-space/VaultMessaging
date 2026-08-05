@@ -89,7 +89,7 @@ test.describe('global message search', () => {
       await alice.getByLabel('Search inside conversations').click();
       await alice.getByPlaceholder('Search inside conversations...').fill('findable');
 
-      await expect(alice.getByText(/Secret chats are not searchable/i))
+      await expect(alice.getByText(/Encrypted chats stay on your device/i))
         .toBeVisible({ timeout: 20_000 });
     } finally {
       await ctx.aliceCtx.close();

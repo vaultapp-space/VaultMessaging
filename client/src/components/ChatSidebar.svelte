@@ -253,9 +253,15 @@
       try {
         const res = await runSearch(query);
         messageResults = res.results || [];
+        // Worth being blunt about. Server-side search reads plaintext, so it
+        // can only ever see cloud chats — and one-to-one chats are encrypted
+        // by default now, which means this misses most of them. The old
+        // wording ("secret chats are not searchable") was accurate when
+        // secret was the exception and is quietly misleading now that it is
+        // the rule: someone would reasonably conclude search was broken.
         searchNotice = res.excludesSecretChats
-          ? 'Searches your last 24 hours. Secret chats are not searchable.'
-          : '';
+          ? 'Searches groups and cloud chats from the last 24 hours. Encrypted chats stay on your device, so they are not searched here — open one and use search inside it.'
+          : 'Searches your last 24 hours.';
       } catch (err) {
         console.error('Search failed:', err);
         messageResults = [];

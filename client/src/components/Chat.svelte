@@ -47,7 +47,6 @@
       username: conv.peerUsername,
       isGroup: conv.isGroup,
       members: conv.members,
-      joinKey: conv.joinKey,
       createdBy: conv.createdBy,
       chatId: conv.chatId,
       mode: conv.mode,
@@ -75,7 +74,6 @@
       isGroup,
       members: chat.members || [],
       membersCount: chat.membersCount,
-      joinKey: chat.joinKey,
       createdBy: chat.createdBy,
       lastMessageAt: chat.lastMessageAt,
       hasUndelivered: chat.unreadCount > 0,
@@ -414,7 +412,6 @@
           peerUsername: data.groupName || data.senderUsername,
           isGroup: !!data.groupId,
           members: data.groupMembers || [],
-          joinKey: null,
           lastMessageAt: data.sentAt,
           hasUndelivered: !isCurrentlyActive,
           unreadCount: isCurrentlyActive ? 0 : 1,
@@ -444,7 +441,6 @@
             conversations.update(cs => {
               const conv = cs.find(c => c.peerId === threadId);
               if (conv) {
-                conv.joinKey = g.joinKey;
                 conv.createdBy = g.createdBy;
                 conv.chatId = g.id;
                 conv.mode = g.mode;

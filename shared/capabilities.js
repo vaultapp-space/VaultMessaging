@@ -13,7 +13,7 @@
 // the keys.
 //
 // Everything else — reactions, replies, edits, deletes, pins, forwards,
-// drafts, polls, media — works in both, because the `t:'op'` envelope carries
+// drafts, media — works in both, because the `t:'op'` envelope carries
 // the operation either way: an HTTP call in a cloud chat, an encrypted
 // message applied client-side in a secret one.
 
@@ -31,6 +31,13 @@ const CLOUD_ONLY = Object.freeze([
   'multiDeviceSync',   // history replayed to a device that has no keys
   'channels',          // broadcast fanout the server must address
   'serverSideForward', // forwarding with attribution intact
+  // Listed here rather than as universal because it is the truth. The
+  // envelope *could* carry a poll either way, but the secret-mode version
+  // would have to tally votes client-side through `t:'op'` messages and that
+  // is not built — the server refuses a poll in a secret chat. A capability
+  // table that describes what was intended rather than what exists is worse
+  // than no table, because both sides import it and trust it.
+  'polls',
 ]);
 
 // Requires a single device holding the keys, or the ratchet itself.
@@ -43,7 +50,7 @@ const SECRET_ONLY = Object.freeze([
 // Works in both modes.
 const UNIVERSAL = Object.freeze([
   'text', 'media', 'voiceNotes', 'reactions', 'replies', 'edit', 'delete',
-  'forward', 'pin', 'drafts', 'polls', 'stickers', 'typing', 'readReceipts',
+  'forward', 'pin', 'drafts', 'stickers', 'typing', 'readReceipts',
   'calls', 'localSearch', 'mute', 'archive',
 ]);
 

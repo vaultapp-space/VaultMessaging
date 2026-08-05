@@ -50,7 +50,7 @@ describe('chat capabilities', () => {
     // This is what makes one composer and one message list possible.
     const universal = [
       'text', 'media', 'voiceNotes', 'reactions', 'replies', 'edit', 'delete',
-      'forward', 'pin', 'drafts', 'polls', 'stickers', 'typing', 'readReceipts',
+      'forward', 'pin', 'drafts', 'stickers', 'typing', 'readReceipts',
       'calls', 'localSearch', 'mute', 'archive',
     ];
 
