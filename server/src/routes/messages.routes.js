@@ -72,6 +72,13 @@ async function messageRoutes(fastify) {
     const ttl = Math.min(ttlMinutes || MAX_TTL_MINUTES, MAX_TTL_MINUTES);
     const expiresAt = new Date(Date.now() + ttl * 60 * 1000).toISOString();
 
+    // The recipient has to be allowed to fetch the file. This lived in the
+    // messages repo and called a method that repo does not have, so it threw
+    // rather than authorising — every attachment sent in a secret chat 500'd.
+    if (attachmentId) {
+      await fastify.repos.attachments.authorizeAttachmentUser(attachmentId, recipientId);
+    }
+
     // Store encrypted blob
     const msg = await fastify.store.createMessage({
       senderId,

@@ -267,7 +267,11 @@ async function authRoutes(fastify) {
     },
   }, async (request, reply) => {
     const { message, error, context } = request.body;
-    fastify.log.error({ clientMessage: message, clientError: error, clientContext: context }, 'Client-side error log received');
+    // warn, not error. This endpoint is unauthenticated by necessity — the
+    // errors worth reporting happen before login — so anyone can write to it.
+    // At error level an anonymous caller can bury genuine server faults in
+    // noise, which is a cheap way to make an incident harder to read.
+    fastify.log.warn({ clientMessage: message, clientError: error, clientContext: context }, 'Client-side error log received');
     return { ok: true };
   });
 

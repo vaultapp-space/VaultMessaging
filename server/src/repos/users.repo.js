@@ -9,7 +9,9 @@
 
 import crypto from 'node:crypto';
 
-export function createUsers({ pool }) {
+import config from '../config.js';
+
+export function createUsers({ pool, dummySaltSecret = config.jwtSecret }) {
   return {
     pool,
 
@@ -85,9 +87,23 @@ export function createUsers({ pool }) {
     return res.rows;
   },
 
+  /**
+   * A stand-in salt for a username that does not exist.
+   *
+   * The point is that /auth/salt answers identically whether or not the
+   * account is real, so it cannot be used to enumerate users. That only holds
+   * if the value is unguessable: this was keyed with the literal string
+   * 'dummy_salt_key', which lives in a public repository — so anyone could
+   * compute the dummy for any username, compare it to the response, and learn
+   * exactly which accounts exist. The endpoint looked like it defended
+   * against enumeration while defending against nothing.
+   *
+   * Keyed on the instance's own secret now, domain-separated so it is never
+   * the same value as anything else derived from it.
+   */
   getDummySalt(username) {
-    return crypto.createHmac('sha256', 'dummy_salt_key')
-      .update(username)
+    return crypto.createHmac('sha256', dummySaltSecret)
+      .update(`dummy-salt:${username}`)
       .digest('base64')
       .substring(0, 24);
   },

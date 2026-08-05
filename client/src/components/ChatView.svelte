@@ -26,7 +26,14 @@
   import { messagesByPeer, addMessages, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
   import { fetchMessages, fetchChatMessages, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, leaveGroup, removeGroupMember } from '../lib/api/http.js';
   import { sendTyping, onWsEvent } from '../lib/api/ws.js';
-  import { exportPublicKeyBase64, encrypt as encryptFile, generateKeyPair, signData, encryptChunk } from '../lib/crypto/keys.js';
+  // `encryptFile`, not `encrypt` aliased to that name. The alias meant
+  // sendVoiceNote called encrypt(arrayBuffer) — passing the audio as the
+  // *key* argument — so every voice note failed with "parameter 2 is not of
+  // type CryptoKey" before it left the browser. The two functions have
+  // different signatures and different jobs: encrypt() takes a CryptoKey and
+  // a string, encryptFile() generates its own key and returns the material
+  // needed to send it.
+  import { exportPublicKeyBase64, encryptFile, generateKeyPair, signData, encryptChunk } from '../lib/crypto/keys.js';
   import { getAvatarGradient } from '../lib/avatar.js';
   import MessageBubble from './MessageBubble.svelte';
   import {

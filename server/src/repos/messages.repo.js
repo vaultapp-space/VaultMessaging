@@ -58,10 +58,11 @@ export function createMessages({ pool }) {
 
     const msg = res.rows[0];
 
-    // Auto authorize recipient on attachment if any
-    if (attachmentId) {
-      await this.authorizeAttachmentUser(attachmentId, recipientId);
-    }
+    // Attachment authorisation used to happen here, via
+    // `this.authorizeAttachmentUser` — which lives on the attachments repo,
+    // not this one, so `this` never had it and every secret message carrying
+    // a file threw "not a function" and 500'd. It is done in the route now,
+    // where both repos are in scope, the same way the cloud path does it.
 
     return msg;
   },

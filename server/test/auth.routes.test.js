@@ -284,3 +284,51 @@ describe('QR device sync relay', () => {
     assert.equal(res.statusCode, 400);
   });
 });
+
+// ============================================================
+// Username enumeration
+// ============================================================
+// /auth/salt has to answer for accounts that do not exist, or the response
+// itself reveals which usernames are taken. The stand-in it returns was keyed
+// with a literal string committed to a public repository, so anyone could
+// compute it and compare — the defence existed but did not work.
+
+describe('the salt endpoint does not reveal who exists', () => {
+  test('an unknown username still gets a well-formed salt', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/auth/salt/definitelynotarealaccount',
+    });
+    assert.equal(res.statusCode, 200);
+    assert.match(res.json().salt, /^.{24}$/);
+  });
+
+  test('a real and a fake username are indistinguishable in shape', async () => {
+    const real = await registerUser(app);
+
+    const known = (await app.inject({
+      method: 'GET', url: `/api/auth/salt/${real.username}`,
+    })).json().salt;
+    const unknown = (await app.inject({
+      method: 'GET', url: '/api/auth/salt/nosuchpersonhere',
+    })).json().salt;
+
+    assert.equal(known.length, unknown.length);
+    assert.notEqual(known, unknown);
+  });
+
+  test('the stand-in is not derivable from a value in the source', async () => {
+    // The old key was the literal 'dummy_salt_key'. If that ever reproduces
+    // the response again, enumeration is back.
+    const crypto = await import('node:crypto');
+    const username = 'someoneunknown';
+
+    const guessable = crypto.createHmac('sha256', 'dummy_salt_key')
+      .update(username).digest('base64').substring(0, 24);
+
+    const actual = (await app.inject({
+      method: 'GET', url: `/api/auth/salt/${username}`,
+    })).json().salt;
+
+    assert.notEqual(actual, guessable);
+  });
+});
