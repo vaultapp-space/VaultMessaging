@@ -189,15 +189,16 @@ When an SFU lands, that constant is the only thing that moves.
 
 ## Known gaps and follow-ups
 
+- **E2E flakiness is fixed** (leaked browser contexts, see `e2e/fixtures.js`).
+  Three consecutive clean runs at 5.7 / 5.7 / 5.3 minutes. If it returns, the
+  first thing to check is whether a new spec creates a context outside the
+  fixture's reach — not whether a timeout needs raising.
+
 - **`/bot` needs a production proxy rule.** It sits outside `/api` on purpose;
   a proxy forwarding only `/api` hands bots the SPA's HTML. Fixed in
   `vite.config.js`; production needs the same.
 - **Alert on the `/health` 503.** The signal exists now; nothing consumes it
   yet. Point an uptime check at `/health` and page on non-2xx.
-- **The E2E suite is occasionally flaky under machine contention.** One run in
-  three showed two failures (one a 60s timeout) that passed in isolation and on
-  two consecutive clean full runs. Serial already (`workers: 1`); if it
-  recurs, the timeouts are the thing to raise, not the assertions.
 - **Voice chat is capped at 4** by the mesh topology. An SFU is the unlock;
   `MAX_VOICE_PARTICIPANTS` is the only constant that moves.
 - **Lottie/TGS animated stickers** remain out of scope; `is_animated` is in the
