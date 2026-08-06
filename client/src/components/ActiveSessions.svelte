@@ -8,15 +8,25 @@
   // convenience — a lost device otherwise keeps working until its 24h token
   // expires on its own.
 
-  import { onMount } from 'svelte';
   import { fetchDevices, revokeDevice } from '../lib/api/http.js';
 
+  // Folded away behind a single row rather than always expanded — every
+  // device was rendering inline in a settings panel that already has
+  // Appearance, Biometric Unlock and Local Encrypted Backup competing for
+  // the same space, and most visits to Settings have nothing to do with
+  // session management. Lazily loaded on first open rather than on mount,
+  // so opening Settings doesn't fire a devices request nobody asked for.
+  let open = false;
   let devices = [];
-  let loading = true;
+  let loaded = false;
+  let loading = false;
   let error = '';
   let revoking = null;
 
-  onMount(load);
+  function toggle() {
+    open = !open;
+    if (open && !loaded) load();
+  }
 
   async function load() {
     loading = true;
@@ -29,6 +39,7 @@
       error = 'Could not load your sessions.';
     } finally {
       loading = false;
+      loaded = true;
     }
   }
 
@@ -68,16 +79,30 @@
 </script>
 
 <div class="border-b border-vault-border pb-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <span class="text-xs font-semibold text-vault-text block">Sessions</span>
+      <span class="text-[10px] text-vault-text-dim">
+        {#if loaded}{devices.length} signed in{:else}Everything signed in to this account{/if}
+      </span>
+    </div>
+    <button
+      on:click={toggle}
+      class="text-[10px] text-vault-accent hover:underline focus:outline-none"
+    >{open ? 'Hide' : 'View'}</button>
+  </div>
+
+  {#if open}
+  <div class="mt-2">
   <div class="flex items-center justify-between mb-1">
-    <span class="text-xs font-semibold text-vault-text block">Active Sessions</span>
+    <span class="text-[10px] text-vault-text-dim">
+      Signing one out takes effect at once.
+    </span>
     <button
       on:click={load}
-      class="text-[10px] text-vault-accent hover:underline focus:outline-none"
+      class="text-[10px] text-vault-accent hover:underline focus:outline-none shrink-0"
     >Refresh</button>
   </div>
-  <span class="text-[10px] text-vault-text-dim block mb-2">
-    Everything signed in to this account. Signing one out takes effect at once.
-  </span>
 
   {#if loading}
     <div class="text-[10px] text-vault-text-dim">Loading…</div>
@@ -113,5 +138,7 @@
         </div>
       {/each}
     </div>
+  {/if}
+  </div>
   {/if}
 </div>
