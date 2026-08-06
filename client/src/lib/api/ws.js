@@ -4,6 +4,7 @@
 // ============================================================
 
 import { writable, get } from 'svelte/store';
+import { Capacitor } from '@capacitor/core';
 import { updateMessageStatus } from '../stores/messages.js';
 
 export const wsConnected = writable(false);
@@ -33,8 +34,13 @@ export function onWsEvent(type, handler) {
 export function connectWebSocket() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/ws`;
+  // Absolute on native, same reasoning as API_BASE in http.js: the app's own
+  // WebView content is served from a spoofed origin (app.vaultapp.space),
+  // not the real one, so window.location.host would try to open a socket
+  // against a host nothing is listening on.
+  const wsUrl = Capacitor.isNativePlatform()
+    ? 'wss://vaultapp.space/ws'
+    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
   try {
     socket = new WebSocket(wsUrl);

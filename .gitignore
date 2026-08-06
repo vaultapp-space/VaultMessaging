@@ -17,3 +17,16 @@ playwright-report/
 
 # Runtime uploads: user content, never source.
 server/uploads/
+
+# Android (android/) — Capacitor's native project is plain Gradle/XML/Kotlin
+# and is meant to be committed and hand-edited, unlike ios/.xcodeproj. Only
+# its build artifacts and machine-local settings are excluded.
+android_release.keystore
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+# npx cap sync copies client/dist in here on every sync — a derived artifact
+# of an already-gitignored dist/, not source.
+android/app/src/main/assets/public/

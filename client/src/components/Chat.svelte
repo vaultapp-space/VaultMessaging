@@ -696,7 +696,11 @@
   }
 </script>
 
-<div class="fixed inset-0 z-10 flex">
+<!-- fixed inset-0 escapes App.svelte's <main> padding-top entirely (fixed
+     positioning is relative to the viewport, not an ancestor's padding
+     box), so the same safe-area-inset-top fix has to be repeated here for
+     the chat screen specifically — see App.svelte's comment for why. -->
+<div class="fixed inset-0 z-10 flex" style="padding-top: env(safe-area-inset-top, 0px)">
   <!-- Sidebar -->
   <ChatSidebar
     on:logout={handleLogout}

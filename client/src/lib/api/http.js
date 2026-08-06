@@ -3,7 +3,20 @@
 // Communicates with Fastify backend via REST
 // ============================================================
 
-const API_BASE = '/api';
+import { Capacitor } from '@capacitor/core';
+
+// Relative on web — the page already *is* vaultapp.space there, so a
+// relative path resolves correctly. Absolute inside the Android app: its
+// own WebView content is deliberately served from a different (spoofed)
+// origin — app.vaultapp.space, not vaultapp.space — precisely so a request
+// to /api/* doesn't get claimed by Capacitor's own local asset loader
+// instead of reaching the real network. Capacitor's WebViewLocalServer
+// treats *any* path under the app's own origin as a local file request
+// (see isMainUrl() in its Java source); the only way it lets a request
+// through to the network is if the host doesn't match the app's own origin
+// at all. See capacitor.config.ts's server.hostname comment for the other
+// half of this — verified against a real device, not assumed.
+const API_BASE = Capacitor.isNativePlatform() ? 'https://vaultapp.space/api' : '/api';
 
 async function request(method, path, body = null, extraHeaders = {}) {
   const options = {
@@ -125,7 +138,7 @@ export async function fetchStickers() {
 // are shown to an audience rather than encrypted to a recipient — so they are
 // addressed by URL rather than fetched and decrypted.
 export function publicMediaUrl(fileId) {
-  return `/api/media/${fileId}`;
+  return `${API_BASE}/media/${fileId}`;
 }
 
 export async function uploadPublicMedia(mimeType, base64) {

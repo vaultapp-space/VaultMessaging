@@ -8,7 +8,16 @@
   import { RatchetSession } from './lib/crypto/ratchet.js';
   import { SenderKeySession } from './lib/crypto/senderkeys.js';
   import Landing from './components/Landing.svelte';
+  import NativeWelcome from './components/NativeWelcome.svelte';
   import { applyTheme } from './lib/theme.js';
+  import { Capacitor } from '@capacitor/core';
+
+  // Decided once — the platform doesn't change mid-session, so this doesn't
+  // need to be a store. The marketing landing page is for a browser visitor
+  // deciding whether to try Vault; someone opening the Android app already
+  // installed it, so it shows a plain welcome screen instead (see
+  // NativeWelcome.svelte).
+  const isNative = Capacitor.isNativePlatform();
 
   // Auth/Chat/VaultCoin are lazy-loaded (see {#await import(...)} below) so a
   // first-time visitor landing on the marketing page isn't also downloading
@@ -210,7 +219,17 @@
   });
 </script>
 
-<main class="min-h-screen bg-vault-black relative overflow-hidden">
+<!-- Android 15+ (targetSdk 36, see android/variables.gradle) enforces
+     edge-to-edge rendering — apps can no longer opt out of drawing behind
+     the system status/nav bars, so without this the top of every screen
+     renders underneath the wifi/signal/clock icons. env() resolves to 0
+     anywhere there's no real inset (desktop browsers, iOS Safari outside a
+     notch), so this is inert everywhere except where it's actually needed —
+     same mechanism MobileTabBar.svelte already uses for the bottom edge. -->
+<main
+  class="min-h-screen bg-vault-black relative overflow-hidden"
+  style="padding-top: env(safe-area-inset-top, 0px)"
+>
   <!-- Ambient background glow -->
   <div class="pointer-events-none fixed inset-0 z-0">
     <div class="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-vault-accent/[0.03] blur-[120px]"></div>
@@ -234,7 +253,11 @@
     <div class="absolute inset-0">
       {#if $activeView === 'landing'}
         <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
-          <Landing />
+          {#if isNative}
+            <NativeWelcome />
+          {:else}
+            <Landing />
+          {/if}
         </div>
       {:else if $activeView === 'auth'}
         <div class="absolute inset-0" in:fade={{ duration: 250, delay: 100 }} out:fade={{ duration: 150 }}>
