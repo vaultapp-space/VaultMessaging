@@ -294,7 +294,9 @@
   }
 </script>
 
-<div class="fixed inset-0 z-10 flex items-center justify-center p-4">
+<!-- fixed inset-0 escapes App.svelte's <main> padding-top the same way
+     Chat.svelte's and ChatSidebar's own roots do — same safe-area fix. -->
+<div class="fixed inset-0 z-10 flex items-center justify-center p-4" style="padding-top: env(safe-area-inset-top, 0px)">
   <div class="w-full max-w-md animate-fade-in-scale">
     <!-- Logo & Branding -->
     <div class="text-center mb-8">

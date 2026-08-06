@@ -699,12 +699,18 @@
   }
 </script>
 
+<!-- max-md:fixed escapes App.svelte's <main> padding-top the same way
+     Chat.svelte's own root does (fixed positioning is relative to the
+     viewport, not an ancestor's padding box) — repeating the safe-area fix
+     here too, or the header renders under the status bar whenever the
+     sidebar is the fixed-position screen on mobile. -->
 <aside class="w-full md:w-80 md:min-w-[320px] h-full flex flex-col bg-vault-surface border-r border-vault-border relative z-20 max-md:pb-14"
   class:max-md:hidden={!$sidebarOpen}
   class:max-md:fixed={$sidebarOpen}
   class:max-md:inset-y-0={$sidebarOpen}
   class:max-md:left-0={$sidebarOpen}
   class:max-md:z-50={$sidebarOpen}
+  style={$sidebarOpen ? 'padding-top: env(safe-area-inset-top, 0px)' : ''}
 >
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 border-b border-vault-border">
