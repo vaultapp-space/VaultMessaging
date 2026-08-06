@@ -103,6 +103,11 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
       || origin === config.clientOrigin
       || origin === 'https://vaultapp.space'
       || origin === 'https://www.vaultapp.space'
+      // The Android app (client/capacitor.config.ts). Its own WebView
+      // content is deliberately served from this subdomain rather than
+      // vaultapp.space itself — see that file's server.hostname comment —
+      // so its actual API calls arrive with this as their Origin.
+      || origin === 'https://app.vaultapp.space'
       || (isDev && (
         origin.startsWith('http://localhost:')
         || origin.match(/^http:\/\/\d+\.\d+\.\d+\.\d+:5173$/)
