@@ -805,9 +805,12 @@
         {/if}
       </div>
 
+      <!-- Hidden on mobile: the bottom tab bar's Settings tab (MobileTabBar,
+           bound to the same showBackupModal) does this job there, and a
+           second entry point to the identical modal is clutter, not choice. -->
       <button
         on:click={() => showBackupModal = true}
-        class="p-2 rounded-lg text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+        class="max-md:hidden p-2 rounded-lg text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
         title="Settings"
       >
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -816,9 +819,12 @@
         </svg>
       </button>
 
+      <!-- Hidden on mobile: reachable from the Account row in the Settings
+           panel now, alongside who's signed in — the same move as the
+           gear icon above. -->
       <button
         on:click={() => dispatch('logout')}
-        class="p-2 rounded-lg text-vault-text-dim hover:text-vault-danger hover:bg-vault-elevated transition-all focus:outline-none"
+        class="max-md:hidden p-2 rounded-lg text-vault-text-dim hover:text-vault-danger hover:bg-vault-elevated transition-all focus:outline-none"
         title="Logout & wipe session"
       >
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -1298,8 +1304,10 @@
     </div>
   {/if}
 
-  <!-- Footer -->
-  <div class="px-4 py-3 border-t border-vault-border">
+  <!-- Footer. Hidden on mobile: it duplicated the identity strip once the
+       bottom tab bar existed, stacking two bars at the bottom of a small
+       screen. Moved into the Settings panel below instead. -->
+  <div class="max-md:hidden px-4 py-3 border-t border-vault-border">
     <div class="flex items-center gap-2">
       <div
         class="w-7 h-7 rounded-lg flex items-center justify-center text-vault-white text-xs font-semibold flex-shrink-0 shadow-inner"
@@ -1334,6 +1342,38 @@
       </div>
 
       <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
+        <!-- Account. Mobile-only: desktop already shows this in the
+             sidebar's own footer, which stays visible there, so repeating
+             it in the modal would just be the same information twice. -->
+        <div class="md:hidden flex items-center gap-2.5 border-b border-vault-border pb-4">
+          <div
+            class="w-9 h-9 rounded-xl flex items-center justify-center text-vault-white text-sm font-semibold flex-shrink-0 shadow-inner"
+            style="background: {getAvatarGradient($currentUser?.username)}"
+          >
+            {$currentUser?.username?.[0]?.toUpperCase() || '?'}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-vault-text truncate">{$currentUser?.username || 'Unknown'}</div>
+            <div class="text-[10px] text-vault-text-dim">Session active</div>
+          </div>
+          <div class="shield-badge text-[9px] py-0.5 px-2">
+            <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+            </svg>
+            E2EE
+          </div>
+          <button
+            on:click={() => dispatch('logout')}
+            class="p-2 rounded-lg text-vault-text-dim hover:text-vault-danger hover:bg-vault-elevated transition-all focus:outline-none flex-shrink-0"
+            title="Logout & wipe session"
+            aria-label="Logout & wipe session"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+
         <ActiveSessions />
 
         <!-- Appearance Settings -->
