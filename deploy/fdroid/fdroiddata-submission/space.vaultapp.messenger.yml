@@ -1,0 +1,59 @@
+# DRAFT metadata for submission to the OFFICIAL f-droid.org repo
+# (gitlab.com/fdroid/fdroiddata) — NOT used by our own self-hosted repo,
+# which has its own, differently-shaped metadata at
+# ../metadata/space.vaultapp.messenger.yml (no Builds: section, since that
+# repo distributes a binary we build and sign ourselves).
+#
+# This file is a starting point, not a finished submission. F-Droid
+# reviewers routinely request build-recipe changes during review — expect
+# to iterate on the `Builds:` section below once a real reviewer runs it
+# against the actual buildserver image. See android/README.md's "Get it
+# into the official f-droid.org store" section for the submission process.
+Categories:
+  - Internet
+License: AGPL-3.0-or-later
+AuthorName: vaultapp-space
+WebSite: https://vaultapp.space
+SourceCode: https://github.com/vaultapp-space/VaultMessaging
+IssueTracker: https://github.com/vaultapp-space/VaultMessaging/issues
+
+RepoType: git
+Repo: https://github.com/vaultapp-space/VaultMessaging.git
+
+Name: Vault
+Summary: Privacy-first end-to-end encrypted messenger
+Description: |-
+  Vault is a privacy-first, end-to-end encrypted messenger. One-to-one
+  chats are end-to-end encrypted using the Double Ratchet and X3DH
+  (implemented with WebCrypto), the same design Signal uses. No phone
+  number or email is required to create an account, and messages
+  auto-delete after 24 hours.
+
+  This Android app is a Capacitor wrapper around the same open-source web
+  client that runs on vaultapp.space — the JavaScript is bundled into the
+  APK at build time, not loaded from a remote URL, so the same source this
+  build recipe checks out is what actually runs on the device. Native
+  additions on top of the shared web client: a welcome screen, safe-area
+  aware layout, and Android status bar theming.
+
+  Vault talks to a specific hosted backend (vaultapp.space) by default; it
+  is not a server-agnostic client. The backend's source lives in the same
+  repository, under server/.
+
+Builds:
+  - versionName: '1.0'
+    versionCode: 1
+    commit: 52996803f5c09e4088020d4a8c7cf4da9bd39f25
+    subdir: android
+    prebuild:
+      - cd ../client
+      - npm ci
+      - npm run build
+      - npx cap sync android
+    gradle:
+      - yes
+
+AutoUpdateMode: None
+UpdateCheckMode: Static
+CurrentVersion: '1.0'
+CurrentVersionCode: 1

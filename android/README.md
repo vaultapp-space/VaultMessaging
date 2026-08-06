@@ -172,6 +172,44 @@ for a version it can't extract from, but it also won't rename them for a new
 `versionCode`, so a version bump without a matching icon file just means that
 one release shows no icon in v2-format clients until this is rerun.
 
+### Get it into the official f-droid.org store
+
+This is a separate, heavier track from the self-hosted repo above, and a
+deliberate choice to make since it changes who signs the APK. Once accepted,
+f-droid.org builds Vault from source on their own infrastructure and signs
+with **their** key, not `android_release.keystore` — someone installing from
+the official F-Droid app ends up on a different signature than someone using
+the self-hosted repo, and Android treats those as incompatible updates (same
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE` behavior noted under Signing above). The
+self-hosted repo keeps working unaffected either way; this just adds a
+second, independent channel.
+
+What official submission requires, and where this repo stands on each:
+
+- **OSI/FSF-approved license with public source.** Done — `LICENSE`
+  (AGPL-3.0-or-later), repo is public.
+- **A reproducible build recipe** (`Builds:` metadata F-Droid's build server
+  runs against a pinned commit, not a binary you hand them) — drafted at
+  `deploy/fdroid/fdroiddata-submission/space.vaultapp.messenger.yml`. It
+  chains `npm ci && npm run build && npx cap sync android` as a `prebuild`
+  step ahead of the normal Gradle build, since the Android project depends on
+  `client/dist` existing first. **Untested against F-Droid's actual
+  buildserver image** — treat it as a first draft a reviewer will likely ask
+  to adjust, not a finished recipe.
+- **Fork `gitlab.com/fdroid/fdroiddata` and open a merge request** with that
+  file at `metadata/space.vaultapp.messenger.yml`. This is a manual step:
+  fdroiddata is GitLab-hosted, and this environment only has GitHub
+  credentials configured, so it has to happen from an actual GitLab account.
+  Steps: fork the project on GitLab, clone the fork, copy the drafted file
+  in under `metadata/`, commit, push, open an MR against
+  `fdroid/fdroiddata:master`. F-Droid's own submission guide
+  (https://f-droid.org/docs/Submitting_to_F-Droid_Quick_Start_Guide/) covers
+  the mechanics in more depth.
+- **Volunteer review.** Anti-features, build reproducibility, and general
+  fit get checked by F-Droid maintainers — commonly weeks to months, and
+  near-certain to come back with requested changes to the `Builds:` recipe
+  above.
+
 ## What's deliberately not automated
 
 - No CI job builds this (`.github/workflows/ci.yml` stays client+server only)
