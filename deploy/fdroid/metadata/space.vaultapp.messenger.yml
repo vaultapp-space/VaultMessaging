@@ -7,7 +7,7 @@
 # version info directly from the APK.
 Categories:
   - Internet
-License: Proprietary
+License: AGPL-3.0-or-later
 AuthorName: vaultapp-space
 WebSite: https://vaultapp.space
 SourceCode: https://github.com/vaultapp-space/VaultMessaging

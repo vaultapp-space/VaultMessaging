@@ -1,6 +1,7 @@
 {
   "name": "vault-messaging",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "description": "Workspace root — holds the cross-cutting end-to-end tests. The client and server keep their own package.json and are installed independently.",
   "scripts": {
