@@ -1,0 +1,29 @@
+# Metadata for a pre-built/binary app in this self-hosted F-Droid repo. No
+# `Builds:` section is defined on purpose — fdroidserver docs are explicit
+# that build-from-source instructions are only needed when *this* repo is
+# meant to build the APK itself (`fdroid build`). This repo never does that:
+# the APK is built and signed locally (android_release.keystore) and just
+# copied into repo/ (see android/README.md), and `fdroid update` reads its
+# version info directly from the APK.
+Categories:
+  - Internet
+License: Proprietary
+AuthorName: vaultapp-space
+WebSite: https://vaultapp.space
+SourceCode: https://github.com/vaultapp-space/VaultMessaging
+IssueTracker: https://github.com/vaultapp-space/VaultMessaging/issues
+
+Name: Vault
+Summary: Privacy-first end-to-end encrypted messenger
+Description: >-
+  Vault is a privacy-first, end-to-end encrypted messenger. Messages use
+  the Double Ratchet and X3DH (via WebCrypto) — the same client code that
+  runs on vaultapp.space, wrapped as a native Android app. No phone number
+  or email is required to sign up, and messages auto-delete after 24 hours.
+  .
+  This APK is built and signed directly by the Vault developer and
+  published only through this self-hosted repository. It is not built
+  from source or distributed by f-droid.org.
+
+CurrentVersion: '1.0'
+CurrentVersionCode: 1

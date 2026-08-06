@@ -1,0 +1,30 @@
+# Template for deploy/fdroid/config.yml, which is gitignored because the
+# real one holds the repo-index signing key's password in plaintext (see
+# .gitignore's comment above the deploy/fdroid/ entries, and
+# android/README.md for the full F-Droid repo setup story).
+#
+# To (re)create deploy/fdroid/config.yml on a fresh machine:
+#
+#   cd deploy/fdroid
+#   fdroid init --no-prompt --android-home "$ANDROID_HOME" \
+#     -d "CN=Vault F-Droid Repo, O=vaultapp.space"
+#
+# This generates a NEW keystore.p12 (a repo-index signing key, distinct from
+# android_release.keystore which signs the APK) and a config.yml pre-filled
+# with that key's alias/password. Existing installs that already trust the
+# old repo-index key will need to re-add the repo after a key rotation —
+# same reason android_release.keystore must never be lost or rotated
+# casually. Back up the generated keystore.p12 immediately.
+#
+# After `fdroid init`, apply these non-secret settings on top of the
+# generated config.yml (everything else — sdk_path, keystore, keystorepass,
+# keypass, repo_keyalias, keydname — is generated/machine-specific and
+# should NOT be copied from another machine):
+
+repo_url: https://vaultapp.space/fdroid/repo
+repo_name: Vault
+repo_description: >-
+  Official self-hosted app repository for Vault, a privacy-first
+  end-to-end encrypted messenger (https://vaultapp.space). Binaries here
+  are built and signed directly by the Vault developer — not built from
+  source by F-Droid — and are published only here, not on f-droid.org.

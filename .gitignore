@@ -31,3 +31,20 @@ android/captures/
 # npx cap sync copies client/dist in here on every sync — a derived artifact
 # of an already-gitignored dist/, not source.
 android/app/src/main/assets/public/
+
+# Self-hosted F-Droid repo (deploy/fdroid/). config.yml and keystore.p12 hold
+# the repo INDEX signing key + its password in plaintext (a separate key from
+# android_release.keystore, which signs the APK itself — F-Droid repos sign
+# the index and the APKs independently). repo/, archive/, tmp/, stats/ and
+# .fdroid/ are fdroidserver's generated output (index files, icons, the APK
+# copy) — built locally and deployed straight to the VPS, never committed,
+# same treatment as dist/. See deploy/fdroid/config.yml.example for the
+# non-secret settings that DO need to be reproduced in a fresh config.yml.
+deploy/fdroid/keystore.p12
+deploy/fdroid/config.yml
+deploy/fdroid/repo/
+deploy/fdroid/archive/
+deploy/fdroid/tmp/
+deploy/fdroid/stats/
+deploy/fdroid/logs/
+deploy/fdroid/.fdroid/
