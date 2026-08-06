@@ -43,25 +43,18 @@ const config: CapacitorConfig = {
     hostname: 'app.vaultapp.space',
     androidScheme: 'https',
   },
-  plugins: {
-    CapacitorUpdater: {
-      // autoUpdate is off deliberately, not merely unset: @capgo/capacitor-
-      // updater's own docs say isAutoUpdateAvailable() returns false the
-      // moment a custom updateUrl is configured, because a self-hosted
-      // server "may not support all auto-update features" of their native
-      // pipeline. Rather than depend on a guarantee the docs themselves
-      // hedge on, client/src/lib/capacitor/updater.js drives the documented
-      // manual-mode sequence explicitly: getLatest() -> download() ->
-      // next(), plus the notifyAppReady() rollback safety net.
-      autoUpdate: false,
-      updateUrl: 'https://vaultapp.space/ota/check',
-      appReadyTimeout: 10000,
-    },
-    // CapacitorHttp stays off (the default). Turning it on patches
-    // window.fetch/XHR to go through native HTTP, which uses a different
-    // cookie store than the WebView's CookieManager — would break the
-    // sameSite:'strict' cookie flow this whole design leans on.
-  },
+  // No CapacitorUpdater plugin block: this app is distributed via a
+  // self-hosted F-Droid-style repo (deploy/fdroid/), and F-Droid's
+  // inclusion policy explicitly forbids an app downloading or installing
+  // executable code from anywhere other than F-Droid's own repo mechanism.
+  // A real F-Droid-compatible client (F-Droid, Droid-ify, etc.) added to
+  // this repo URL handles update checks and installs itself — see
+  // android/README.md.
+  //
+  // CapacitorHttp stays off (the default) even without that plugin: turning
+  // it on patches window.fetch/XHR to go through native HTTP, which uses a
+  // different cookie store than the WebView's CookieManager — would break
+  // the sameSite:'strict' cookie flow this whole design leans on.
 };
 
 export default config;

@@ -16,10 +16,29 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Secrets read from the shell environment, never hardcoded here —
+    // mirrors ecosystem.config.cjs's "secrets live in the shell, not the
+    // repo" pattern. The keystore itself lives at repo root
+    // (android_release.keystore), gitignored, same custody model as
+    // vps_key.pem. See android_release.keystore.CREDENTIALS.txt (also
+    // gitignored, delete once backed up) for the actual values.
+    //
+    // PKCS12 keystores (what keytool -storetype PKCS12 produces) don't
+    // support a store password different from the key password — both env
+    // vars below are expected to hold the same value.
+    signingConfigs {
+        release {
+            storeFile file(System.getenv("VAULT_ANDROID_KEYSTORE_PATH") ?: "../../android_release.keystore")
+            storePassword System.getenv("VAULT_ANDROID_KEYSTORE_PASSWORD")
+            keyAlias System.getenv("VAULT_ANDROID_KEY_ALIAS") ?: "vault-release"
+            keyPassword System.getenv("VAULT_ANDROID_KEY_PASSWORD")
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 }

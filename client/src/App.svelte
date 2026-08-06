@@ -9,7 +9,6 @@
   import { SenderKeySession } from './lib/crypto/senderkeys.js';
   import Landing from './components/Landing.svelte';
   import NativeWelcome from './components/NativeWelcome.svelte';
-  import UpdateBanner from './components/UpdateBanner.svelte';
   import { applyTheme } from './lib/theme.js';
   import { Capacitor } from '@capacitor/core';
 
@@ -82,15 +81,6 @@
     mounted = true;
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleVisibilityChange);
-    }
-
-    // No-ops on web/iOS (isNativePlatform() gate inside). Fire-and-forget:
-    // notifyAppReady()'s rollback timer starts at launch regardless of
-    // anything else here, and nothing on this screen should block on a
-    // network round-trip to an update server.
-    if (isNative) {
-      import('./lib/capacitor/updater.js').then((m) => m.initCapacitorUpdater());
-      import('./lib/capacitor/nativeUpdateCheck.js').then((m) => m.checkForNativeUpdate());
     }
 
     // /join/<hash> — an invite link someone was sent.
@@ -245,12 +235,6 @@
     <div class="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-vault-accent/[0.03] blur-[120px]"></div>
     <div class="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-vault-accent/[0.02] blur-[100px]"></div>
   </div>
-
-  <!-- Fixed-positioned and self-gating (renders nothing unless a native-shell
-       update is actually available) — placed here so it floats above every
-       screen, including Chat.svelte's own fixed overlay, rather than being
-       tied to whichever view is currently active. -->
-  <UpdateBanner />
 
   {#if $isLoading}
     <!-- Loading screen -->
