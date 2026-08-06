@@ -1330,9 +1330,17 @@
 </aside>
 
 {#if showBackupModal}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
-    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up">
-      <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
+  <!-- Fills the screen on mobile rather than floating as a small centered
+       card: Settings is reached from the bottom tab bar there now, which
+       makes it a primary destination, not an occasional dialog. A 380px
+       scroll box inside a card with a wide margin of bare backdrop above and
+       below looked like a popup that happened to be tall, not a screen.
+       max-md:pb-14 on the overlay reserves exactly the tab bar's height so
+       it stays visible (and tappable) above the panel rather than the panel
+       running underneath it. -->
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text max-md:p-0 max-md:pb-14 max-md:items-stretch">
+    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up max-md:max-w-full max-md:h-full max-md:rounded-none max-md:flex max-md:flex-col">
+      <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center max-md:flex-shrink-0">
         <h3 class="text-sm font-semibold text-vault-text">Settings</h3>
         <button on:click={() => showBackupModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close settings">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -1341,7 +1349,7 @@
         </button>
       </div>
 
-      <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto">
+      <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto max-md:max-h-none max-md:flex-1">
         <!-- Account. Mobile-only: desktop already shows this in the
              sidebar's own footer, which stays visible there, so repeating
              it in the modal would just be the same information twice. -->
@@ -1561,7 +1569,7 @@
         </div>
       </div>
 
-      <div class="px-5 py-3.5 bg-vault-elevated border-t border-vault-border flex justify-end">
+      <div class="px-5 py-3.5 bg-vault-elevated border-t border-vault-border flex justify-end max-md:flex-shrink-0">
         <button
           on:click={() => showBackupModal = false}
           class="btn-primary py-1.5 px-4 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl"
