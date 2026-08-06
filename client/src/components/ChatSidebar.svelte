@@ -25,7 +25,11 @@
   import Stories from './Stories.svelte';
   import QRCode from 'qrcode';
 
-  let showBackupModal = false;
+  // Lifted to a prop so the mobile bottom tab bar (a sibling in Chat.svelte,
+  // outside this component) can open Settings too — the modal below renders
+  // as its own overlay outside <aside>, so it isn't affected by the sidebar
+  // being hidden on mobile.
+  export let showBackupModal = false;
   let theme = localStorage.getItem('vault_theme') || 'dark';
   let isSyncing = false;
   let syncError = '';
@@ -695,7 +699,7 @@
   }
 </script>
 
-<aside class="w-full md:w-80 md:min-w-[320px] h-full flex flex-col bg-vault-surface border-r border-vault-border relative z-20"
+<aside class="w-full md:w-80 md:min-w-[320px] h-full flex flex-col bg-vault-surface border-r border-vault-border relative z-20 max-md:pb-14"
   class:max-md:hidden={!$sidebarOpen}
   class:max-md:fixed={$sidebarOpen}
   class:max-md:inset-y-0={$sidebarOpen}

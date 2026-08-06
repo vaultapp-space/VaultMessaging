@@ -17,10 +17,12 @@
   import ChatView from './ChatView.svelte';
   import ChannelView from './ChannelView.svelte';
   import MiniCallBar from './MiniCallBar.svelte';
+  import MobileTabBar from './MobileTabBar.svelte';
 
   const unsubscribers = [];
   let ping = 32;
   let pingInterval;
+  let showBackupModal = false;
 
   $: if ($activeCall) {
     if ($activeCall.status === 'ringing') {
@@ -698,6 +700,7 @@
   <!-- Sidebar -->
   <ChatSidebar
     on:logout={handleLogout}
+    bind:showBackupModal
   />
 
   <!-- Main Chat Area -->
@@ -737,6 +740,8 @@
     </div>
   {/if}
 </div>
+
+<MobileTabBar bind:showBackupModal />
 
 <!-- Mini call bar: shown when a call is live but the user has navigated
      away from that peer's chat (ChatView renders the full call UI itself
