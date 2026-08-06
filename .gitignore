@@ -18,6 +18,10 @@ playwright-report/
 # Runtime uploads: user content, never source.
 server/uploads/
 
+# OTA bundles/manifest published by deploy/scripts/publish-ota.sh —
+# runtime artifacts, same treatment as server/uploads/.
+/ota/
+
 # Android (android/) — Capacitor's native project is plain Gradle/XML/Kotlin
 # and is meant to be committed and hand-edited, unlike ios/.xcodeproj. Only
 # its build artifacts and machine-local settings are excluded.

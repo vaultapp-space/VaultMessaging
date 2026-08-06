@@ -43,6 +43,25 @@ const config: CapacitorConfig = {
     hostname: 'app.vaultapp.space',
     androidScheme: 'https',
   },
+  plugins: {
+    CapacitorUpdater: {
+      // autoUpdate is off deliberately, not merely unset: @capgo/capacitor-
+      // updater's own docs say isAutoUpdateAvailable() returns false the
+      // moment a custom updateUrl is configured, because a self-hosted
+      // server "may not support all auto-update features" of their native
+      // pipeline. Rather than depend on a guarantee the docs themselves
+      // hedge on, client/src/lib/capacitor/updater.js drives the documented
+      // manual-mode sequence explicitly: getLatest() -> download() ->
+      // next(), plus the notifyAppReady() rollback safety net.
+      autoUpdate: false,
+      updateUrl: 'https://vaultapp.space/ota/check',
+      appReadyTimeout: 10000,
+    },
+    // CapacitorHttp stays off (the default). Turning it on patches
+    // window.fetch/XHR to go through native HTTP, which uses a different
+    // cookie store than the WebView's CookieManager — would break the
+    // sameSite:'strict' cookie flow this whole design leans on.
+  },
 };
 
 export default config;
