@@ -133,6 +133,12 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
     }
     cb(null, {
       credentials: true,
+      // @fastify/cors defaults this to 'GET,HEAD,POST' — fine as long as
+      // every client is same-origin (the browser and iOS never send a real
+      // preflight, so the gap was invisible). The Android app is genuinely
+      // cross-origin by design (see capacitor.config.ts), so its PUT/PATCH/
+      // DELETE calls actually preflight now, and were failing here.
+      methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
       origin: (origin, originCb) => {
         if (isOriginAllowed(origin)) {
           originCb(null, true);

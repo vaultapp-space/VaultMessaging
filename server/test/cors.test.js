@@ -40,3 +40,29 @@ describe('CORS origin allowlist', () => {
     assert.notEqual(res.headers['access-control-allow-origin'], 'https://evil.example');
   });
 });
+
+// @fastify/cors defaults `methods` to 'GET,HEAD,POST' — invisible as long as
+// every client is same-origin (a real browser or the iOS app never sends a
+// preflight for a same-origin request, so the gap never fired). The Android
+// app is genuinely cross-origin, so its PUT/PATCH/DELETE calls actually
+// preflight, and 15+7+4 routes across the API use exactly those methods
+// (grep fastify.(put|patch|delete) under server/src/routes).
+describe('CORS preflight allows every method the API actually uses', () => {
+  for (const method of ['PUT', 'PATCH', 'DELETE']) {
+    test(`${method} is allowed in a preflight response`, async () => {
+      const res = await app.inject({
+        method: 'OPTIONS',
+        url: '/api/auth/salt/nobody',
+        headers: {
+          origin: 'https://app.vaultapp.space',
+          'access-control-request-method': method,
+        },
+      });
+      assert.equal(res.statusCode, 204);
+      assert.ok(
+        res.headers['access-control-allow-methods']?.includes(method),
+        `expected ${method} in "${res.headers['access-control-allow-methods']}"`
+      );
+    });
+  }
+});
