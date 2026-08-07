@@ -8,6 +8,25 @@
   let faqMode = 'simple';
   let menuOpen = false;
 
+  let donateOpen = false;
+  let copiedCoin = '';
+  const donateAddresses = [
+    { coin: 'Bitcoin', ticker: 'BTC', address: '1DKyDtvjyhCr1tu22Lfw9nxcQEB4MfFkr1' },
+    { coin: 'Ethereum', ticker: 'ETH', address: '0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b' },
+    { coin: 'Solana', ticker: 'SOL', address: '9tKGtaS3xAe3ZDtFmksW7NYrdKGN3YNxyUTivfw3mFk2' },
+    { coin: 'USDT (ERC-20)', ticker: 'USDT', address: '0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b' },
+  ];
+
+  async function copyAddress(entry) {
+    try {
+      await navigator.clipboard.writeText(entry.address);
+      copiedCoin = entry.ticker;
+      setTimeout(() => { if (copiedCoin === entry.ticker) copiedCoin = ''; }, 1800);
+    } catch (err) {
+      console.error('Clipboard copy failed:', err);
+    }
+  }
+
   let scrollEl;
   let progress = 0;
   let activeSection = '';
@@ -165,7 +184,7 @@
   });
 </script>
 
-<svelte:window on:keydown={(e) => e.key === 'Escape' && (menuOpen = false)} />
+<svelte:window on:keydown={(e) => { if (e.key === 'Escape') { menuOpen = false; donateOpen = false; } }} />
 
 <div class="vault-landing" bind:this={scrollEl} on:scroll={onScroll}>
   <div class="bg-field"></div>
@@ -208,6 +227,22 @@
           <button class="mobile-cta" on:click={() => { menuOpen = false; goToApp(); }}>Start a private chat</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="donate-banner">
+    <div class="wrap donate-banner-inner">
+      <div class="donate-banner-text">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 8h1a4 4 0 010 8h-1" />
+          <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
+          <line x1="6" y1="1" x2="6" y2="4" />
+          <line x1="10" y1="1" x2="10" y2="4" />
+          <line x1="14" y1="1" x2="14" y2="4" />
+        </svg>
+        <span>Vault is free and always will be. If it's useful to you, you can buy the developer a coffee.</span>
+      </div>
+      <button class="donate-btn" on:click={() => (donateOpen = true)}>Buy me a coffee →</button>
     </div>
   </div>
 
@@ -466,6 +501,36 @@
       </div>
     </div>
   </footer>
+
+  {#if donateOpen}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div class="donate-overlay" on:click|self={() => (donateOpen = false)}>
+      <div class="donate-modal" role="dialog" aria-modal="true" aria-label="Donate">
+        <div class="donate-modal-head">
+          <h3>Buy me a coffee</h3>
+          <button class="donate-close" on:click={() => (donateOpen = false)} aria-label="Close">✕</button>
+        </div>
+        <p class="donate-modal-sub">Vault is free and doesn't run ads or sell data. Donations go straight to the developer, no processor in between.</p>
+        <div class="donate-list">
+          {#each donateAddresses as entry (entry.ticker)}
+            <div class="donate-row">
+              <div class="donate-row-label">
+                <span class="donate-coin">{entry.coin}</span>
+                <span class="donate-ticker">{entry.ticker}</span>
+              </div>
+              <div class="donate-row-address">
+                <code>{entry.address}</code>
+                <button class="donate-copy" on:click={() => copyAddress(entry)}>
+                  {copiedCoin === entry.ticker ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -866,6 +931,59 @@
   .footer-links { display: flex; gap: 22px; align-items: center; }
   .footer-links a { color: var(--text-dim); text-decoration: none; }
   .footer-links a:hover { color: var(--text); }
+
+  /* ---------- DONATE BANNER + MODAL ---------- */
+  .donate-banner { background: var(--accent-glow); border-bottom: 1px solid var(--border-subtle); }
+  .donate-banner-inner {
+    display: flex; align-items: center; justify-content: center; gap: 20px;
+    padding: 12px 28px; flex-wrap: wrap; text-align: center;
+  }
+  .donate-banner-text { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 0.85rem; }
+  .donate-banner-text svg { color: var(--accent); flex-shrink: 0; }
+  .donate-btn {
+    background: none; border: 1px solid var(--accent); color: var(--accent); font-weight: 700;
+    font-size: 0.82rem; padding: 7px 14px; border-radius: 0.6rem; cursor: pointer; white-space: nowrap;
+    transition: all 0.25s ease;
+  }
+  .donate-btn:hover { background: var(--accent); color: var(--surface); }
+
+  .donate-overlay {
+    position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); padding: 20px;
+  }
+  .donate-modal {
+    background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 1rem;
+    max-width: 440px; width: 100%; max-height: 85vh; overflow-y: auto; padding: 22px 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+  }
+  .donate-modal-head { display: flex; align-items: center; justify-content: space-between; }
+  .donate-modal-head h3 { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+  .donate-close {
+    background: none; border: none; color: var(--text-dim); font-size: 1rem; cursor: pointer;
+    padding: 4px 8px; line-height: 1; border-radius: 0.4rem; transition: all 0.2s ease;
+  }
+  .donate-close:hover { color: var(--text); background: var(--elevated); }
+  .donate-modal-sub { margin-top: 8px; font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5; }
+  .donate-list { margin-top: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .donate-row { border: 1px solid var(--border-subtle); border-radius: 0.7rem; padding: 12px 14px; background: var(--elevated); }
+  .donate-row-label { display: flex; align-items: baseline; gap: 8px; }
+  .donate-coin { font-size: 0.85rem; font-weight: 700; color: var(--text); }
+  .donate-ticker { font-size: 0.7rem; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+  .donate-row-address { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .donate-row-address code {
+    flex: 1; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text-secondary);
+    background: var(--black); padding: 6px 8px; border-radius: 0.4rem; word-break: break-all;
+  }
+  .donate-copy {
+    flex-shrink: 0; background: none; border: 1px solid var(--border-subtle); color: var(--text-secondary);
+    font-size: 0.72rem; font-weight: 600; padding: 6px 10px; border-radius: 0.4rem; cursor: pointer;
+    transition: all 0.2s ease; min-width: 54px;
+  }
+  .donate-copy:hover { border-color: var(--accent); color: var(--accent); }
+  @media (max-width: 600px) {
+    .donate-banner-inner { padding: 10px 18px; gap: 10px; }
+    .donate-banner-text { font-size: 0.78rem; }
+  }
 
   /* Tablets get two columns; a single column wastes most of the width there. */
   @media (max-width: 860px) {
