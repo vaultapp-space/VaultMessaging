@@ -13,8 +13,9 @@
   import { searchUsers, createGroup as createGroupApi, saveEncryptedVault } from '../lib/api/http.js';
   import { wsConnected } from '../lib/api/ws.js';
   import { getAvatarGradient } from '../lib/avatar.js';
-  import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault, encrypt } from '../lib/crypto/keys.js';
-  import { isPrfSupported, registerBiometric, authenticateBiometric } from '../lib/crypto/webauthn.js';
+  import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault } from '../lib/crypto/keys.js';
+  import { isPrfSupported, authenticateBiometric } from '../lib/crypto/webauthn.js';
+  import { enableBiometric, disableBiometric } from '../lib/biometric.js';
 
   import { syncCloudVault } from '../lib/crypto/sync.js';
   import { encryptSyncPayload } from '../lib/crypto/keys.js';
@@ -203,25 +204,12 @@
     const enabled = e.target.checked;
     if (enabled) {
       try {
-        const result = await registerBiometric($currentUser.username, $currentUser.salt);
-        localStorage.setItem(`vault_bio_enabled_${$currentUser.id}`, 'true');
-        localStorage.setItem(`vault_bio_cred_id_${$currentUser.id}`, result.credentialId);
+        const result = await enableBiometric($currentUser, get(vaultMasterKey));
 
         // Update local backup keys using derived WebAuthn PRF key
         localBackupKey.set(result.prfKey);
         localBackupPassphrase.set('BIOMETRIC_UNLOCKED');
         localBackupEnabled.set(true);
-
-        // Also wrap the vault master key itself with the same PRF key, so
-        // a fresh app launch (e.g. Android killing the process — the master
-        // key is deliberately never persisted, see session.js) can be
-        // unlocked with a fingerprint instead of retyping the password.
-        // See Auth.svelte's "resume" flow, the only reader of this key.
-        const masterKey = get(vaultMasterKey);
-        if (masterKey) {
-          const wrapped = await encrypt(result.prfKey, masterKey);
-          localStorage.setItem(`vault_bio_wrapped_master_${$currentUser.id}`, JSON.stringify(wrapped));
-        }
 
         biometricEnabled = true;
         showToast('Biometric Vault Unlock enabled successfully!', { type: 'success' });
@@ -232,9 +220,7 @@
         biometricEnabled = false;
       }
     } else {
-      localStorage.removeItem(`vault_bio_enabled_${$currentUser.id}`);
-      localStorage.removeItem(`vault_bio_cred_id_${$currentUser.id}`);
-      localStorage.removeItem(`vault_bio_wrapped_master_${$currentUser.id}`);
+      disableBiometric($currentUser.id);
       localBackupEnabled.set(false);
       localBackupPassphrase.set('');
       localBackupKey.set(null);
@@ -1598,12 +1584,14 @@
           </button>
         {/if}
 
-        {#if biometricSupported}
-          <div class="flex items-center justify-between">
-            <div>
-              <span class="text-xs font-semibold text-vault-text block">Biometric Unlock</span>
-              <span class="text-[10px] text-vault-text-dim font-normal block">Use fingerprint or face recognition</span>
-            </div>
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-xs font-semibold text-vault-text block">Biometric Unlock</span>
+            <span class="text-[10px] text-vault-text-dim font-normal block">
+              {biometricSupported ? 'Use fingerprint or face recognition' : 'Not available on this device or app version'}
+            </span>
+          </div>
+          {#if biometricSupported}
             <label class="relative inline-flex items-center cursor-pointer">
               <input
                 type="checkbox"
@@ -1613,8 +1601,8 @@
               />
               <div class="w-9 h-5 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-vault-accent"></div>
             </label>
-          </div>
-        {/if}
+          {/if}
+        </div>
 
         <div class="flex items-center justify-between">
           <div>

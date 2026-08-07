@@ -16,6 +16,7 @@
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import PassphrasePromptModal from './components/PassphrasePromptModal.svelte';
   import UpdateBanner from './components/UpdateBanner.svelte';
+  import BiometricPrompt from './components/BiometricPrompt.svelte';
   import { showToast } from './lib/stores/toast.js';
   import { initBackButtonHandler, triggerBackOnEscape } from './lib/backHandler.js';
 
@@ -311,4 +312,5 @@
   <ConfirmDialog />
   <PassphrasePromptModal />
   <UpdateBanner />
+  <BiometricPrompt />
 </main>
