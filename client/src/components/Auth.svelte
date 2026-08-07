@@ -1,12 +1,14 @@
 <script>
-  import { currentUser, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, vaultMasterKey, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { onMount } from 'svelte';
+  import { currentUser, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, vaultMasterKey, ratchetSessions, groupSenderKeys, clearSession } from '../lib/stores/session.js';
   import { describeThisDevice } from '../lib/device.js';
   import { estimatePasswordStrength } from '../lib/passwordStrength.js';
-  import { register, login, updateKeys, fetchSalt, saveEncryptedVault } from '../lib/api/http.js';
-  import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, deriveMasterKeyBits, deriveServerAuthSecret, encryptIdentityVault, decryptIdentityVault } from '../lib/crypto/keys.js';
+  import { register, login, updateKeys, fetchSalt, saveEncryptedVault, logout, replenishPrekeys } from '../lib/api/http.js';
+  import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, deriveMasterKeyBits, deriveServerAuthSecret, encryptIdentityVault, decryptIdentityVault, decrypt } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
   import { RatchetSession } from '../lib/crypto/ratchet.js';
   import { SenderKeySession } from '../lib/crypto/senderkeys.js';
+  import { isPrfSupported, authenticateBiometric } from '../lib/crypto/webauthn.js';
 
   let mode = 'register'; // 'register' | 'login'
   let username = '';
@@ -16,10 +18,35 @@
   let loading = false;
   let showPassword = false;
 
+  // A truthy currentUser here means App.svelte's boot getMe() found a still-
+  // valid session cookie — the account is authenticated, but the E2EE key
+  // material is gone (never persisted, see stores/session.js) because the
+  // process was restarted. That's a "resume" (unlock what's already yours),
+  // not a login (prove who you are to the server) — the server side is
+  // already done, so this never calls login()/register() again, which would
+  // otherwise mint a redundant device entry in Active Sessions every time.
+  $: isResume = !!$currentUser;
+  let biometricAvailable = false;
+  let biometricCredId = null;
+  let biometricAttempted = false;
+
   if ($currentUser) {
     username = $currentUser.username;
     mode = 'login';
+    biometricCredId = localStorage.getItem(`vault_bio_cred_id_${$currentUser.id}`);
+    biometricAvailable = isPrfSupported() &&
+      localStorage.getItem(`vault_bio_enabled_${$currentUser.id}`) === 'true' &&
+      !!biometricCredId &&
+      !!localStorage.getItem(`vault_bio_wrapped_master_${$currentUser.id}`);
   }
+
+  onMount(() => {
+    // Try biometrics immediately so a fingerprint-enrolled user sees the
+    // system prompt right away instead of a password field first — a
+    // cancelled/failed attempt just falls through to the password form
+    // below, no different from never having tried.
+    if (biometricAvailable) handleUnlockWithBiometric();
+  });
 
   // Rough client-side strength estimate — not a substitute for the 12-char
   // minimum enforced below, just extra signal to steer people away from
@@ -253,8 +280,112 @@
     }
   }
 
+  // Shared by both resume paths (biometric and password) below — restores
+  // everything a fresh login() would, from an already-known master key,
+  // without re-authenticating to the server (the cookie already did that).
+  async function finishUnlock(masterKeyBase64, user) {
+    const hk = await deriveHistoryKey(masterKeyBase64, user.salt);
+    historyKey.set(hk);
+    vaultMasterKey.set(masterKeyBase64);
+
+    if (!user.encryptedVault) {
+      throw new Error('No vault to restore on this account — try signing in with your password from scratch.');
+    }
+    const vault = await decryptIdentityVault(user.encryptedVault, masterKeyBase64);
+
+    identityKeyPair.set(vault.identityKeyPair);
+    signedPrekeyPair.set(vault.signedPrekeyPair);
+
+    if (vault.localBackupKeyBase64) {
+      const rawBackupKey = new Uint8Array(atob(vault.localBackupKeyBase64).split('').map(c => c.charCodeAt(0)));
+      const dbKey = await crypto.subtle.importKey('raw', rawBackupKey, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+      localBackupKey.set(dbKey);
+      localBackupPassphrase.set(vault.localBackupPassphrase);
+      localBackupEnabled.set(true);
+    }
+
+    if (vault.ratchetSessions) {
+      const sessionsMap = new Map();
+      for (const [peerId, sessionData] of Object.entries(vault.ratchetSessions)) {
+        sessionsMap.set(peerId, await RatchetSession.deserialize(sessionData));
+      }
+      ratchetSessions.set(sessionsMap);
+    }
+
+    if (vault.groupSenderKeys) {
+      const groupKeysMap = new Map();
+      for (const [key, sessionData] of Object.entries(vault.groupSenderKeys)) {
+        groupKeysMap.set(key, await SenderKeySession.deserialize(sessionData));
+      }
+      groupSenderKeys.set(groupKeysMap);
+    }
+
+    // This device has no private halves for the one-time prekeys already
+    // published under this identity — they never survive a process restart
+    // (see stores/session.js) — so generate and upload a fresh batch, same
+    // as the QR-sync flow in App.svelte, so new incoming sessions started
+    // against this device can still be decrypted.
+    const { publicKeys, keyPairs } = await generateOneTimePrekeys(20);
+    await replenishPrekeys(publicKeys);
+    oneTimePrekeyPairs.set(keyPairs.map((kp, idx) => ({ keyPair: kp, pubKeyBase64: publicKeys[idx] })));
+
+    setUser(user);
+    activeView.set('chat');
+  }
+
+  async function handleUnlockWithBiometric() {
+    if (!biometricCredId || loading) return;
+    biometricAttempted = true;
+    error = '';
+    loading = true;
+    try {
+      const user = $currentUser;
+      const prfKey = await authenticateBiometric(biometricCredId, user.salt);
+      const wrapped = JSON.parse(localStorage.getItem(`vault_bio_wrapped_master_${user.id}`));
+      const masterKeyBase64 = await decrypt(prfKey, wrapped.iv, wrapped.ciphertext);
+      await finishUnlock(masterKeyBase64, user);
+    } catch (err) {
+      console.error('Biometric unlock failed:', err);
+      // A cancelled/dismissed system prompt shouldn't read as an error —
+      // it just falls through to the password field already on screen.
+      if (err?.name !== 'NotAllowedError') {
+        error = err.message || 'Biometric unlock failed — use your password instead.';
+      }
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function handleUnlock() {
+    if (!password) { error = 'Enter your password'; return; }
+    error = '';
+    loading = true;
+    try {
+      const user = $currentUser;
+      const masterKeyBits = await deriveMasterKeyBits(password, user.salt);
+      const masterKeyBase64 = toBase64(masterKeyBits);
+      await finishUnlock(masterKeyBase64, user);
+    } catch (err) {
+      error = err.message || 'Incorrect password';
+    } finally {
+      loading = false;
+    }
+  }
+
+  // "This isn't me" escape hatch from the resume screen — actually ends the
+  // server session (unlike clearSession() alone) so the stale cookie this
+  // screen was triggered by doesn't just bring the same account right back.
+  async function switchAccount() {
+    try { await logout(); } catch {}
+    clearSession();
+    username = '';
+    password = '';
+    mode = 'register';
+  }
+
   function handleSubmit() {
-    if (mode === 'register') handleRegister();
+    if (isResume) handleUnlock();
+    else if (mode === 'register') handleRegister();
     else handleLogin();
   }
 
@@ -299,7 +430,7 @@
           <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
           </svg>
-          {mode === 'register' ? 'Zero-Knowledge Registration' : 'Encrypted Session'}
+          {isResume ? 'Welcome Back' : mode === 'register' ? 'Zero-Knowledge Registration' : 'Encrypted Session'}
         </div>
       </div>
 
@@ -311,25 +442,53 @@
       {/if}
 
       <form on:submit|preventDefault={handleSubmit} class="space-y-4">
-        <!-- Username -->
-        <div>
-          <label for="auth-username" class="block text-xs font-medium text-vault-text-secondary mb-1.5 uppercase tracking-wider">
-            Username
-          </label>
-          <!-- svelte-ignore a11y-autofocus -->
-          <!-- The first field on the app's actual entry screen, not
-               mid-page autofocus — same tradeoff every login form makes. -->
-          <input
-            id="auth-username"
-            type="text"
-            bind:value={username}
-            placeholder="Choose a username"
-            class="input"
-            autocomplete="username"
-            autofocus
-            disabled={loading}
-          />
-        </div>
+        {#if isResume}
+          <!-- Resuming an already-authenticated session — the username is
+               known, not something to re-type. -->
+          <div class="text-center">
+            <div class="text-sm text-vault-text-dim">Welcome back,</div>
+            <div class="text-lg font-semibold text-vault-text">{username}</div>
+          </div>
+
+          {#if biometricAvailable}
+            <button
+              type="button"
+              on:click={handleUnlockWithBiometric}
+              disabled={loading}
+              class="btn-primary w-full flex items-center justify-center gap-2"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 11c0 3.5-1 6.5-3 9M8 20a24.9 24.9 0 002-6M2 12c0-1.5.2-2.9.7-4.2M7 4.6A9.9 9.9 0 0112 3c5 0 9 3.6 9.8 8.3M17.6 20c.5-1 .9-2 1.2-3.1M12 12a3 3 0 013 3c0 1.6-.2 3.1-.5 4.5" />
+              </svg>
+              {loading ? 'Verifying…' : biometricAttempted ? 'Try Fingerprint Again' : 'Unlock with Fingerprint'}
+            </button>
+            <div class="flex items-center gap-3 text-[10px] uppercase tracking-wider text-vault-text-dim">
+              <div class="flex-1 h-px bg-vault-border/50"></div>
+              or use your password
+              <div class="flex-1 h-px bg-vault-border/50"></div>
+            </div>
+          {/if}
+        {:else}
+          <!-- Username -->
+          <div>
+            <label for="auth-username" class="block text-xs font-medium text-vault-text-secondary mb-1.5 uppercase tracking-wider">
+              Username
+            </label>
+            <!-- svelte-ignore a11y-autofocus -->
+            <!-- The first field on the app's actual entry screen, not
+                 mid-page autofocus — same tradeoff every login form makes. -->
+            <input
+              id="auth-username"
+              type="text"
+              bind:value={username}
+              placeholder="Choose a username"
+              class="input"
+              autocomplete="username"
+              autofocus
+              disabled={loading}
+            />
+          </div>
+        {/if}
 
         <!-- Password -->
         <div>
@@ -337,15 +496,17 @@
             Password
           </label>
           <div class="relative">
+            <!-- svelte-ignore a11y-autofocus -->
             <input
               id="auth-password"
               type={showPassword ? 'text' : 'password'}
               bind:value={password}
-              placeholder={mode === 'register' ? 'Min 12 characters' : 'Enter password'}
+              placeholder={mode === 'register' ? 'Min 12 characters' : isResume ? 'Enter password to unlock' : 'Enter password'}
               class="input"
               style="padding-right: 2.5rem;"
               disabled={loading}
               autocomplete={mode === 'register' ? 'new-password' : 'current-password'}
+              autofocus={isResume && !biometricAvailable}
             />
             <button
               type="button"
@@ -421,21 +582,30 @@
               <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
               <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
             </svg>
-            {mode === 'register' ? 'Generating keys...' : 'Authenticating...'}
+            {isResume ? 'Unlocking...' : mode === 'register' ? 'Generating keys...' : 'Authenticating...'}
           {:else}
-            {mode === 'register' ? 'Create Secure Account' : 'Unlock Vault'}
+            {isResume ? 'Unlock Vault' : mode === 'register' ? 'Create Secure Account' : 'Unlock Vault'}
           {/if}
         </button>
       </form>
 
-      <!-- Toggle Mode -->
+      <!-- Toggle Mode / Switch Account -->
       <div class="mt-4 text-center">
-        <button
-          on:click={toggleMode}
-          class="text-xs text-vault-text-dim hover:text-vault-accent transition-colors"
-        >
-          {mode === 'register' ? 'Already have an account? Sign in' : 'Need an account? Create one'}
-        </button>
+        {#if isResume}
+          <button
+            on:click={switchAccount}
+            class="text-xs text-vault-text-dim hover:text-vault-accent transition-colors"
+          >
+            Not you? Sign out
+          </button>
+        {:else}
+          <button
+            on:click={toggleMode}
+            class="text-xs text-vault-text-dim hover:text-vault-accent transition-colors"
+          >
+            {mode === 'register' ? 'Already have an account? Sign in' : 'Need an account? Create one'}
+          </button>
+        {/if}
       </div>
     </div>
 

@@ -217,10 +217,19 @@
       isLoading.set(false);
     }
 
-    // Try to restore session from HTTP-only cookie (server validates)
+    // Try to restore session from HTTP-only cookie (server validates). A
+    // valid cookie only proves the account session is alive — it says
+    // nothing about the E2EE key material, which is deliberately never
+    // persisted (see stores/session.js) and is gone the moment Android
+    // kills the process. Routing straight into 'chat' here would show a
+    // broken, key-less app; leaving activeView at its 'landing' default
+    // made an already-authenticated user look signed out instead. Auth.svelte
+    // treats a truthy currentUser as "resume" and prompts to unlock
+    // (biometric or password) rather than register/log in from scratch.
     try {
       const user = await getMe();
       setUser(user);
+      activeView.set('auth');
     } catch {
       setUser(null);
     }

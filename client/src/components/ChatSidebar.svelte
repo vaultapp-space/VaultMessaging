@@ -13,7 +13,7 @@
   import { searchUsers, createGroup as createGroupApi, saveEncryptedVault } from '../lib/api/http.js';
   import { wsConnected } from '../lib/api/ws.js';
   import { getAvatarGradient } from '../lib/avatar.js';
-  import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault } from '../lib/crypto/keys.js';
+  import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault, encrypt } from '../lib/crypto/keys.js';
   import { isPrfSupported, registerBiometric, authenticateBiometric } from '../lib/crypto/webauthn.js';
 
   import { syncCloudVault } from '../lib/crypto/sync.js';
@@ -206,11 +206,23 @@
         const result = await registerBiometric($currentUser.username, $currentUser.salt);
         localStorage.setItem(`vault_bio_enabled_${$currentUser.id}`, 'true');
         localStorage.setItem(`vault_bio_cred_id_${$currentUser.id}`, result.credentialId);
-        
+
         // Update local backup keys using derived WebAuthn PRF key
         localBackupKey.set(result.prfKey);
         localBackupPassphrase.set('BIOMETRIC_UNLOCKED');
         localBackupEnabled.set(true);
+
+        // Also wrap the vault master key itself with the same PRF key, so
+        // a fresh app launch (e.g. Android killing the process — the master
+        // key is deliberately never persisted, see session.js) can be
+        // unlocked with a fingerprint instead of retyping the password.
+        // See Auth.svelte's "resume" flow, the only reader of this key.
+        const masterKey = get(vaultMasterKey);
+        if (masterKey) {
+          const wrapped = await encrypt(result.prfKey, masterKey);
+          localStorage.setItem(`vault_bio_wrapped_master_${$currentUser.id}`, JSON.stringify(wrapped));
+        }
+
         biometricEnabled = true;
         showToast('Biometric Vault Unlock enabled successfully!', { type: 'success' });
       } catch (err) {
@@ -222,6 +234,7 @@
     } else {
       localStorage.removeItem(`vault_bio_enabled_${$currentUser.id}`);
       localStorage.removeItem(`vault_bio_cred_id_${$currentUser.id}`);
+      localStorage.removeItem(`vault_bio_wrapped_master_${$currentUser.id}`);
       localBackupEnabled.set(false);
       localBackupPassphrase.set('');
       localBackupKey.set(null);
