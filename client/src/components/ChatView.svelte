@@ -42,6 +42,7 @@
   import { showConfirm } from '../lib/stores/confirm.js';
   import { hapticLight } from '../lib/haptics.js';
   import MessageBubble from './MessageBubble.svelte';
+  import DonateBar from './DonateBar.svelte';
   import {
     localStreamStore, remoteStreamStore, micMuted, cameraOff, remoteMicMuted, remoteCameraOff,
     isScreenSharing, verificationWords, p2pFileTransferState, isScreenShareSupported, dataChannelReady,
@@ -1558,6 +1559,8 @@
   class="flex-1 flex flex-col bg-vault-black h-full animate-fade-in relative"
   data-chat-theme={chatTheme || undefined}
 >
+  <DonateBar />
+
   <!-- Chat Header -->
   <!-- relative z-40: the message list below is a later sibling with its own
        stacking context (`relative`), so without this the header's popovers

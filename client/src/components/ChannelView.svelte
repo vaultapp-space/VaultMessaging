@@ -23,6 +23,7 @@
     updateChannelSettings,
   } from '../lib/api/http.js';
   import { onWsEvent, wsSend } from '../lib/api/ws.js';
+  import DonateBar from './DonateBar.svelte';
   import { getAvatarGradient } from '../lib/avatar.js';
 
   export let chatId;
@@ -200,6 +201,8 @@
 </script>
 
 <div class="flex-1 flex flex-col bg-vault-black h-full animate-fade-in">
+  <DonateBar />
+
   <!-- Header -->
   <div class="flex items-center gap-3 px-4 py-3 border-b border-vault-border glass-strong relative z-40">
     {#if onClose}
