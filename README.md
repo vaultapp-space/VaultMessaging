@@ -2,12 +2,27 @@
 
 A privacy-first, end-to-end encrypted messenger. Zero PII, zero server-side plaintext, messages auto-delete within 24 hours.
 
+## Get the app
+
+- **Web** — [vaultapp.space](https://vaultapp.space), no install needed. Works in any modern browser.
+- **Android** — not yet on the Play Store or f-droid.org (official listing is in review). Three ways to get it in the meantime, two of which auto-update:
+  - Add `https://vaultapp.space/fdroid/repo` as a repo in [F-Droid](https://f-droid.org/) or [Droid-ify](https://github.com/Iamlooker/Droid-ify)
+  - Track this GitHub repo with [Obtainium](https://github.com/ImranR98/Obtainium)
+  - Or download the APK directly from the [latest release](https://github.com/vaultapp-space/VaultMessaging/releases/latest)
+- **iOS** — native SwiftUI client, cloud chats only (no E2EE ratchet yet — see `ios/README.md`). Not distributed anywhere yet; build from source.
+
 ## What's here
 
 - **`client/`** — Svelte 5 + Vite frontend. All cryptography (Double Ratchet, X3DH, Sender Keys, AES-GCM) runs client-side via Web Crypto; key material never leaves the browser except as passphrase-encrypted backups.
 - **`server/`** — Fastify backend. Acts as a blind relay: it stores and forwards encrypted blobs, manages WebSocket delivery, and never has access to plaintext or private keys.
+- **`shared/`** — envelope format and per-chat-mode capability rules, imported by both `client/` and `server/` so the two can never disagree about what a chat is allowed to do.
+- **`android/`** — Capacitor wrapper around `client/`, not a second native client — see `android/README.md` for building, signing, and the self-hosted F-Droid repo.
+- **`ios/`** — a separate native SwiftUI client, cloud chats only (no ratchet port yet) — see `ios/README.md`.
+- **`deploy/`** — nginx config and the self-hosted F-Droid repo tooling/config.
+- **`e2e/`** — Playwright end-to-end specs covering chat, groups, channels, calls, devices, and more.
 - **`docs/`** — design notes.
 - **`ecosystem.config.cjs`** — PM2 process config for production deployment.
+- **`LICENSE`** — AGPL-3.0-or-later.
 
 ## Core features
 
@@ -62,3 +77,9 @@ Server configuration lives in `server/src/config.js` and is sourced entirely fro
 - Messages carry a server-enforced 24-hour TTL and are hard-deleted by a periodic reaper.
 
 This is an active project — see `docs/` for design notes on individual subsystems.
+
+## License
+
+[AGPL-3.0-or-later](LICENSE). Chosen over plain GPL specifically to close the
+"run a modified fork as a hosted service without sharing changes" gap, since
+this is a self-hosted network service, not a distributed binary.
