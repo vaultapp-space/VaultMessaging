@@ -240,7 +240,7 @@
           <line x1="10" y1="1" x2="10" y2="4" />
           <line x1="14" y1="1" x2="14" y2="4" />
         </svg>
-        <span>Vault is free and always will be. If it's useful to you, you can buy the developer a coffee.</span>
+        <span>Enjoying Vault? Buy the developer a coffee.</span>
       </div>
       <button class="donate-btn" on:click={() => (donateOpen = true)}>Buy me a coffee →</button>
     </div>
@@ -938,8 +938,8 @@
     display: flex; align-items: center; justify-content: center; gap: 20px;
     padding: 12px 28px; flex-wrap: wrap; text-align: center;
   }
-  .donate-banner-text { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 0.85rem; }
-  .donate-banner-text svg { color: var(--accent); flex-shrink: 0; }
+  .donate-banner-text { display: flex; align-items: flex-start; gap: 10px; color: var(--text-secondary); font-size: 0.85rem; text-align: left; }
+  .donate-banner-text svg { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
   .donate-btn {
     background: none; border: 1px solid var(--accent); color: var(--accent); font-weight: 700;
     font-size: 0.82rem; padding: 7px 14px; border-radius: 0.6rem; cursor: pointer; white-space: nowrap;
@@ -981,8 +981,10 @@
   }
   .donate-copy:hover { border-color: var(--accent); color: var(--accent); }
   @media (max-width: 600px) {
-    .donate-banner-inner { padding: 10px 18px; gap: 10px; }
-    .donate-banner-text { font-size: 0.78rem; }
+    .donate-banner-inner { padding: 10px 18px; gap: 10px; justify-content: flex-start; }
+    .donate-banner-text { font-size: 0.78rem; flex: 1 1 auto; min-width: 0; }
+    .donate-banner-text svg { width: 16px; height: 16px; }
+    .donate-btn { flex-shrink: 0; }
   }
 
   /* Tablets get two columns; a single column wastes most of the width there. */
