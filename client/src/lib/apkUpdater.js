@@ -30,13 +30,19 @@ export async function checkForUpdate() {
   if (!Capacitor.isNativePlatform()) return null;
 
   try {
-    const { App } = await import('@capacitor/app');
+    // The plugin import and the index fetch don't depend on each other —
+    // running them in parallel (instead of awaiting the import first) is
+    // what actually moves the check earlier, since the network round-trip
+    // is the dominant cost either way.
+    const [{ App }, res] = await Promise.all([
+      import('@capacitor/app'),
+      fetch(REPO_INDEX_URL),
+    ]);
+    if (!res.ok) return null;
     const info = await App.getInfo();
     const installedCode = parseInt(info.build, 10);
     if (!Number.isFinite(installedCode)) return null;
 
-    const res = await fetch(REPO_INDEX_URL);
-    if (!res.ok) return null;
     const index = await res.json();
 
     // index-v1's packages arrays are newest-first — confirmed against the
