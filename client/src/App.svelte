@@ -14,6 +14,7 @@
   import ToastHost from './components/ToastHost.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
   import PassphrasePromptModal from './components/PassphrasePromptModal.svelte';
+  import UpdateBanner from './components/UpdateBanner.svelte';
   import { showToast } from './lib/stores/toast.js';
   import { initBackButtonHandler, triggerBackOnEscape } from './lib/backHandler.js';
 
@@ -292,4 +293,5 @@
   <ToastHost />
   <ConfirmDialog />
   <PassphrasePromptModal />
+  <UpdateBanner />
 </main>
