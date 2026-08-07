@@ -1683,9 +1683,14 @@
           <!-- `fixed`, not `absolute`: the header sits inside an
                overflow-hidden container, which clips an absolutely
                positioned popover. It stays in the DOM but is never visible,
-               so a click on it waits forever. -->
+               so a click on it waits forever. top adds env() on top of the
+               flat offset (rather than replacing it) since fixed
+               positioning ignores the header's own inherited safe-area
+               padding — a plain top-16 happened to clear a typical status
+               bar but isn't correct on a device with a taller inset
+               (notch/cutout). -->
           <div
-            class="fixed right-4 top-16 z-[60] w-52 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
+            class="fixed right-4 top-[calc(4rem+env(safe-area-inset-top,0px))] z-[60] w-52 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
             use:clickOutside={() => showChatMenu = false}
           >
             {#if $activePeer.chatId}

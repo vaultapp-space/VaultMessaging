@@ -1474,7 +1474,13 @@
        it stays visible (and tappable) above the panel rather than the panel
        running underneath it. -->
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text max-md:p-0 max-md:pb-14 max-md:items-stretch">
-    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up max-md:max-w-full max-md:h-full max-md:rounded-none max-md:flex max-md:flex-col">
+    <!-- max-md:pt-[env(...)] because max-md:h-full/fixed above escapes
+         App.svelte's <main> padding-top the same way every other fixed
+         full-screen panel in this app does — this one was missed when that
+         pattern got applied elsewhere, and it's the primary Settings
+         screen, so it's the most visible instance of the status-bar
+         overlap bug. -->
+    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up max-md:max-w-full max-md:h-full max-md:rounded-none max-md:flex max-md:flex-col max-md:pt-[env(safe-area-inset-top,0px)]">
       <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center max-md:flex-shrink-0">
         <h3 class="text-sm font-semibold text-vault-text">Settings</h3>
         <button on:click={() => showBackupModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close settings">
