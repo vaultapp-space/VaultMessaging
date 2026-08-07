@@ -2,7 +2,6 @@
   import { activeView } from '../lib/stores/session.js';
   import { onMount, onDestroy } from 'svelte';
   import { applyTheme } from '../lib/theme.js';
-  import QRCode from 'qrcode';
 
   let isLight = false;
   let techOpen = false;
@@ -18,12 +17,6 @@
   const navLinks = [
     { id: 'download', label: 'Download App' }
   ];
-
-  const FDROID_REPO_URL = 'https://vaultapp.space/fdroid/repo';
-  // Rendered locally, same reasoning as the safety-number QR in the app
-  // itself — no reason to hand a third-party image service a URL tied to
-  // this deployment.
-  let fdroidQrUrl = '';
 
   /* ---- animated chat preview ---- */
   const mockMessages = [
@@ -130,10 +123,6 @@
   onMount(() => {
     isLight = document.documentElement.classList.contains('light');
     reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    QRCode.toDataURL(FDROID_REPO_URL, { width: 180, margin: 1 })
-      .then((url) => { fdroidQrUrl = url; })
-      .catch((err) => console.error('Failed to render F-Droid repo QR code:', err));
 
     const sectionObserver = new IntersectionObserver(
       (entries) => {
@@ -395,28 +384,13 @@
       <div class="section-head" use:reveal={0}>
         <div class="eyebrow">Android</div>
         <h2>The web app needs nothing installed — the Android app is there if you want it.</h2>
-        <p>Not on the Play Store or f-droid.org yet (official listing is in review). Three ways to get it in the meantime, two of which keep the app updated automatically.</p>
+        <p>Not on the Play Store yet (official listing is in review). A single signed APK, built directly by the Vault developer.</p>
       </div>
       <div class="feature-grid download-grid">
         <div class="feature" use:reveal={0}>
-          <div class="plate">AUTO-UPDATES</div>
-          <h3>F-Droid repo</h3>
-          <p>Add <code>{FDROID_REPO_URL}</code> as a repo in F-Droid or Droid-ify. Updates check and install the same as any F-Droid app.</p>
-          {#if fdroidQrUrl}
-            <img class="download-qr" src={fdroidQrUrl} width="90" height="90" alt="QR code for the Vault F-Droid repo URL" />
-          {/if}
-          <a class="download-link" href={FDROID_REPO_URL} target="_blank" rel="noopener noreferrer">Open repo →</a>
-        </div>
-        <div class="feature" use:reveal={60}>
-          <div class="plate">AUTO-UPDATES</div>
-          <h3>GitHub + Obtainium</h3>
-          <p>Point <a href="https://github.com/ImranR98/Obtainium" target="_blank" rel="noopener noreferrer">Obtainium</a> at the GitHub repo below and it tracks new releases and installs them for you.</p>
-          <a class="download-link" href="https://github.com/vaultapp-space/VaultMessaging/releases/latest" target="_blank" rel="noopener noreferrer">Latest release →</a>
-        </div>
-        <div class="feature" use:reveal={120}>
-          <div class="plate">ONE-TIME</div>
+          <div class="plate">DIRECT DOWNLOAD</div>
           <h3>Direct APK</h3>
-          <p>A single download, signed and built by the Vault developer. No auto-updates — you'll need to re-download for future versions.</p>
+          <p>Signed and built by the Vault developer. The app checks for new versions itself and prompts you when one's available.</p>
           <a class="download-link" href="https://github.com/vaultapp-space/VaultMessaging/releases/latest/download/Vault.apk" target="_blank" rel="noopener noreferrer">Download APK →</a>
         </div>
       </div>
@@ -795,14 +769,12 @@
   .feature h3 { margin-top: 12px; font-size: 1.02rem; font-weight: 700; }
   .feature p { margin-top: 8px; color: var(--text-secondary); font-size: 0.9rem; }
 
-  .download-grid .feature p code {
-    display: block; margin-top: 8px; padding: 6px 8px; border-radius: 0.4rem;
-    background: var(--black); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
-    color: var(--text-secondary); word-break: break-all;
-  }
-  .download-grid .feature p a { color: var(--accent); text-decoration: none; }
-  .download-grid .feature p a:hover { text-decoration: underline; }
-  .download-qr { margin-top: 14px; border-radius: 0.5rem; background: #fff; padding: 6px; }
+  /* Only one card in this grid now (direct APK) — the shared 3-column
+     .feature-grid (and its narrower-viewport 2-column override below)
+     would otherwise stretch it across part of the row with empty bordered
+     tracks next to it. Two-class selector so this outranks those at every
+     breakpoint regardless of source order. */
+  .feature-grid.download-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
   .download-link {
     display: inline-block; margin-top: 14px; color: var(--accent); font-weight: 700;
     font-size: 0.85rem; text-decoration: none;
