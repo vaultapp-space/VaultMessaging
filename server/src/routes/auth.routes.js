@@ -325,7 +325,19 @@ async function authRoutes(fastify) {
         properties: {
           syncId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' }
         }
-      }
+      },
+      querystring: {
+        type: 'object',
+        properties: {
+          // Same self-reported/cosmetic device-label fields register/login
+          // accept, for the same reason: this device otherwise never gets
+          // registered at all, and would be silently unrevokable — see the
+          // fix below.
+          deviceName: { type: 'string', maxLength: 64 },
+          platform:   { type: 'string', maxLength: 32 },
+          appVersion: { type: 'string', maxLength: 32 },
+        },
+      },
     }
   }, async (request, reply) => {
     const { syncId } = request.params;
@@ -341,6 +353,20 @@ async function authRoutes(fastify) {
       return reply.code(404).send({ error: 'Account no longer exists' });
     }
 
+    // Registered as a real device — same as register/login — rather than
+    // left off the devices table entirely, which is what this endpoint did
+    // before: createSession(jti, user.id) with no deviceId meant this
+    // device could never appear in Active Sessions, and auth.js's
+    // authenticate skips its revocation check whenever session.deviceId is
+    // absent, so it could never actually be signed out from another device
+    // either.
+    const device = await fastify.store.devices.register(user.id, {
+      name: request.query.deviceName ?? null,
+      platform: request.query.platform ?? null,
+      appVersion: request.query.appVersion ?? null,
+      ip: request.ip ?? null,
+    });
+
     // Issue a real session for the syncing device, same as register/login,
     // so it isn't left making authenticated API calls with no cookie.
     const jti = uuidv4();
@@ -348,7 +374,7 @@ async function authRoutes(fastify) {
       { id: user.id, username: user.username, jti },
       { expiresIn: config.jwtExpiresIn }
     );
-    await fastify.store.createSession(jti, user.id);
+    await fastify.store.createSession(jti, user.id, device.id);
 
     reply.setCookie(config.cookieName, token, {
       path: '/',
@@ -358,7 +384,7 @@ async function authRoutes(fastify) {
       maxAge: config.sessionMaxAgeSeconds,
     });
 
-    return { payload, id: user.id, username: user.username };
+    return { payload, id: user.id, username: user.username, deviceId: device.id };
   });
 }
 

@@ -6,6 +6,7 @@
   import { decryptSyncPayload, generateOneTimePrekeys } from './lib/crypto/keys.js';
   import { fromBase64 } from './lib/crypto/utils.js';
   import { RatchetSession } from './lib/crypto/ratchet.js';
+  import { describeThisDevice } from './lib/device.js';
   import { SenderKeySession } from './lib/crypto/senderkeys.js';
   import Landing from './components/Landing.svelte';
   import NativeWelcome from './components/NativeWelcome.svelte';
@@ -131,9 +132,13 @@
     if (syncId && keyParam) {
       isLoading.set(true);
       try {
-        const res = await fetch(`/api/auth/sync/retrieve/${syncId}`);
+        const deviceInfo = describeThisDevice();
+        const query = new URLSearchParams(
+          Object.fromEntries(Object.entries(deviceInfo).filter(([, v]) => v != null))
+        );
+        const res = await fetch(`/api/auth/sync/retrieve/${syncId}?${query}`);
         if (res.ok) {
-          const { payload } = await res.json();
+          const { payload, deviceId } = await res.json();
           const keyRaw = fromBase64(decodeURIComponent(keyParam));
           
           const decrypted = await decryptSyncPayload(payload, keyRaw);
@@ -198,7 +203,10 @@
           // Clear query params from URL
           window.history.replaceState({}, document.title, window.location.pathname);
 
-          setUser(decrypted.currentUser);
+          // deviceId from the response, not decrypted.currentUser — the
+          // vault payload was encrypted on the *other* device and carries
+          // its deviceId, not this new one's freshly-issued id.
+          setUser({ ...decrypted.currentUser, deviceId });
           activeView.set('chat');
           isLoading.set(false);
           return;

@@ -302,10 +302,15 @@
     if (conv) consumeViewOnce(conv.peerId, data.seq);
   }
 
-  // This device was signed out from somewhere else. The token is already
-  // dead server-side; clearing local state is what stops the UI continuing
-  // to show an account it can no longer act on.
-  function handleDeviceRevoked() {
+  // Broadcast to every device on the account when ANY one of them is
+  // revoked (devices.routes.js's deliverToUser has no per-device targeting
+  // — see its own comment), not just the one that was actually revoked.
+  // Previously this handler ignored the payload and cleared local state
+  // unconditionally, which meant revoking device B from device A's own
+  // Active Sessions list signed device A itself out too, just for having
+  // received the same notification everyone else on the account did.
+  function handleDeviceRevoked(data) {
+    if (data?.deviceId !== get(currentUser)?.deviceId) return;
     showToast('This device was signed out from another session.', { type: 'info', duration: 6000 });
     clearSession();
   }
