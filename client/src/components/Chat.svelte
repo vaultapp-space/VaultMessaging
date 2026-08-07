@@ -735,8 +735,15 @@
 <!-- fixed inset-0 escapes App.svelte's <main> padding-top entirely (fixed
      positioning is relative to the viewport, not an ancestor's padding
      box), so the same safe-area-inset-top fix has to be repeated here for
-     the chat screen specifically — see App.svelte's comment for why. -->
-<div class="fixed inset-0 z-10 flex" style="padding-top: env(safe-area-inset-top, 0px)">
+     the chat screen specifically — see App.svelte's comment for why.
+     max-md:-scoped max() floor: a plain env() falls back to 0 whenever the
+     OS resizes the window for the on-screen keyboard and misreports the
+     inset during that transition — this is the main chat screen, where
+     the composer keeps a keyboard open constantly, so it's the highest-
+     traffic place that could happen. Not unconditional: desktop has no
+     inset to compensate for at all, and a floor there would just add
+     unwanted padding. -->
+<div class="fixed inset-0 z-10 flex max-md:pt-[max(env(safe-area-inset-top,0px),1.5rem)]">
   <!-- Sidebar -->
   <ChatSidebar
     on:logout={handleLogout}

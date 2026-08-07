@@ -267,22 +267,25 @@
 </script>
 
 <!-- fixed inset-0 escapes App.svelte's <main> padding-top the same way
-     Chat.svelte's and ChatSidebar's own roots do — same safe-area fix. -->
-<div class="fixed inset-0 z-10 flex items-center justify-center p-4" style="padding-top: env(safe-area-inset-top, 0px)">
+     Chat.svelte's and ChatSidebar's own roots do — same safe-area fix.
+     max-md:-scoped max() floor, not an unconditional one: on desktop
+     there's genuinely no inset to compensate for and a floor would just
+     add unwanted top padding there. The floor itself guards against
+     env(safe-area-inset-top) misreporting 0 during the on-screen
+     keyboard's window resize on Android — this screen has two text
+     fields, so it's the one most likely to trigger that. -->
+<div class="fixed inset-0 z-10 flex items-center justify-center p-4 max-md:pt-[max(env(safe-area-inset-top,0px),1.5rem)]">
   <div class="w-full max-w-md animate-fade-in-scale">
     <!-- Logo & Branding -->
     <div class="text-center mb-8">
       <button
         type="button"
         on:click={goToLanding}
-        class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-vault-surface border border-vault-border/50 mb-4 animate-pulse-glow cursor-pointer focus:outline-none"
+        class="inline-flex items-center justify-center w-16 h-16 rounded-2xl overflow-hidden border border-vault-border/50 mb-4 animate-pulse-glow cursor-pointer focus:outline-none"
         aria-label="Back to home"
         title="Back to home"
       >
-        <svg class="w-8 h-8 text-vault-text hover:text-vault-accent transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z" />
-          <path d="M12 22V12" stroke-dasharray="3 3" />
-        </svg>
+        <img src="/logo.jpg" alt="Vault" class="w-full h-full object-cover" />
       </button>
       <h1 class="text-2xl font-semibold text-vault-text tracking-tight">Vault</h1>
       <p class="text-vault-text-dim text-sm mt-1">End-to-end encrypted messaging</p>

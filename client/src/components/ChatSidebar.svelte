@@ -61,7 +61,11 @@
     return () => mq.removeEventListener('change', handler);
   });
 
-  let theme = localStorage.getItem('vault_theme') || 'dark';
+  // Must match App.svelte's own applyTheme(localStorage.getItem('vault_theme')
+  // || 'light') fallback exactly — that's what's actually rendered on first
+  // load for anyone who's never touched this setting, so a different
+  // default here just makes this indicator wrong, not the theme itself.
+  let theme = localStorage.getItem('vault_theme') || 'light';
   let isSyncing = false;
   let syncError = '';
   let lastSyncedTime = new Date().toLocaleTimeString();
@@ -822,7 +826,7 @@
      this stays in normal flow inside that already-padded <main> — hence the
      max-md: prefix rather than the previous $sidebarOpen-conditional style. -->
 <aside class="w-full md:w-80 md:min-w-[320px] h-full flex flex-col bg-vault-surface border-r border-vault-border relative z-20 max-md:pb-14
-  max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:pt-[env(safe-area-inset-top,0px)]
+  max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:pt-[max(env(safe-area-inset-top,0px),1.5rem)]
   max-md:transition-transform max-md:duration-300 max-md:ease-out motion-reduce:max-md:transition-none"
   class:max-md:translate-x-0={$sidebarOpen}
   class:max-md:-translate-x-full={!$sidebarOpen}
@@ -1480,7 +1484,13 @@
          pattern got applied elsewhere, and it's the primary Settings
          screen, so it's the most visible instance of the status-bar
          overlap bug. -->
-    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up max-md:max-w-full max-md:h-full max-md:rounded-none max-md:flex max-md:flex-col max-md:pt-[env(safe-area-inset-top,0px)]">
+    <!-- max-md:max-h-[100dvh], in addition to max-md:h-full: a percentage
+         height can lag behind the actual visible viewport when Android
+         resizes the window for the on-screen keyboard — dvh is the unit
+         built specifically to track that correctly instead of a stale
+         value, which is what pushed the Done button below the visible
+         area. -->
+    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up max-md:max-w-full max-md:h-full max-md:max-h-[100dvh] max-md:rounded-none max-md:flex max-md:flex-col max-md:pt-[max(env(safe-area-inset-top,0px),1.5rem)]">
       <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center max-md:flex-shrink-0">
         <h3 class="text-sm font-semibold text-vault-text">Settings</h3>
         <button on:click={() => showBackupModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close settings">
