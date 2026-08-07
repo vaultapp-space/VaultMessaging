@@ -191,18 +191,16 @@
   let position = { x: 0, y: 0 };
   let isDragging = false;
 
-  // Calls used to always start as a small floating widget — the fullscreen
-  // mode already existed (below) but required manually tapping to expand
-  // into it. On native Android this now opens straight into it, matching
-  // every mainstream messenger; desktop keeps the floating window, since a
-  // whole desktop display isn't otherwise occupied the way a phone screen
-  // is. Keyed on call id, not just isCallActive, so re-opening the small
-  // window mid-call doesn't get silently forced back to fullscreen every
-  // time this reactive block re-runs.
+  // Calls always start as a small floating widget — fullscreen is still
+  // available (below) via manually tapping to expand into it, on every
+  // platform including native Android. Keyed on call id, not just
+  // isCallActive, so re-opening the small window mid-call doesn't get
+  // silently forced back to some other size every time this reactive
+  // block re-runs.
   let sizedForCallId = null;
   $: if (isCallActive && $activeCall?.id && $activeCall.id !== sizedForCallId) {
     sizedForCallId = $activeCall.id;
-    callWindowSize = Capacitor.isNativePlatform() ? 'fullscreen' : 'normal';
+    callWindowSize = 'normal';
   }
 
   // Elapsed time since the call actually connected — previously shown
@@ -2037,7 +2035,7 @@
                below) so a long username can't grow the bar into it — the
                name truncates instead. -->
           <div
-            style="top: calc(1.5rem + env(safe-area-inset-top)); left: calc(1.5rem + env(safe-area-inset-left));"
+            style="top: max(calc(1.5rem + env(safe-area-inset-top, 0px)), 3rem); left: calc(1.5rem + env(safe-area-inset-left, 0px));"
             class="absolute z-20 flex items-center gap-2 bg-vault-surface/80 backdrop-blur-md border border-vault-border px-3.5 py-1.5 rounded-xl shadow-xl select-none max-w-[calc(100%-14rem)]"
           >
             <span class="w-2 h-2 rounded-full bg-vault-accent animate-pulse shrink-0"></span>
@@ -2064,7 +2062,7 @@
 
         <!-- Local Video Container -->
         <div 
-          style={callWindowSize === 'fullscreen' ? "top: calc(1.5rem + env(safe-area-inset-top)); right: calc(1.5rem + env(safe-area-inset-right));" : ""}
+          style={callWindowSize === 'fullscreen' ? "top: max(calc(1.5rem + env(safe-area-inset-top, 0px)), 3rem); right: calc(1.5rem + env(safe-area-inset-right, 0px));" : ""}
           class={callWindowSize === 'fullscreen' 
             ? "absolute w-48 h-36 z-10 bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-xl animate-fade-in" 
             : `relative ${callWindowSize === 'large' ? 'w-[288px] h-[216px]' : 'w-44 h-32'} bg-vault-black border border-vault-border rounded-xl overflow-hidden shadow-inner animate-fade-in`}
