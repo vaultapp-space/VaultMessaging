@@ -97,7 +97,7 @@ async function authRoutes(fastify) {
         httpOnly: true,
         sameSite: 'strict',
         secure: config.cookieSecure,
-        maxAge: 24 * 60 * 60, // 24h
+        maxAge: config.sessionMaxAgeSeconds,
       })
       .code(201)
       .send({
@@ -168,7 +168,7 @@ async function authRoutes(fastify) {
         httpOnly: true,
         sameSite: 'strict',
         secure: config.cookieSecure,
-        maxAge: 24 * 60 * 60,
+        maxAge: config.sessionMaxAgeSeconds,
       })
       .send({
         id: user.id,
@@ -355,7 +355,7 @@ async function authRoutes(fastify) {
       httpOnly: true,
       sameSite: 'strict',
       secure: config.cookieSecure,
-      maxAge: 24 * 60 * 60, // 24h
+      maxAge: config.sessionMaxAgeSeconds,
     });
 
     return { payload, id: user.id, username: user.username };

@@ -7,9 +7,25 @@ const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   host: process.env.HOST || '0.0.0.0',
 
-  // JWT
+  // Session lifetime. Bounded, not truly infinite, but long enough that
+  // nobody is ever logged out just by having closed the app for a while —
+  // only an explicit sign-out (their own, or another device revoking this
+  // one via ActiveSessions) actually ends a session. 400 days specifically
+  // because that's also the hard ceiling Chrome enforces on a cookie's own
+  // Max-Age; anything longer gets silently clamped down to it by the
+  // browser anyway, so this is the real achievable maximum, not an
+  // arbitrary round number. Drives the JWT's own expiry, the cookie's
+  // Max-Age (auth.routes.js), and the Redis session record's TTL
+  // (cache/sessions.js) — all three used to independently default to 24h,
+  // which meant even continuous daily use didn't save you: the JWT's
+  // expiry is fixed at issuance, not a sliding window, so it lapsed
+  // exactly 24h after login regardless of activity.
+  sessionMaxAgeSeconds: 400 * 24 * 60 * 60,
+
+  // JWT — same duration as sessionMaxAgeSeconds above, in the units
+  // jsonwebtoken's `expiresIn` wants (a plain number of seconds is fine).
   jwtSecret: process.env.JWT_SECRET || 'vault-dev-secret-change-in-production',
-  jwtExpiresIn: '24h',
+  jwtExpiresIn: 400 * 24 * 60 * 60,
 
   // Cookie
   cookieName: process.env.NODE_ENV === 'production' ? '__Host-vault_session' : 'vault_session',

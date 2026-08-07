@@ -9,21 +9,27 @@
 // device is tracked in a set alongside it. Without that set, "sign this phone
 // out" would have no way to find the tokens to invalidate: a jti is opaque,
 // and scanning Redis for one that happens to match is not an option.
+//
+// TTL matches config.sessionMaxAgeSeconds (the JWT's own expiry and the
+// cookie's Max-Age) — this used to be its own separately-hardcoded 24h,
+// which meant even a session actively kept alive by touchSession() below
+// was still capped by the JWT expiring on its own fixed schedule. All
+// three now share one source of truth.
 
-
+import config from '../config.js';
 
 export function createSessions({ redis }) {
   return {
     redis,
 
   async createSession(jwtId, userId, deviceId = null) {
-    await this.redis.set(`session:${jwtId}`, userId, 'EX', 24 * 60 * 60);
+    await this.redis.set(`session:${jwtId}`, userId, 'EX', config.sessionMaxAgeSeconds);
     if (deviceId) {
-      await this.redis.set(`session:${jwtId}:device`, deviceId, 'EX', 24 * 60 * 60);
+      await this.redis.set(`session:${jwtId}:device`, deviceId, 'EX', config.sessionMaxAgeSeconds);
       // Given a TTL of its own so a device that stops being used does not
       // leave a set of dead jtis behind forever.
       await this.redis.sadd(`device:${deviceId}:sessions`, jwtId);
-      await this.redis.expire(`device:${deviceId}:sessions`, 24 * 60 * 60);
+      await this.redis.expire(`device:${deviceId}:sessions`, config.sessionMaxAgeSeconds);
     }
   },
 
@@ -62,8 +68,8 @@ export function createSessions({ redis }) {
   },
 
   async touchSession(jwtId) {
-    await this.redis.expire(`session:${jwtId}`, 24 * 60 * 60);
-    await this.redis.expire(`session:${jwtId}:device`, 24 * 60 * 60);
+    await this.redis.expire(`session:${jwtId}`, config.sessionMaxAgeSeconds);
+    await this.redis.expire(`session:${jwtId}:device`, config.sessionMaxAgeSeconds);
   },
   };
 }
