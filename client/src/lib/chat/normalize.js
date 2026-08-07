@@ -11,7 +11,7 @@
 // branch on mode themselves. Without it, every consumer grows its own
 // `if (message.encrypted)` and the fork leaks across the whole UI.
 
-import { parseEnvelope, isMedia, displayText, MessageType } from '$shared/envelope.js';
+import { parseEnvelope, displayText, MessageType } from '$shared/envelope.js';
 
 /**
  * @param {object} raw   - a wire message from HTTP or the websocket
@@ -74,8 +74,4 @@ function envelopeFromColumns(raw) {
     ttl: null,
     op: null,
   };
-}
-
-export function isMediaMessage(message) {
-  return isMedia(message?.envelope);
 }

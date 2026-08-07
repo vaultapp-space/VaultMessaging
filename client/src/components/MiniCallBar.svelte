@@ -29,7 +29,7 @@
 
     <button
       on:click|stopPropagation={() => toggleMic()}
-      class="p-1.5 rounded-full transition-all focus:outline-none
+      class="p-2.5 rounded-full transition-all focus:outline-none
         {$micMuted ? 'bg-vault-danger/20 text-vault-danger' : 'bg-vault-elevated text-vault-text-dim hover:text-vault-text'}"
       title={$micMuted ? 'Unmute Mic' : 'Mute Mic'}
       aria-label={$micMuted ? 'Unmute Mic' : 'Mute Mic'}
@@ -52,7 +52,7 @@
 
     <button
       on:click|stopPropagation={() => hangupCall()}
-      class="p-1.5 rounded-full bg-vault-danger/20 text-vault-danger hover:bg-vault-danger/30 transition-all focus:outline-none"
+      class="p-2.5 rounded-full bg-vault-danger/20 text-vault-danger hover:bg-vault-danger/30 transition-all focus:outline-none"
       title="Hang Up"
       aria-label="Hang Up"
     >

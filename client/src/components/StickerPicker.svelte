@@ -14,6 +14,7 @@
   import {
     fetchStickers, searchStickerSets, installStickerSet, publicMediaUrl,
   } from '../lib/api/http.js';
+  import { showToast } from '../lib/stores/toast.js';
 
   export let onPick = null;
   export let onClose = null;
@@ -67,7 +68,11 @@
     }, 300);
   }
 
+  let installingId = null;
+
   async function install(set) {
+    if (installingId) return;
+    installingId = set.id;
     try {
       await installStickerSet(set.id);
       await load();
@@ -76,6 +81,9 @@
       tab = set.id;
     } catch (err) {
       console.error('Failed to install set:', err);
+      showToast('Could not add that sticker pack');
+    } finally {
+      installingId = null;
     }
   }
 
@@ -107,13 +115,14 @@
       {#each results as set (set.id)}
         <button
           on:click={() => install(set)}
-          class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-vault-elevated text-left focus:outline-none"
+          disabled={installingId !== null}
+          class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-vault-elevated text-left focus:outline-none disabled:opacity-50"
         >
           <div class="min-w-0">
             <div class="text-[11px] text-vault-text truncate">{set.title}</div>
             <div class="text-[9px] text-vault-text-dim">{set.installsCount} installs</div>
           </div>
-          <span class="text-[10px] text-vault-accent shrink-0">Add</span>
+          <span class="text-[10px] text-vault-accent shrink-0">{installingId === set.id ? 'Adding…' : 'Add'}</span>
         </button>
       {/each}
     </div>

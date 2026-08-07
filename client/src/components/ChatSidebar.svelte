@@ -20,6 +20,10 @@
   import { encryptSyncPayload } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
   import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
+  import { showToast } from '../lib/stores/toast.js';
+  import { pushBackHandler } from '../lib/backHandler.js';
+  import { showConfirm } from '../lib/stores/confirm.js';
+  import { promptPassphrase } from '../lib/stores/passphrasePrompt.js';
   import WalletSettings from './WalletSettings.svelte';
   import ActiveSessions from './ActiveSessions.svelte';
   import Stories from './Stories.svelte';
@@ -30,12 +34,48 @@
   // as its own overlay outside <aside>, so it isn't affected by the sidebar
   // being hidden on mobile.
   export let showBackupModal = false;
+  // Android back button closes whichever of these is on top instead of
+  // falling through to WebView history (see lib/backHandler.js) — each
+  // pushes its close callback while open and pops it however it closes,
+  // in-app control or the back button itself.
+  let unregisterBackupBack = null;
+  $: {
+    if (showBackupModal && !unregisterBackupBack) {
+      unregisterBackupBack = pushBackHandler(() => { showBackupModal = false; });
+    } else if (!showBackupModal && unregisterBackupBack) {
+      unregisterBackupBack();
+      unregisterBackupBack = null;
+    }
+  }
+  // Below md this <aside> is always in the DOM (see the slide transition on
+  // it further down) rather than display:none while closed, so it no longer
+  // drops out of the accessibility tree/tab order for free the way it used
+  // to. `inert` puts that back — but only below md, since above it the panel
+  // is the normal, always-visible sidebar regardless of $sidebarOpen.
+  let isNarrowViewport = false;
+  onMount(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    isNarrowViewport = mq.matches;
+    const handler = (e) => { isNarrowViewport = e.matches; };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  });
+
   let theme = localStorage.getItem('vault_theme') || 'dark';
   let isSyncing = false;
   let syncError = '';
   let lastSyncedTime = new Date().toLocaleTimeString();
 
   let showSyncModal = false;
+  let unregisterSyncBack = null;
+  $: {
+    if (showSyncModal && !unregisterSyncBack) {
+      unregisterSyncBack = pushBackHandler(() => { showSyncModal = false; });
+    } else if (!showSyncModal && unregisterSyncBack) {
+      unregisterSyncBack();
+      unregisterSyncBack = null;
+    }
+  }
   let syncQrUrl = '';
   let syncLink = '';
 
@@ -104,11 +144,12 @@
         syncQrUrl = await QRCode.toDataURL(syncLink, { width: 200, margin: 1 });
         showSyncModal = true;
       } else {
-        alert('Failed to initiate sync session on server');
+        const errBody = await res.json().catch(() => null);
+        showToast(errBody?.error ? `Failed to initiate sync session: ${errBody.error}` : 'Failed to initiate sync session on server');
       }
     } catch (err) {
       console.error('QR Sync initiation failed:', err);
-      alert('Failed to construct sync payload');
+      showToast(err?.message ? `Failed to construct sync payload: ${err.message}` : 'Failed to construct sync payload');
     }
   }
 
@@ -167,10 +208,10 @@
         localBackupPassphrase.set('BIOMETRIC_UNLOCKED');
         localBackupEnabled.set(true);
         biometricEnabled = true;
-        alert('Biometric Vault Unlock enabled successfully!');
+        showToast('Biometric Vault Unlock enabled successfully!', { type: 'success' });
       } catch (err) {
         console.error('Biometric registration failed:', err);
-        alert(err.message || 'Biometric registration failed');
+        showToast(err.message || 'Biometric registration failed');
         e.target.checked = false;
         biometricEnabled = false;
       }
@@ -181,7 +222,7 @@
       localBackupPassphrase.set('');
       localBackupKey.set(null);
       biometricEnabled = false;
-      alert('Biometric Vault Unlock disabled.');
+      showToast('Biometric Vault Unlock disabled.', { type: 'success' });
       setTimeout(syncVault, 100);
     }
   }
@@ -219,12 +260,47 @@
   let searchQuery = '';
   let searchResults = [];
   let searching = false;
+  let searchInputEl;
+
+  // Desktop convention (Slack, Discord, Telegram web) with no equivalent
+  // here before — the only keyboard handling anywhere in the app was the
+  // composer's own Enter/Escape. Skipped whenever focus is already in an
+  // editable element, so it doesn't hijack a literal "/" being typed into a
+  // message, another search box, or any modal's input.
+  function handleSlashShortcut(e) {
+    if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const active = document.activeElement;
+    const isEditable = active && (
+      active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable
+    );
+    if (isEditable) return;
+    e.preventDefault();
+    searchInputEl?.focus();
+  }
 
   let showGroupModal = false;
+  let unregisterGroupBack = null;
+  $: {
+    if (showGroupModal && !unregisterGroupBack) {
+      unregisterGroupBack = pushBackHandler(() => { showGroupModal = false; });
+    } else if (!showGroupModal && unregisterGroupBack) {
+      unregisterGroupBack();
+      unregisterGroupBack = null;
+    }
+  }
   let activeTab = 'chats';
   // Message search is folded away until asked for; two identical-looking
   // search boxes doing different things is worse than one extra click.
   let showMessageSearch = false;
+  let unregisterSearchBack = null;
+  $: {
+    if (showMessageSearch && !unregisterSearchBack) {
+      unregisterSearchBack = pushBackHandler(() => { showMessageSearch = false; });
+    } else if (!showMessageSearch && unregisterSearchBack) {
+      unregisterSearchBack();
+      unregisterSearchBack = null;
+    }
+  }
   // One creation menu rather than an icon per thing you can create.
   let showNewMenu = false;
 
@@ -321,10 +397,12 @@
   let groupName = '';
   let groupAddedUsers = [];
   let groupMembersSearch = [];
+  let groupMembersQuery = '';
   let groupSearchTimeout;
 
   async function searchGroupMembers(e) {
     const q = e.target.value;
+    groupMembersQuery = q;
     clearTimeout(groupSearchTimeout);
     if (q.length < 1) {
       groupMembersSearch = [];
@@ -352,7 +430,11 @@
     groupAddedUsers = groupAddedUsers.filter(u => u.id !== user.id);
   }
 
+  let groupBusy = false;
+
   async function submitCreateGroup() {
+    if (groupBusy) return;
+    groupBusy = true;
     try {
       const memberIds = groupAddedUsers.map(u => u.id);
       const res = await createGroupApi(groupName, memberIds);
@@ -389,19 +471,26 @@
       groupName = '';
       groupAddedUsers = [];
       groupMembersSearch = [];
+      groupMembersQuery = '';
     } catch (err) {
       console.error('Failed to create group:', err);
-      alert('Failed to create group');
+      showToast(err?.message ? `Failed to create group: ${err.message}` : 'Failed to create group');
+    } finally {
+      groupBusy = false;
     }
   }
 
   // Identity key backup methods
   async function exportIdentity() {
     if (!$identityKeyPair || !$signedPrekeyPair) {
-      alert('Keys not generated yet');
+      showToast('Keys not generated yet');
       return;
     }
-    const passphrase = prompt('Create a password to encrypt your identity key backup file:');
+    const passphrase = await promptPassphrase({
+      title: 'Encrypt Identity Backup',
+      message: 'This password encrypts the backup file — you\'ll need it to restore your identity keys later.',
+      mode: 'create',
+    });
     if (!passphrase) return;
     try {
       const encrypted = await exportIdentityBackup($identityKeyPair.ecdh, $identityKeyPair.ecdsa, passphrase);
@@ -415,14 +504,18 @@
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error('Failed to export keys:', e);
-      alert('Failed to export identity keys');
+      showToast(e?.message ? `Failed to export identity keys: ${e.message}` : 'Failed to export identity keys');
     }
   }
 
   async function importIdentity(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const passphrase = prompt('Enter the password to decrypt your identity key file:');
+    const passphrase = await promptPassphrase({
+      title: 'Decrypt Identity Backup',
+      message: 'Enter the password used to encrypt this identity key file.',
+      mode: 'enter',
+    });
     if (!passphrase) return;
     try {
       const text = await file.text();
@@ -436,11 +529,11 @@
       // Save/backup the restored identity keys to the cloud vault
       await syncCloudVault();
       
-      alert('Identity keys imported successfully! Safety numbers restored.');
+      showToast('Identity keys imported successfully! Safety numbers restored.', { type: 'success' });
       showBackupModal = false;
     } catch (err) {
       console.error('Failed to import keys:', err);
-      alert('Incorrect password or invalid identity file');
+      showToast('Incorrect password or invalid identity file');
     }
   }
   let searchTimeout;
@@ -453,6 +546,15 @@
   let channels = [];
   let channelResults = [];
   let showChannelModal = false;
+  let unregisterChannelBack = null;
+  $: {
+    if (showChannelModal && !unregisterChannelBack) {
+      unregisterChannelBack = pushBackHandler(() => { showChannelModal = false; });
+    } else if (!showChannelModal && unregisterChannelBack) {
+      unregisterChannelBack();
+      unregisterChannelBack = null;
+    }
+  }
   let channelTitle = '';
   let channelUsername = '';
   let channelBusy = false;
@@ -520,6 +622,15 @@
   let folders = [];
   let activeFolderId = null;
   let showFolderEditor = false;
+  let unregisterFolderBack = null;
+  $: {
+    if (showFolderEditor && !unregisterFolderBack) {
+      unregisterFolderBack = pushBackHandler(() => { showFolderEditor = false; });
+    } else if (!showFolderEditor && unregisterFolderBack) {
+      unregisterFolderBack();
+      unregisterFolderBack = null;
+    }
+  }
   let editingFolder = null;
   let folderDraftTitle = '';
   let folderDraftChats = new Set();
@@ -575,14 +686,14 @@
       showFolderEditor = false;
     } catch (err) {
       console.error('Failed to save folder:', err);
-      alert('Could not save that folder.');
+      showToast(err?.message ? `Could not save that folder: ${err.message}` : 'Could not save that folder.');
     } finally {
       folderBusy = false;
     }
   }
 
   async function removeFolder(folderId) {
-    if (!confirm('Delete this folder? The chats in it are not affected.')) return;
+    if (!(await showConfirm('Delete this folder? The chats in it are not affected.', { confirmLabel: 'Delete' }))) return;
     try {
       await deleteFolder(folderId);
       if (activeFolderId === folderId) activeFolderId = null;
@@ -699,18 +810,23 @@
   }
 </script>
 
-<!-- max-md:fixed escapes App.svelte's <main> padding-top the same way
-     Chat.svelte's own root does (fixed positioning is relative to the
-     viewport, not an ancestor's padding box) — repeating the safe-area fix
-     here too, or the header renders under the status bar whenever the
-     sidebar is the fixed-position screen on mobile. -->
-<aside class="w-full md:w-80 md:min-w-[320px] h-full flex flex-col bg-vault-surface border-r border-vault-border relative z-20 max-md:pb-14"
-  class:max-md:hidden={!$sidebarOpen}
-  class:max-md:fixed={$sidebarOpen}
-  class:max-md:inset-y-0={$sidebarOpen}
-  class:max-md:left-0={$sidebarOpen}
-  class:max-md:z-50={$sidebarOpen}
-  style={$sidebarOpen ? 'padding-top: env(safe-area-inset-top, 0px)' : ''}
+<svelte:window on:keydown={handleSlashShortcut} />
+
+<!-- Below md, this is always the fixed full-screen layer (never display:none)
+     so closing it can slide off-canvas instead of vanishing instantly — a
+     hard cut read as a glitch next to the tab bar's otherwise native feel.
+     Being always-fixed on mobile also means the safe-area top padding below
+     is needed unconditionally there (fixed positioning is relative to the
+     viewport, not App.svelte's <main> padding box, the same reason
+     Chat.svelte's own root repeats it) but must NOT apply on desktop, where
+     this stays in normal flow inside that already-padded <main> — hence the
+     max-md: prefix rather than the previous $sidebarOpen-conditional style. -->
+<aside class="w-full md:w-80 md:min-w-[320px] h-full flex flex-col bg-vault-surface border-r border-vault-border relative z-20 max-md:pb-14
+  max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:pt-[env(safe-area-inset-top,0px)]
+  max-md:transition-transform max-md:duration-300 max-md:ease-out motion-reduce:max-md:transition-none"
+  class:max-md:translate-x-0={$sidebarOpen}
+  class:max-md:-translate-x-full={!$sidebarOpen}
+  inert={!$sidebarOpen && isNarrowViewport}
 >
   <!-- Header -->
   <div class="flex items-center justify-between px-4 py-3 border-b border-vault-border">
@@ -728,16 +844,23 @@
              user's: it changes constantly, nobody acts on it, and it makes
              the header look like a diagnostic panel. What matters is being
              told when the connection is *not* working. -->
-        {#if !$wsConnected}
-          <div class="text-[10px] text-vault-warning flex items-center gap-1">
-            <div class="w-1.5 h-1.5 rounded-full bg-vault-warning animate-pulse"></div>
-            Reconnecting…
-          </div>
-        {:else}
-          <div class="text-[10px] text-vault-text-dim" title="Latency {ping}ms">
-            End-to-end encrypted
-          </div>
-        {/if}
+        <!-- One persistent live region wrapping both states, not one per
+             branch — a screen reader may not pick up aria-live on an
+             element that's freshly inserted along with the branch switch
+             itself, only on text changing inside an element already
+             present. -->
+        <div aria-live="polite" aria-atomic="true">
+          {#if !$wsConnected}
+            <div class="text-[10px] text-vault-warning flex items-center gap-1">
+              <div class="w-1.5 h-1.5 rounded-full bg-vault-warning animate-pulse"></div>
+              Reconnecting…
+            </div>
+          {:else}
+            <div class="text-[10px] text-vault-text-dim" title="Latency {ping}ms">
+              End-to-end encrypted
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
 
@@ -873,9 +996,10 @@
         </svg>
         <input
           type="text"
+          bind:this={searchInputEl}
           bind:value={searchQuery}
           on:input={handleSearch}
-          placeholder="Search users..."
+          placeholder="Search users... (press / to focus)"
           class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle"
           style="padding-left: 2.25rem; padding-right: 2.25rem;"
         />
@@ -1057,7 +1181,7 @@
           <button
             on:click={() => (activeFolderId = folder.id)}
             on:dblclick={() => openFolderEditor(folder)}
-            title="Double-click to edit"
+            title="Select, then use Edit to rename"
             class="shrink-0 px-2 py-1 rounded-lg text-[11px] transition-colors focus:outline-none
               {activeFolderId === folder.id ? 'bg-vault-accent/15 text-vault-accent' : 'text-vault-text-dim hover:text-vault-text'}"
           >{folder.title}</button>
@@ -1068,6 +1192,11 @@
           title="New folder"
         >+</button>
         {#if activeFolder}
+          <button
+            on:click={() => openFolderEditor(activeFolder)}
+            class="shrink-0 px-2 py-1 rounded-lg text-[11px] text-vault-text-dim hover:text-vault-accent focus:outline-none"
+            title="Edit this folder"
+          >Edit</button>
           <button
             on:click={() => removeFolder(activeFolder.id)}
             class="shrink-0 px-2 py-1 rounded-lg text-[11px] text-vault-text-dim hover:text-vault-danger focus:outline-none"
@@ -1425,10 +1554,10 @@
                 localBackupPassphrase.set('BIOMETRIC_UNLOCKED');
                 localBackupEnabled.set(true);
                 await restoreBackup();
-                alert('Vault unlocked successfully using biometrics!');
+                showToast('Vault unlocked successfully using biometrics!', { type: 'success' });
               } catch (err) {
                 console.error('Biometric unlock failed:', err);
-                alert(err.message || 'Biometric unlock failed');
+                showToast(err.message || 'Biometric unlock failed');
               }
             }}
             class="w-full py-2 bg-vault-accent hover:bg-vault-accent-hover text-vault-black font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer focus:outline-none"
@@ -1467,7 +1596,7 @@
             <input
               type="checkbox"
               checked={$localBackupEnabled}
-              on:change={(e) => {
+              on:change={async (e) => {
                 const enabled = e.target.checked;
                 if (!enabled) {
                   localBackupEnabled.set(false);
@@ -1476,13 +1605,20 @@
                   clearBackup();
                   setTimeout(syncVault, 100);
                 } else {
-                  const phrase = prompt('Enter a passphrase to encrypt your local database:');
+                  // Unchecked immediately, then re-checked on success — the
+                  // toggle shouldn't sit in the "on" position while the
+                  // passphrase modal (a separate overlay) is still up
+                  // deciding whether this actually turns on.
+                  e.target.checked = false;
+                  const phrase = await promptPassphrase({
+                    title: 'Encrypt Local Backup',
+                    message: 'This password encrypts your local message history cache.',
+                    mode: 'create',
+                  });
                   if (phrase) {
                     localBackupPassphrase.set(phrase);
                     localBackupEnabled.set(true);
                     setTimeout(syncVault, 100);
-                  } else {
-                    e.target.checked = false;
                   }
                 }
               }}
@@ -1498,8 +1634,12 @@
             <div class="flex items-center justify-between gap-2 px-3 py-2 bg-vault-elevated border border-vault-border rounded-xl">
               <span class="text-xs font-mono truncate">{$localBackupPassphrase.replace(/./g, '•')}</span>
               <button
-                on:click={() => {
-                  const phrase = prompt('Enter new passphrase:');
+                on:click={async () => {
+                  const phrase = await promptPassphrase({
+                    title: 'Change Backup Passphrase',
+                    message: 'This replaces the password encrypting your local message history cache.',
+                    mode: 'create',
+                  });
                   if (phrase) {
                     localBackupPassphrase.set(phrase);
                     setTimeout(syncVault, 100);
@@ -1620,9 +1760,15 @@
               class="w-full bg-transparent border-none text-[10px] font-mono text-vault-text-dim focus:outline-none select-all"
             />
             <button
-              on:click={() => {
-                navigator.clipboard.writeText(syncLink);
-                alert('Sync link copied to clipboard!');
+              on:click={async () => {
+                try {
+                  await navigator.clipboard.writeText(syncLink);
+                  showToast('Sync link copied to clipboard!', { type: 'success' });
+                } catch {
+                  // The field above is readonly + select-all, so manual
+                  // copy is still available without the Clipboard API.
+                  showToast('Could not copy automatically — select the link above and copy it manually.', { type: 'info', duration: 6000 });
+                }
               }}
               class="text-[10px] text-vault-accent hover:underline font-semibold focus:outline-none bg-transparent border-none cursor-pointer"
             >
@@ -1649,7 +1795,7 @@
     <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left">
       <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
         <h3 class="text-sm font-semibold text-vault-text">Create E2EE Group</h3>
-        <button on:click={() => { showGroupModal = false; groupMembersSearch = []; groupName = ''; groupAddedUsers = []; }} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close group creation">
+        <button on:click={() => { showGroupModal = false; groupMembersSearch = []; groupMembersQuery = ''; groupName = ''; groupAddedUsers = []; }} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close group creation">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -1664,6 +1810,7 @@
             type="text"
             bind:value={groupName}
             placeholder="E.g., Secret Project Alpha"
+            maxlength="128"
             class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle"
           />
         </div>
@@ -1692,6 +1839,8 @@
                 </button>
               {/each}
             </div>
+          {:else if groupMembersQuery.length > 0}
+            <p class="text-[10px] text-vault-text-dim px-2 py-1">No users found</p>
           {/if}
 
           {#if groupAddedUsers.length > 0}
@@ -1701,7 +1850,8 @@
                   {user.username}
                   <button
                     on:click={() => removeGroupUser(user)}
-                    class="hover:text-vault-danger font-semibold bg-transparent border-none p-0 cursor-pointer text-vault-accent"
+                    class="hover:text-vault-danger font-semibold bg-transparent border-none p-1.5 -m-1 cursor-pointer text-vault-accent leading-none"
+                    aria-label="Remove {user.username}"
                   >
                     ×
                   </button>
@@ -1719,17 +1869,17 @@
 
       <div class="px-5 py-3.5 bg-vault-elevated border-t border-vault-border flex justify-end gap-2">
         <button
-          on:click={() => { showGroupModal = false; groupMembersSearch = []; groupName = ''; groupAddedUsers = []; }}
+          on:click={() => { showGroupModal = false; groupMembersSearch = []; groupMembersQuery = ''; groupName = ''; groupAddedUsers = []; }}
           class="py-1.5 px-3 text-xs bg-transparent text-vault-text hover:text-vault-text-dim font-medium rounded-xl focus:outline-none"
         >
           Cancel
         </button>
         <button
           on:click={submitCreateGroup}
-          disabled={!groupName.trim() || groupAddedUsers.length === 0}
+          disabled={!groupName.trim() || groupAddedUsers.length === 0 || groupBusy}
           class="py-1.5 px-4 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none"
         >
-          Create
+          {groupBusy ? 'Creating…' : 'Create'}
         </button>
       </div>
     </div>

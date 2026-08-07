@@ -10,13 +10,14 @@
   // story-specific rule. It is the same ceiling everything else here lives
   // under, so there is no setting to extend it.
 
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import {
     fetchStories, postStory, markStoryViewed, fetchStoryViewers, deleteStory,
     uploadPublicMedia, publicMediaUrl,
   } from '../lib/api/http.js';
   import { currentUser, composeStoryRequested } from '../lib/stores/session.js';
   import { getAvatarGradient } from '../lib/avatar.js';
+  import { showConfirm } from '../lib/stores/confirm.js';
 
   let stories = [];
   let loading = true;
@@ -130,8 +131,45 @@
     }
   }
 
+  // Drives both the progress bar and tap/swipe navigation below — without
+  // this, closing back out to the strip and tapping the next avatar was the
+  // only way through more than one story, unlike every other story viewer
+  // users have used before.
+  $: currentIndex = open ? stories.findIndex((s) => s.id === open.id) : -1;
+
+  // The actual advance timing — kept as a JS timer, not the CSS animation's
+  // `animationend` (see the fill bar's animation-duration below), because
+  // prefers-reduced-motion collapses that duration to 1ms: tying advance to
+  // it meant a reduced-motion viewer blew through every remaining story
+  // almost instantly instead of the bar just skipping its slide-fill
+  // animation, which is all reduced-motion is supposed to change.
+  const STORY_DURATION_MS = 5000;
+  let advanceTimer = null;
+  $: {
+    clearTimeout(advanceTimer);
+    if (open) advanceTimer = setTimeout(nextStory, STORY_DURATION_MS);
+  }
+  onDestroy(() => clearTimeout(advanceTimer));
+
+  function nextStory() {
+    const next = stories[currentIndex + 1];
+    if (next) view(next);
+    else open = null;
+  }
+
+  function prevStory() {
+    if (currentIndex > 0) view(stories[currentIndex - 1]);
+  }
+
+  function handleViewerKeydown(e) {
+    if (!open) return;
+    if (e.key === 'Escape') open = null;
+    else if (e.key === 'ArrowRight') nextStory();
+    else if (e.key === 'ArrowLeft') prevStory();
+  }
+
   async function remove(story) {
-    if (!confirm('Delete this story?')) return;
+    if (!(await showConfirm('Delete this story?', { confirmLabel: 'Delete' }))) return;
     try {
       await deleteStory(story.id);
       open = null;
@@ -251,6 +289,8 @@
   </div>
 {/if}
 
+<svelte:window on:keydown={handleViewerKeydown} />
+
 {#if open}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -259,6 +299,26 @@
     on:click|self={() => (open = null)}
   >
     <div class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-2">
+      <!-- One segment per story: filled for ones already seen, animating
+           for the current one (restarted on every open.id change via the
+           #key block), empty for what's ahead. min-w keeps segments legible
+           with a lot of stories — flex-1 alone would shrink them toward
+           0px instead; overflow-x-auto lets the row scroll rather than
+           keep squeezing once every segment has hit that floor. -->
+      <div class="flex items-center gap-1 overflow-x-auto">
+        {#each stories as s, i (s.id)}
+          <div class="flex-1 min-w-[6px] h-0.5 rounded-full bg-white/25 overflow-hidden">
+            {#if i < currentIndex}
+              <div class="h-full w-full bg-white"></div>
+            {:else if i === currentIndex}
+              {#key open.id}
+                <div class="h-full bg-white story-progress-fill"></div>
+              {/key}
+            {/if}
+          </div>
+        {/each}
+      </div>
+
       <div class="flex items-center justify-between">
         <div class="text-sm font-semibold text-vault-text">{open.username}</div>
         <button
@@ -268,7 +328,7 @@
         >✕</button>
       </div>
 
-      <div class="min-h-24 flex flex-col items-center justify-center gap-2 rounded-xl bg-vault-elevated px-3 py-4">
+      <div class="relative min-h-24 flex flex-col items-center justify-center gap-2 rounded-xl bg-vault-elevated px-3 py-4">
         {#if open.media?.fileId}
           <img
             src={publicMediaUrl(open.media.fileId)}
@@ -281,6 +341,16 @@
         {:else if !open.media?.fileId}
           <p class="text-sm text-vault-text-dim">No caption</p>
         {/if}
+
+        <!-- Invisible tap zones over the media only, not the header/footer
+             controls, matching the tap-left/tap-right convention every
+             other story viewer already uses. -->
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
+        <!-- svelte-ignore a11y-no-static-element-interactions -->
+        <div class="absolute inset-y-0 left-0 w-1/3" on:click={prevStory} aria-hidden="true"></div>
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
+        <!-- svelte-ignore a11y-no-static-element-interactions -->
+        <div class="absolute inset-y-0 right-0 w-2/3" on:click={nextStory} aria-hidden="true"></div>
       </div>
 
       <div class="text-[10px] text-vault-text-dim">{expiresIn(open)}</div>
@@ -301,3 +371,23 @@
     </div>
   </div>
 {/if}
+
+<style>
+  /* Purely cosmetic — matches STORY_DURATION_MS in the script for visual
+     consistency, but the actual advance is a JS timer, not this animation
+     finishing (see the script comment on advanceTimer for why). */
+  .story-progress-fill {
+    width: 0%;
+    animation: story-progress 5000ms linear forwards;
+  }
+  @keyframes story-progress {
+    from { width: 0%; }
+    to { width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .story-progress-fill {
+      animation: none;
+      width: 100%;
+    }
+  }
+</style>

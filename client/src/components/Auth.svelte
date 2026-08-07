@@ -1,6 +1,7 @@
 <script>
   import { currentUser, setUser, activeView, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, historyKey, localBackupKey, localBackupEnabled, localBackupPassphrase, vaultMasterKey, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { describeThisDevice } from '../lib/device.js';
+  import { estimatePasswordStrength } from '../lib/passwordStrength.js';
   import { register, login, updateKeys, fetchSalt, saveEncryptedVault } from '../lib/api/http.js';
   import { generateExportableKeyPair, exportPublicKeyBase64, generateOneTimePrekeys, signData, generateSigningKeyPair, deriveHistoryKey, deriveMasterKeyBits, deriveServerAuthSecret, encryptIdentityVault, decryptIdentityVault } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
@@ -24,35 +25,6 @@
   // minimum enforced below, just extra signal to steer people away from
   // weak-but-long passwords (e.g. "aaaaaaaaaaaa") since this password is
   // what the whole key hierarchy is derived from.
-  function estimatePasswordStrength(pw) {
-    if (!pw) return { score: 0, label: '', color: '' };
-
-    let variety = 0;
-    if (/[a-z]/.test(pw)) variety++;
-    if (/[A-Z]/.test(pw)) variety++;
-    if (/[0-9]/.test(pw)) variety++;
-    if (/[^a-zA-Z0-9]/.test(pw)) variety++;
-
-    let score = 0;
-    if (pw.length >= 12) score++;
-    if (pw.length >= 16) score++;
-    if (pw.length >= 24) score++;
-    if (variety >= 3) score++;
-
-    const uniqueRatio = new Set(pw).size / pw.length;
-    if (uniqueRatio < 0.4) score = Math.max(0, score - 2); // heavily repetitive
-
-    score = Math.min(score, 4);
-    const levels = [
-      { label: 'Too short', color: 'bg-vault-danger' },
-      { label: 'Weak', color: 'bg-vault-danger' },
-      { label: 'Fair', color: 'bg-vault-warning' },
-      { label: 'Good', color: 'bg-vault-accent/70' },
-      { label: 'Strong', color: 'bg-vault-accent' },
-    ];
-    return { score, ...levels[score] };
-  }
-
   $: passwordStrength = mode === 'register' ? estimatePasswordStrength(password) : null;
 
   function goToLanding() {
@@ -341,13 +313,17 @@
           <label for="auth-username" class="block text-xs font-medium text-vault-text-secondary mb-1.5 uppercase tracking-wider">
             Username
           </label>
+          <!-- svelte-ignore a11y-autofocus -->
+          <!-- The first field on the app's actual entry screen, not
+               mid-page autofocus — same tradeoff every login form makes. -->
           <input
             id="auth-username"
             type="text"
             bind:value={username}
             placeholder="Choose a username"
             class="input"
-            autocomplete="off"
+            autocomplete="username"
+            autofocus
             disabled={loading}
           />
         </div>
@@ -422,7 +398,11 @@
 
         <!-- Error -->
         {#if error}
-          <div class="text-xs text-vault-danger bg-vault-danger/10 border border-vault-danger/20 rounded-lg px-3 py-2 animate-fade-in">
+          <!-- role="alert" (not aria-live) deliberately — it's built for
+               exactly this pattern, an element that doesn't exist until the
+               error does, unlike aria-live regions which some screen
+               readers only pick up once already present in the DOM. -->
+          <div role="alert" class="text-xs text-vault-danger bg-vault-danger/10 border border-vault-danger/20 rounded-lg px-3 py-2 animate-fade-in">
             {error}
           </div>
         {/if}

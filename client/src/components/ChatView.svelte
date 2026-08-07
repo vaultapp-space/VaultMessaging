@@ -1,4 +1,6 @@
 <script>
+  import { Capacitor } from '@capacitor/core';
+  import QRCode from 'qrcode';
   import { draggable } from '../lib/chat/draggable.js';
   import { clickOutside } from '../lib/actions/clickOutside.js';
   import { stripJpegExif, stripPngMetadata } from '../lib/chat/metadata.js';
@@ -35,6 +37,10 @@
   // needed to send it.
   import { exportPublicKeyBase64, encryptFile, generateKeyPair, signData, encryptChunk } from '../lib/crypto/keys.js';
   import { getAvatarGradient } from '../lib/avatar.js';
+  import { showToast } from '../lib/stores/toast.js';
+  import { pushBackHandler } from '../lib/backHandler.js';
+  import { showConfirm } from '../lib/stores/confirm.js';
+  import { hapticLight } from '../lib/haptics.js';
   import MessageBubble from './MessageBubble.svelte';
   import {
     localStreamStore, remoteStreamStore, micMuted, cameraOff, remoteMicMuted, remoteCameraOff,
@@ -70,6 +76,14 @@
 
   // Reactive: get messages for active peer
   $: peerMessages = $activePeer ? ($messagesByPeer.get($activePeer.id) || []) : [];
+
+  // Drives the aria-live announcement below — null for an empty thread or
+  // when the newest message is the current user's own (already implied by
+  // having just sent it).
+  $: lastIncomingMessage = (() => {
+    const last = peerMessages[peerMessages.length - 1];
+    return last && last.senderId !== $currentUser?.id ? last : null;
+  })();
 
   // Album membership, computed once for the whole list rather than per bubble.
   // A run is *consecutive* messages sharing a groupedId — the same rule
@@ -123,26 +137,37 @@
   $: if (localVideo) localVideo.srcObject = $localStreamStore;
 
   let showMembersModal = false;
+  // Android back button closes whichever of these is on top instead of
+  // falling through to WebView history (see lib/backHandler.js).
+  let unregisterMembersBack = null;
+  $: {
+    if (showMembersModal && !unregisterMembersBack) {
+      unregisterMembersBack = pushBackHandler(() => { showMembersModal = false; });
+    } else if (!showMembersModal && unregisterMembersBack) {
+      unregisterMembersBack();
+      unregisterMembersBack = null;
+    }
+  }
   let p2pFileInput;
 
   async function handleLeaveGroup() {
     if (!$activePeer?.isGroup) return;
     const groupId = $activePeer.id.replace(/^group-/, '');
-    if (!confirm(`Leave "${$activePeer.username}"? You won't receive future messages from this group.`)) return;
+    if (!(await showConfirm(`Leave "${$activePeer.username}"? You won't receive future messages from this group.`, { confirmLabel: 'Leave' }))) return;
     try {
       await leaveGroup(groupId);
       showMembersModal = false;
       conversations.update(cs => cs.filter(c => c.peerId !== $activePeer.id));
       activePeer.set(null);
     } catch (err) {
-      alert(`Failed to leave group: ${err.message}`);
+      showToast(`Failed to leave group: ${err.message}`);
     }
   }
 
   async function handleRemoveMember(memberId, memberUsername) {
     if (!$activePeer?.isGroup) return;
     const groupId = $activePeer.id.replace(/^group-/, '');
-    if (!confirm(`Remove ${memberUsername} from "${$activePeer.username}"?`)) return;
+    if (!(await showConfirm(`Remove ${memberUsername} from "${$activePeer.username}"?`, { confirmLabel: 'Remove' }))) return;
     try {
       await removeGroupMember(groupId, memberId);
       const updatedMembers = $activePeer.members.filter(m => m.id !== memberId);
@@ -153,7 +178,7 @@
         return [...cs];
       });
     } catch (err) {
-      alert(`Failed to remove member: ${err.message}`);
+      showToast(`Failed to remove member: ${err.message}`);
     }
   }
 
@@ -165,6 +190,32 @@
   let callWindowSize = 'normal'; // 'normal' | 'large' | 'fullscreen'
   let position = { x: 0, y: 0 };
   let isDragging = false;
+
+  // Calls used to always start as a small floating widget — the fullscreen
+  // mode already existed (below) but required manually tapping to expand
+  // into it. On native Android this now opens straight into it, matching
+  // every mainstream messenger; desktop keeps the floating window, since a
+  // whole desktop display isn't otherwise occupied the way a phone screen
+  // is. Keyed on call id, not just isCallActive, so re-opening the small
+  // window mid-call doesn't get silently forced back to fullscreen every
+  // time this reactive block re-runs.
+  let sizedForCallId = null;
+  $: if (isCallActive && $activeCall?.id && $activeCall.id !== sizedForCallId) {
+    sizedForCallId = $activeCall.id;
+    callWindowSize = Capacitor.isNativePlatform() ? 'fullscreen' : 'normal';
+  }
+
+  // Elapsed time since the call actually connected — previously shown
+  // nowhere, on a screen whose entire job is telling you about the call.
+  let callDurationSeconds = 0;
+  let callDurationInterval = null;
+  $: if ($activeCall?.status === 'ongoing' && !callDurationInterval) {
+    callDurationInterval = setInterval(() => { callDurationSeconds++; }, 1000);
+  } else if ($activeCall?.status !== 'ongoing' && callDurationInterval) {
+    clearInterval(callDurationInterval);
+    callDurationInterval = null;
+    callDurationSeconds = 0;
+  }
 
   function toggleMic() {
     webrtcToggleMic();
@@ -392,6 +443,15 @@
   // cancel, and whenever the conversation changes — a reply bar left over
   // from another chat would silently attach the reply to the wrong message.
   let composerEl;
+  // Grows the composer as multi-line text is entered — previously only
+  // reachable via desktop Shift+Enter, but now also how the native Android
+  // app enters line breaks (see handleKeydown), so a fixed one-row box would
+  // hide most of what's typed.
+  $: if (composerEl) { void messageText; autoGrowComposer(); }
+  function autoGrowComposer() {
+    composerEl.style.height = 'auto';
+    composerEl.style.height = Math.min(composerEl.scrollHeight, 120) + 'px';
+  }
   let replyingTo = null;
   // The message being edited, or null. Mutually exclusive with replying:
   // the composer can only be doing one thing at a time.
@@ -483,7 +543,7 @@
       await copyInvite(invite.hash);
     } catch (err) {
       console.error('Failed to create invite:', err);
-      alert('Could not create an invite link');
+      showToast(err?.message ? `Could not create an invite link: ${err.message}` : 'Could not create an invite link');
     }
   }
 
@@ -494,14 +554,16 @@
       inviteCopied = hash;
       setTimeout(() => { if (inviteCopied === hash) inviteCopied = null; }, 2000);
     } catch {
-      // Clipboard can be denied; showing the link is the fallback.
-      prompt('Copy this invite link:', link);
+      // Clipboard can be denied; a toast with the link itself is the
+      // fallback — selectable text, same as every other error surface in
+      // the app, instead of a native prompt() dialog.
+      showToast(`Could not copy automatically. Link: ${link}`, { type: 'info', duration: 8000 });
     }
   }
   let inviteCopied = null;
 
   async function doRevokeInvite(hash) {
-    if (!confirm('Revoke this link? Anyone still holding it will no longer be able to join.')) return;
+    if (!(await showConfirm('Revoke this link? Anyone still holding it will no longer be able to join.', { confirmLabel: 'Revoke' }))) return;
     try {
       await revokeInvite($activePeer.chatId, hash);
       invites = invites.map((i) => (i.hash === hash ? { ...i, revoked: true } : i));
@@ -511,17 +573,18 @@
   }
 
   async function promote(member) {
+    if (!(await showConfirm(`Make ${member.username} an admin? They'll be able to manage members and settings for this group.`, { confirmLabel: 'Make Admin', danger: false }))) return;
     try {
       await setMemberRole($activePeer.chatId, member.id, 'admin');
-      alert(`${member.username} is now an admin`);
+      showToast(`${member.username} is now an admin`, { type: 'success' });
     } catch (err) {
       console.error('Failed to promote:', err);
-      alert('Could not change that member\'s role');
+      showToast(err?.message ? `Could not change that member's role: ${err.message}` : 'Could not change that member\'s role');
     }
   }
 
   async function ban(member) {
-    if (!confirm(`Ban ${member.username}? They will be removed and cannot rejoin with an invite link.`)) return;
+    if (!(await showConfirm(`Ban ${member.username}? They will be removed and cannot rejoin with an invite link.`, { confirmLabel: 'Ban' }))) return;
     try {
       await banMember($activePeer.chatId, member.id);
       activePeer.update((p) => {
@@ -530,7 +593,7 @@
       });
     } catch (err) {
       console.error('Failed to ban:', err);
-      alert('Could not ban that member');
+      showToast(err?.message ? `Could not ban that member: ${err.message}` : 'Could not ban that member');
     }
   }
 
@@ -545,6 +608,15 @@
 
   // ─── Blocking ───────────────────────────────────────────
   let showChatMenu = false;
+  let unregisterChatMenuBack = null;
+  $: {
+    if (showChatMenu && !unregisterChatMenuBack) {
+      unregisterChatMenuBack = pushBackHandler(() => { showChatMenu = false; });
+    } else if (!showChatMenu && unregisterChatMenuBack) {
+      unregisterChatMenuBack();
+      unregisterChatMenuBack = null;
+    }
+  }
 
   $: peerBlocked = $activePeer && !$activePeer.isGroup
     && $blockedUsers.has($activePeer.id);
@@ -554,15 +626,16 @@
     if (!$activePeer || $activePeer.isGroup) return;
 
     const blocking = !peerBlocked;
-    if (blocking && !confirm(
-      `Block ${$activePeer.username}?\n\nThey will not be able to message you, and you will not be able to message them. They are not told that you blocked them.`
-    )) return;
+    if (blocking && !(await showConfirm(
+      `Block ${$activePeer.username}? They will not be able to message you, and you will not be able to message them. They are not told that you blocked them.`,
+      { confirmLabel: 'Block' }
+    ))) return;
 
     try {
       await toggleBlock($activePeer.id);
     } catch (err) {
       console.error('Failed to change block state:', err);
-      alert('Could not update block settings');
+      showToast(err?.message ? `Could not update block settings: ${err.message}` : 'Could not update block settings');
     }
   }
 
@@ -589,7 +662,7 @@
       await forwardMessages($activePeer.chatId, target.chatId, [message.seq]);
     } catch (err) {
       console.error('Failed to forward:', err);
-      alert('Failed to forward message');
+      showToast(err?.message ? `Failed to forward message: ${err.message}` : 'Failed to forward message');
     }
   }
 
@@ -640,11 +713,23 @@
   // silently picking one. Only the author is offered "for everyone".
   async function handleDelete(message) {
     const mine = canDeleteForEveryone(message, $currentUser?.id);
-    const forEveryone = mine
-      ? confirm('Delete this message for everyone? This cannot be undone.\n\nCancel to remove it only from your view.')
-      : false;
+    let forEveryone = false;
 
-    if (!mine && !confirm('Remove this message from your view? Others will still see it.')) return;
+    if (mine) {
+      // A real three-way choice, not a yes/no — "for everyone" and "for me"
+      // are both a delete, just not the same one, so a two-button confirm()
+      // repurposing Cancel to mean "the other kind of delete" (which is what
+      // this used to do) reads as a trap rather than a choice.
+      const result = await showConfirm('Delete this message?', {
+        confirmLabel: 'Delete for Everyone',
+        neutralLabel: 'Delete for Me',
+        cancelLabel: 'Cancel',
+      });
+      if (result === 'cancel') return;
+      forEveryone = result === 'confirm';
+    } else if (!(await showConfirm('Remove this message from your view? Others will still see it.', { confirmLabel: 'Remove' }))) {
+      return;
+    }
 
     try {
       await deleteMsg(chatRef(), message, { forEveryone, ...actionContext() });
@@ -700,6 +785,9 @@
     const editTarget = editingMessage;
     messageText = '';
     sendingMessage = true;
+    // Fired on the tap, not the network round trip — the composer already
+    // clears optimistically, so the tactile confirmation should match.
+    hapticLight();
 
     try {
       if (editTarget) {
@@ -744,7 +832,7 @@
       if ($activePeer?.chatId) saveDraftFor($activePeer, '');
     } catch (err) {
       console.error('Failed to send message:', err);
-      alert('Failed to send message');
+      showToast(err?.message ? `Failed to send message: ${err.message}` : 'Failed to send message');
     } finally {
       sendingMessage = false;
     }
@@ -758,7 +846,11 @@
       if (replyingTo) { cancelReply(); return; }
     }
 
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // The native Android app has no reliable Shift+Enter on its on-screen
+    // keyboard, so Enter has to stay a plain newline there and sending goes
+    // through the Send button instead. Desktop/web keeps Enter-to-send,
+    // since that's the physical-keyboard convention users expect.
+    if (e.key === 'Enter' && !e.shiftKey && !Capacitor.isNativePlatform()) {
       e.preventDefault();
       handleSend();
     }
@@ -859,11 +951,37 @@
     navigator.clipboard.writeText(safetyNumber).then(() => {
       copied = true;
       setTimeout(() => { copied = false; }, 2000);
+    }).catch(() => {
+      showToast('Could not copy automatically — the safety number is selectable text above.', { type: 'info' });
     });
   }
 
   let showSafetyNumberModal = false;
+  let unregisterSafetyBack = null;
+  $: {
+    if (showSafetyNumberModal && !unregisterSafetyBack) {
+      unregisterSafetyBack = pushBackHandler(() => { showSafetyNumberModal = false; });
+    } else if (!showSafetyNumberModal && unregisterSafetyBack) {
+      unregisterSafetyBack();
+      unregisterSafetyBack = null;
+    }
+  }
   let safetyNumber = '';
+  let safetyNumberQrUrl = '';
+
+  // Rendered locally — this fingerprint is derived from both parties'
+  // identity keys, and handing it to a third-party image service (as a URL
+  // query param, logged on their end along with the requester's IP) would
+  // leak verification metadata through the one screen whose entire job is
+  // proving the connection is private. Same reasoning as the sync-link QR
+  // in ChatSidebar.svelte.
+  $: if (safetyNumber && safetyNumber !== 'Unavailable' && safetyNumber !== 'Error calculating fingerprint') {
+    QRCode.toDataURL(safetyNumber, { width: 150, margin: 1 })
+      .then((url) => { safetyNumberQrUrl = url; })
+      .catch((err) => { console.error('Failed to render safety number QR code:', err); safetyNumberQrUrl = ''; });
+  } else {
+    safetyNumberQrUrl = '';
+  }
 
   async function calculateSafetyNumber() {
     const ratchet = $ratchetSessions.get($activePeer?.id);
@@ -913,6 +1031,15 @@
   // the server refuses a poll in a secret chat, so the button is not offered
   // there rather than failing after the user has typed one out.
   let showPollComposer = false;
+  let unregisterPollBack = null;
+  $: {
+    if (showPollComposer && !unregisterPollBack) {
+      unregisterPollBack = pushBackHandler(() => { showPollComposer = false; });
+    } else if (!showPollComposer && unregisterPollBack) {
+      unregisterPollBack();
+      unregisterPollBack = null;
+    }
+  }
   let pollQuestion = '';
   let pollOptions = ['', ''];
   let pollAnonymous = true;
@@ -983,7 +1110,25 @@
   // which one. That is why the recents call is made by this client rather
   // than inferred server-side from the send.
   let showStickers = false;
+  let unregisterStickersBack = null;
+  $: {
+    if (showStickers && !unregisterStickersBack) {
+      unregisterStickersBack = pushBackHandler(() => { showStickers = false; });
+    } else if (!showStickers && unregisterStickersBack) {
+      unregisterStickersBack();
+      unregisterStickersBack = null;
+    }
+  }
   let showAttachMenu = false;
+  let unregisterAttachBack = null;
+  $: {
+    if (showAttachMenu && !unregisterAttachBack) {
+      unregisterAttachBack = pushBackHandler(() => { showAttachMenu = false; });
+    } else if (!showAttachMenu && unregisterAttachBack) {
+      unregisterAttachBack();
+      unregisterAttachBack = null;
+    }
+  }
 
   async function sendSticker(sticker) {
     showStickers = false;
@@ -1004,7 +1149,7 @@
       markStickerUsed(sticker.id).catch(() => {});
     } catch (err) {
       console.error('Failed to send sticker:', err);
-      alert('Failed to send sticker');
+      showToast(err?.message ? `Failed to send sticker: ${err.message}` : 'Failed to send sticker');
     }
   }
 
@@ -1053,6 +1198,12 @@
     }
   }
   let sendingFile = false;
+  // The P2P direct-transfer path already has a percentage progress bar
+  // ($p2pFileTransferState.progress) — this is the same idea for the
+  // ordinary chunked-upload path, which previously showed only a generic
+  // spinner for however long a multi-MB upload took.
+  let uploadProgress = 0;
+  let uploadFileName = '';
 
   // Picks the envelope type from the mime type, so a photo, a video and a
   // generic file are distinguishable without re-sniffing later.
@@ -1064,15 +1215,46 @@
     return MessageType.DOCUMENT;
   }
 
+  // A single picked file goes through a review step instead of sending the
+  // instant it's chosen — the pipeline below is a one-way encrypt-then-
+  // upload with no undo, and there was previously no point between picking
+  // the wrong file and it already being sent. Multiple files (an album)
+  // skip this: there's no established UI here for a per-file caption on a
+  // batch, and sending immediately matches how albums already worked.
+  let pendingAttachment = null; // { file, previewUrl }
+  let attachmentCaption = '';
+  let unregisterAttachmentPreviewBack = null;
+  $: {
+    if (pendingAttachment && !unregisterAttachmentPreviewBack) {
+      unregisterAttachmentPreviewBack = pushBackHandler(cancelPendingAttachment);
+    } else if (!pendingAttachment && unregisterAttachmentPreviewBack) {
+      unregisterAttachmentPreviewBack();
+      unregisterAttachmentPreviewBack = null;
+    }
+  }
+
   async function handleFileChange(e) {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || !$activePeer) return;
 
-    // Several files picked at once become an album: one shared id the
-    // message list grids on. A single file gets no id, so an ordinary send
-    // produces exactly the payload it always did.
-    const albumId = files.length > 1 ? String(Date.now()) : null;
+    if (files.length === 1) {
+      const file = files[0];
+      if (file.size > 10 * 1024 * 1024) {
+        showToast(`${file.name} exceeds the 10MB limit`);
+      } else {
+        attachmentCaption = '';
+        pendingAttachment = {
+          file,
+          previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+        };
+      }
+      if (fileInput) fileInput.value = '';
+      return;
+    }
 
+    // Several files picked at once become an album: one shared id the
+    // message list grids on.
+    const albumId = String(Date.now());
     try {
       for (const file of files) {
         await sendOneFile(file, albumId);
@@ -1082,14 +1264,32 @@
     }
   }
 
-  async function sendOneFile(file, groupedId = null) {
+  function cancelPendingAttachment() {
+    if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
+    pendingAttachment = null;
+    attachmentCaption = '';
+  }
+
+  async function confirmSendAttachment() {
+    if (!pendingAttachment) return;
+    const { file, previewUrl } = pendingAttachment;
+    const caption = attachmentCaption.trim();
+    pendingAttachment = null;
+    attachmentCaption = '';
+    await sendOneFile(file, null, caption || null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }
+
+  async function sendOneFile(file, groupedId = null, caption = null) {
     // Support uploads up to 10MB!
     if (file.size > 10 * 1024 * 1024) {
-      alert(`${file.name} exceeds the 10MB limit`);
+      showToast(`${file.name} exceeds the 10MB limit`);
       return;
     }
 
     sendingFile = true;
+    uploadProgress = 0;
+    uploadFileName = file.name;
     try {
       // 1. Read entire file into ArrayBuffer
       let arrayBuffer = await new Promise((resolve, reject) => {
@@ -1149,6 +1349,7 @@
 
         // Upload chunk
         await uploadAttachmentChunk(attachmentId, index, chunkBase64);
+        uploadProgress = Math.round(((index + 1) / totalChunks) * 100);
       }
 
       // 6. Send the attachment metadata as a media envelope.
@@ -1173,9 +1374,11 @@
       );
     } catch (err) {
       console.error('Failed to send E2E attachment:', err);
-      alert('Failed to send E2E attachment');
+      showToast(err?.message ? `Failed to send attachment: ${err.message}` : 'Failed to send E2E attachment');
     } finally {
       sendingFile = false;
+      uploadProgress = 0;
+      uploadFileName = '';
     }
   }
 
@@ -1216,7 +1419,15 @@
       }, 1000);
     } catch (err) {
       console.error('Failed to start audio recording:', err);
-      alert('Could not access microphone');
+      // NotAllowedError means the permission prompt won't fire again — a
+      // generic "could not access" toast is a dead end every time after
+      // that, since there's nothing left for the user to retry from here.
+      showToast(
+        err?.name === 'NotAllowedError'
+          ? 'Microphone access is blocked. Enable it in your phone\'s Settings → Apps → Vault → Permissions.'
+          : 'Could not access microphone',
+        { duration: err?.name === 'NotAllowedError' ? 7000 : 4000 }
+      );
     }
   }
 
@@ -1261,7 +1472,7 @@
       );
     } catch (err) {
       console.error('Failed to send E2EE voice note:', err);
-      alert('Failed to send voice note');
+      showToast(err?.message ? `Failed to send voice note: ${err.message}` : 'Failed to send voice note');
     } finally {
       sendingFile = false;
     }
@@ -1301,6 +1512,18 @@
 
   onDestroy(() => {
     if (prekeyRotationTimer) clearInterval(prekeyRotationTimer);
+    if (callDurationInterval) clearInterval(callDurationInterval);
+    // Unmounting (e.g. switching to a channel, or being removed from a
+    // group while its members modal was still open) previously left these
+    // closures behind on backHandler's shared stack — a phantom entry for
+    // a component that no longer exists, silently eating the next back
+    // press/Escape for the rest of the session instead of doing anything.
+    [
+      unregisterMembersBack, unregisterChatMenuBack, unregisterSafetyBack,
+      unregisterPollBack, unregisterStickersBack, unregisterAttachBack,
+      unregisterConversationBack, unregisterAttachmentPreviewBack,
+    ].forEach((unregister) => unregister?.());
+    if (pendingAttachment?.previewUrl) URL.revokeObjectURL(pendingAttachment.previewUrl);
     wsUnsubscribes.forEach(unsub => unsub());
     // Deliberately NOT calling resetCallState() here — an active call must
     // survive this component unmounting (e.g. the user navigates to a
@@ -1313,6 +1536,21 @@
   function goBack() {
     activePeer.set(null);
     sidebarOpen.set(true);
+  }
+
+  // On mobile the conversation view covers the chat list rather than
+  // pushing a new WebView history entry, so without this the Android back
+  // button falls through past it (to whatever the WebView last navigated,
+  // or out of the app) instead of returning to the list the way the
+  // in-app back arrow (goBack, above) does.
+  let unregisterConversationBack = null;
+  $: {
+    if ($activePeer && !$sidebarOpen && !unregisterConversationBack) {
+      unregisterConversationBack = pushBackHandler(goBack);
+    } else if ((!$activePeer || $sidebarOpen) && unregisterConversationBack) {
+      unregisterConversationBack();
+      unregisterConversationBack = null;
+    }
   }
 </script>
 
@@ -1754,7 +1992,9 @@
           <div class="flex items-center justify-between w-full pb-1 border-b border-vault-border-subtle cursor-grab active:cursor-grabbing select-none z-10">
             <div class="flex items-center gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-vault-accent animate-pulse"></span>
-              <span class="text-[9px] text-vault-text-dim font-semibold uppercase tracking-wider">Call</span>
+              <span class="text-[9px] text-vault-text-dim font-semibold uppercase tracking-wider">
+                {$activeCall?.status === 'ongoing' ? formatDuration(callDurationSeconds) : 'Call'}
+              </span>
             </div>
             <div class="flex items-center gap-1">
               <button
@@ -1787,20 +2027,29 @@
             </div>
           </div>
         {:else}
-          <!-- Top bar overlay when fullscreen -->
-          <div 
+          <!-- Top bar overlay when fullscreen. Capped short of the self-view
+               PIP (w-48 + its own right-edge margin, positioned separately
+               below) so a long username can't grow the bar into it — the
+               name truncates instead. -->
+          <div
             style="top: calc(1.5rem + env(safe-area-inset-top)); left: calc(1.5rem + env(safe-area-inset-left));"
-            class="absolute z-20 flex items-center gap-2 bg-vault-surface/80 backdrop-blur-md border border-vault-border px-3.5 py-1.5 rounded-xl shadow-xl select-none"
+            class="absolute z-20 flex items-center gap-2 bg-vault-surface/80 backdrop-blur-md border border-vault-border px-3.5 py-1.5 rounded-xl shadow-xl select-none max-w-[calc(100%-14rem)]"
           >
-            <span class="w-2 h-2 rounded-full bg-vault-accent animate-pulse"></span>
-            <span class="text-xs text-vault-text font-semibold">E2EE Call: {callingPeer}</span>
-            <div class="w-px h-4 bg-vault-border mx-1"></div>
+            <span class="w-2 h-2 rounded-full bg-vault-accent animate-pulse shrink-0"></span>
+            <span class="text-xs text-vault-text font-semibold flex items-center gap-1 min-w-0">
+              <span class="shrink-0">E2EE Call:</span>
+              <span class="truncate">{callingPeer}</span>
+              {#if $activeCall?.status === 'ongoing'}
+                <span class="shrink-0">· {formatDuration(callDurationSeconds)}</span>
+              {/if}
+            </span>
+            <div class="w-px h-4 bg-vault-border mx-1 shrink-0"></div>
             <button
               on:click={() => callWindowSize = 'normal'}
-              class="p-1 rounded-lg hover:bg-vault-elevated text-vault-text-dim hover:text-vault-text transition-all focus:outline-none cursor-pointer flex items-center gap-1 text-[10px]"
+              class="p-1 rounded-lg hover:bg-vault-elevated text-vault-text-dim hover:text-vault-text transition-all focus:outline-none cursor-pointer flex items-center gap-1 text-[10px] shrink-0"
               title="Exit Fullscreen"
             >
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
               </svg>
               Exit Fullscreen
@@ -1961,12 +2210,55 @@
         </div>
       </div>
     {:else if isCallActive && callType === 'audio'}
-      <!-- Audio Call Panel -->
-      <div class="absolute top-4 right-4 z-30 flex items-center gap-3 p-3 bg-vault-surface border border-vault-border rounded-2xl shadow-xl animate-scale-up">
+      <!-- Audio Call Panel. Reused sizedForCallId/callWindowSize from the
+           video panel above rather than inventing separate state — a full
+           phone screen for a video call and a small corner widget for an
+           audio one would be an inconsistent rule for the user to learn. -->
+      <div class="z-30 animate-scale-up
+        {callWindowSize === 'fullscreen'
+          ? 'fixed inset-0 bg-vault-black flex flex-col items-center justify-between px-6 pt-[max(env(safe-area-inset-top,0px),2.5rem)] pb-[max(env(safe-area-inset-bottom,0px),2rem)]'
+          : 'absolute top-4 right-4 flex items-center gap-3 p-3 bg-vault-surface border border-vault-border rounded-2xl shadow-xl'}"
+      >
+        {#if callWindowSize === 'fullscreen'}
+          <button
+            on:click={() => callWindowSize = 'normal'}
+            class="self-start flex items-center gap-1 text-[11px] text-vault-text-dim hover:text-vault-text focus:outline-none"
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7" />
+            </svg>
+            Exit Fullscreen
+          </button>
+
+          <div class="flex flex-col items-center gap-3">
+            <div class="w-28 h-28 rounded-full bg-vault-accent/10 border border-vault-accent/20 flex items-center justify-center text-vault-accent text-4xl font-semibold">
+              {(callingPeer || '?')[0].toUpperCase()}
+            </div>
+            <div class="text-xl font-semibold text-vault-text">{callingPeer}</div>
+            <div class="text-sm text-vault-text-dim">
+              {$activeCall?.status === 'ongoing' ? formatDuration(callDurationSeconds) : 'Connecting…'}
+            </div>
+            {#if $remoteMicMuted}
+              <span class="text-vault-danger text-xs font-medium flex items-center gap-1 animate-pulse">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/>
+                </svg>
+                Their mic is muted
+              </span>
+            {/if}
+            {#if $verificationWords}
+              <div class="text-[10px] bg-vault-black/30 border border-vault-border/50 text-vault-accent font-semibold px-2.5 py-1 rounded-lg text-center font-mono select-all">
+                Verify: {$verificationWords}
+              </div>
+            {/if}
+          </div>
+        {:else}
         <div class="flex items-center gap-2">
           <div class="w-2.5 h-2.5 rounded-full bg-vault-accent animate-pulse"></div>
           <span class="text-xs text-vault-text font-medium flex items-center gap-1.5">
-            E2EE Audio: {callingPeer}
+            E2EE Audio: {callingPeer}{$activeCall?.status === 'ongoing' ? ` · ${formatDuration(callDurationSeconds)}` : ''}
             {#if $remoteMicMuted}
               <span class="text-vault-danger text-[10px] font-medium flex items-center gap-0.5 ml-1 animate-pulse">
                 <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1984,6 +2276,8 @@
             Verify: {$verificationWords}
           </div>
         {/if}
+        {/if}
+        <div class="flex items-center gap-3 {callWindowSize === 'fullscreen' ? 'flex-wrap justify-center' : ''}">
         <button
           on:click={toggleMic}
           class="p-2 rounded-xl border transition-all focus:outline-none cursor-pointer
@@ -2050,6 +2344,7 @@
         >
           Hang Up
         </button>
+        </div>
       </div>
     {/if}
 
@@ -2066,6 +2361,26 @@
         </div>
       </div>
     {/if}
+
+    <!-- The dots above are decorative; this is what a screen reader actually
+         announces. Single persistent region, matching the wsConnected
+         indicator in ChatSidebar.svelte, so entering/leaving the DOM on its
+         own doesn't affect whether it gets picked up as "live". -->
+    <div class="sr-only" aria-live="polite">
+      {#if isTyping}{$activePeer?.username || 'They'} is typing…{/if}
+    </div>
+
+    <!-- Announces the newest incoming message for screen-reader users who
+         aren't focused on the message list — the visual bubble already
+         covers sighted users. Content-keyed so switching to a different
+         conversation re-announces its latest message (parity with what a
+         sighted user sees on open) but re-renders of the same message
+         (e.g. loading older history) don't re-trigger it. -->
+    <div class="sr-only" aria-live="polite" aria-atomic="true">
+      {#if lastIncomingMessage}
+        New message from {$activePeer?.username || 'peer'}: {lastIncomingMessage.text || 'attachment'}
+      {/if}
+    </div>
   </div>
 
 
@@ -2205,6 +2520,17 @@
             >
               Send Note
             </button>
+          </div>
+        </div>
+      {:else if sendingFile && uploadFileName}
+        <!-- Gated on uploadFileName, not just sendingFile — sendVoiceNote
+             also sets sendingFile but is a single-shot upload with no
+             chunk-by-chunk progress to show, so it falls through to the
+             ordinary composer below instead of a permanently-0% bar. -->
+        <div class="flex-1 flex flex-col gap-1 px-3 py-2 bg-vault-elevated border border-vault-border-subtle rounded-xl">
+          <span class="text-[11px] text-vault-text-dim truncate">Sending {uploadFileName}… {uploadProgress}%</span>
+          <div class="w-full bg-vault-border rounded-full h-1 overflow-hidden">
+            <div class="bg-vault-accent h-full transition-all duration-150" style="width: {uploadProgress}%"></div>
           </div>
         </div>
       {:else}
@@ -2399,10 +2725,10 @@
       </div>
 
       <!-- QR Code Session Verification -->
-      {#if safetyNumber && safetyNumber !== 'Unavailable' && safetyNumber !== 'Error calculating fingerprint'}
+      {#if safetyNumberQrUrl}
         <div class="flex flex-col items-center justify-center p-3 bg-white rounded-xl mb-4 shadow-inner border border-vault-border/50 w-36 h-36 mx-auto select-none">
           <img
-            src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={encodeURIComponent(safetyNumber)}&color=0b0c10"
+            src={safetyNumberQrUrl}
             alt="Safety Number QR Code"
             class="w-28 h-28"
           />
@@ -2603,6 +2929,69 @@
 {/if}
 
 <!-- Forward picker -->
+{#if pendingAttachment}
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/70 backdrop-blur-sm p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Send attachment"
+  >
+    <div class="w-full max-w-sm rounded-2xl bg-vault-surface border border-vault-border p-4 flex flex-col gap-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-vault-text">Send file</h3>
+        <button
+          on:click={cancelPendingAttachment}
+          class="p-1 rounded text-vault-text-dim hover:text-vault-text focus:outline-none"
+          aria-label="Cancel"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      {#if pendingAttachment.previewUrl}
+        <img
+          src={pendingAttachment.previewUrl}
+          alt="Preview"
+          class="w-full max-h-64 rounded-xl object-contain bg-vault-black/40"
+        />
+      {:else}
+        <div class="flex items-center gap-2.5 px-3 py-2.5 bg-vault-elevated border border-vault-border rounded-xl">
+          <svg class="w-5 h-5 text-vault-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          <span class="text-xs text-vault-text truncate">{pendingAttachment.file.name}</span>
+        </div>
+      {/if}
+
+      <input
+        bind:value={attachmentCaption}
+        on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !Capacitor.isNativePlatform()) { e.preventDefault(); confirmSendAttachment(); } }}
+        placeholder="Add a caption…"
+        maxlength="1024"
+        class="input py-2 text-xs bg-vault-elevated border-vault-border-subtle"
+      />
+
+      <div class="flex justify-end gap-2">
+        <button
+          on:click={cancelPendingAttachment}
+          class="py-1.5 px-3 text-xs bg-transparent text-vault-text hover:text-vault-text-dim font-medium rounded-xl focus:outline-none"
+        >
+          Cancel
+        </button>
+        <button
+          on:click={confirmSendAttachment}
+          class="py-1.5 px-4 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl focus:outline-none"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 {#if forwardingMessage}
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/70 backdrop-blur-sm p-4"

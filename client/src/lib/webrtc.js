@@ -12,6 +12,19 @@ import { onWsEvent, wsSend } from './api/ws.js';
 import { fetchTurnCredentials, sendClientDebugLog } from './api/http.js';
 import { encrypt as encryptSelf, decrypt as decryptSelf, importStaticKey } from './crypto/keys.js';
 import { toBase64 } from './crypto/utils.js';
+import { showToast } from './stores/toast.js';
+import { hapticMedium } from './haptics.js';
+
+// NotAllowedError means the permission prompt won't fire again — a generic
+// "could not access" toast is a dead end every time after that.
+function showMediaAccessError(err) {
+  showToast(
+    err?.name === 'NotAllowedError'
+      ? 'Microphone/camera access is blocked. Enable it in your phone\'s Settings → Apps → Vault → Permissions.'
+      : 'Could not access microphone/camera',
+    { duration: err?.name === 'NotAllowedError' ? 7000 : 4000 }
+  );
+}
 
 // ─── Reactive state (safe to import from any component) ───────
 export const localStreamStore = writable(null);
@@ -46,7 +59,6 @@ let screenStream = null;
 let iceCandidatesQueue = [];
 let fileDataChannel = null;
 let currentCallKey = null;
-let sentInitialMediaState = false;
 
 export const isScreenShareSupported = typeof navigator !== 'undefined' &&
   navigator.mediaDevices &&
@@ -134,7 +146,7 @@ function setupDataChannel(channel) {
 
 export function startP2PFileSend(file) {
   if (!file || !fileDataChannel || fileDataChannel.readyState !== 'open') {
-    alert('P2P connection is not ready for file transfer.');
+    showToast('P2P connection is not ready for file transfer.');
     return;
   }
 
@@ -262,7 +274,7 @@ function initializePeerConnection(peerId) {
       peerConnectionPromise = null;
       const message = 'Could not reach the relay server needed for a private call. Please try again shortly.';
       callFailureStore.set(message);
-      alert(message);
+      showToast(message);
       if (get(activeCall)) hangupCall();
       throw e;
     }
@@ -295,10 +307,15 @@ function initializePeerConnection(peerId) {
     };
 
     let iceRestartAttempts = 0;
+    let connectedHapticFired = false;
     peerConnection.oniceconnectionstatechange = () => {
       const state = peerConnection?.iceConnectionState;
       if (state === 'connected' || state === 'completed') {
         iceRestartAttempts = 0;
+        if (!connectedHapticFired) {
+          connectedHapticFired = true;
+          hapticMedium();
+        }
       } else if (state === 'failed') {
         iceRestartAttempts += 1;
         if (iceRestartAttempts > 3) {
@@ -308,7 +325,7 @@ function initializePeerConnection(peerId) {
           // "on call" over a connection that will never carry media.
           const message = 'Call connection failed. Please check your network and try again.';
           callFailureStore.set(message);
-          alert(message);
+          showToast(message);
           hangupCall();
           return;
         }
@@ -397,7 +414,7 @@ export async function startCall(peer, type, encryptCallKeyFn) {
     localStreamStore.set(localStream);
   } catch (err) {
     console.error('Failed to get media devices:', err);
-    alert('Could not access microphone/camera');
+    showMediaAccessError(err);
     activeCall.set(null);
     currentCallKey = null;
     return;
@@ -420,7 +437,7 @@ export async function startCall(peer, type, encryptCallKeyFn) {
     });
   } catch (err) {
     console.error('Failed to complete call initialization:', err);
-    alert('Failed to establish encrypted call session.');
+    showToast('Failed to establish encrypted call session.');
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
       localStream = null;
@@ -455,7 +472,7 @@ export async function acquireMediaForIncomingCall(callType) {
     return localStream;
   } catch (err) {
     console.error('Failed to get media devices for incoming call:', err);
-    alert('Could not access microphone/camera');
+    showMediaAccessError(err);
     hangupCall();
     throw err;
   }
@@ -485,6 +502,7 @@ export function hangupCall() {
   }
   activeCall.set(null);
   resetCallState();
+  hapticMedium();
 }
 
 export function sendMediaState() {
@@ -580,7 +598,6 @@ export function resetCallState() {
   isScreenSharing.set(false);
   remoteMicMuted.set(false);
   remoteCameraOff.set(false);
-  sentInitialMediaState = false;
 
   if (localStream) {
     localStream.getTracks().forEach(track => track.stop());
@@ -602,21 +619,6 @@ export function resetCallState() {
   localStreamPromise = null;
   iceCandidatesQueue = [];
   offerNegotiationStarted = false;
-}
-
-export function markInitialMediaStateSent() {
-  sentInitialMediaState = true;
-}
-export function hasSentInitialMediaState() {
-  return sentInitialMediaState;
-}
-
-export function beginOutgoingNegotiation(peerId) {
-  return startOfferNegotiation(peerId);
-}
-
-export function connectIncomingPeer(peerId) {
-  return initializePeerConnection(peerId);
 }
 
 // ─── Persistent WebSocket signaling listeners ──────────────────

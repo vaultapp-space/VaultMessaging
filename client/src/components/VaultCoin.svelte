@@ -1,5 +1,6 @@
 <script>
   import { activeView } from '../lib/stores/session.js';
+  import { openExternal } from '../lib/openExternal.js';
 
   function goToLanding() {
     activeView.set('landing');
@@ -121,6 +122,7 @@
         href="https://explorer.vaultapp.space"
         target="_blank"
         rel="noopener noreferrer"
+        on:click={(e) => openExternal(e, 'https://explorer.vaultapp.space')}
         title="Block Explorer"
         class="flex items-center gap-1.5 py-2 px-3 text-xs text-vault-text-dim hover:text-vault-accent border border-vault-border/30 hover:border-vault-accent/30 font-bold rounded-xl focus:outline-none transition-all cursor-pointer no-underline"
       >
@@ -134,6 +136,7 @@
         href="https://github.com/vaultapp-space/VAULT"
         target="_blank"
         rel="noopener noreferrer"
+        on:click={(e) => openExternal(e, 'https://github.com/vaultapp-space/VAULT')}
         title="Source on GitHub"
         class="flex items-center gap-1.5 py-2 px-3 text-xs text-vault-text-dim hover:text-vault-accent border border-vault-border/30 hover:border-vault-accent/30 font-bold rounded-xl focus:outline-none transition-all cursor-pointer no-underline"
       >
@@ -146,6 +149,7 @@
         href="https://webwallet.vaultapp.space"
         target="_blank"
         rel="noopener noreferrer"
+        on:click={(e) => openExternal(e, 'https://webwallet.vaultapp.space')}
         class="flex items-center gap-1.5 py-2 px-3 sm:px-5 text-xs bg-vault-text text-vault-black hover:bg-vault-text-secondary font-bold rounded-xl focus:outline-none transition-all cursor-pointer shadow-md btn-glow no-underline"
       >
         <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -341,6 +345,7 @@
         href={desktopWalletUrl}
         target="_blank"
         rel="noopener noreferrer"
+        on:click={(e) => openExternal(e, desktopWalletUrl)}
         class="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-xl border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase"
       >
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -385,7 +390,7 @@
         <p class="text-[11px] text-vault-text-secondary leading-relaxed opacity-90 mb-3">
           Zero-trust client cryptography — keys and seeds are generated and held exclusively in browser memory, never transmitted in plaintext. Connects over HTTPS JSON-RPC to a remote node, with instant session restore from a standard 25-word seed.
         </p>
-        <a href="https://webwallet.vaultapp.space" target="_blank" rel="noopener noreferrer" class="text-[10px] font-mono font-bold uppercase text-vault-accent hover:underline">webwallet.vaultapp.space →</a>
+        <a href="https://webwallet.vaultapp.space" target="_blank" rel="noopener noreferrer" on:click={(e) => openExternal(e, 'https://webwallet.vaultapp.space')} class="text-[10px] font-mono font-bold uppercase text-vault-accent hover:underline">webwallet.vaultapp.space →</a>
       </div>
       <div class="glass border border-vault-border/20 rounded-2xl p-5 text-left glow-card">
         <div class="w-9 h-9 rounded-xl bg-vault-accent/10 border border-vault-accent/20 flex items-center justify-center text-vault-accent mb-3">
@@ -397,7 +402,7 @@
         <p class="text-[11px] text-vault-text-secondary leading-relaxed opacity-90 mb-3">
           Real-time block heights, transaction volume, cumulative difficulty, and hash rates — all without exposing confidential ring details. A RESTful API exposes the same data for developers.
         </p>
-        <a href="https://explorer.vaultapp.space" target="_blank" rel="noopener noreferrer" class="text-[10px] font-mono font-bold uppercase text-vault-accent hover:underline">explorer.vaultapp.space →</a>
+        <a href="https://explorer.vaultapp.space" target="_blank" rel="noopener noreferrer" on:click={(e) => openExternal(e, 'https://explorer.vaultapp.space')} class="text-[10px] font-mono font-bold uppercase text-vault-accent hover:underline">explorer.vaultapp.space →</a>
       </div>
     </div>
   </section>
@@ -415,9 +420,13 @@
       </p>
       <p class="text-[11.5px] text-vault-text-secondary leading-relaxed opacity-90 mt-3 relative">
         <strong class="text-vault-text">Today, these are two separate products.</strong> Vault Messenger does not currently have a built-in VLT wallet or in-chat payment feature — sending and receiving VLT happens through the dedicated
-        <a href="https://webwallet.vaultapp.space" target="_blank" rel="noopener noreferrer" class="text-vault-accent hover:underline">web wallet</a>
+        <a href="https://webwallet.vaultapp.space" target="_blank" rel="noopener noreferrer" on:click={(e) => openExternal(e, 'https://webwallet.vaultapp.space')} class="text-vault-accent hover:underline">web wallet</a>
         or the desktop GUI wallet. Deeper integration between the two is on the
-        <a href="/roadmap.pdf" target="_blank" rel="noopener noreferrer" class="text-vault-accent hover:underline">roadmap</a>,
+        <!-- Browser.open() needs an absolute URL — unlike the web build, the
+             native app's WebView doesn't run at the real vaultapp.space
+             origin, so a relative path can't be resolved against it the way
+             the plain <a href> can for the web fallback below. -->
+        <a href="/roadmap.pdf" target="_blank" rel="noopener noreferrer" on:click={(e) => openExternal(e, 'https://vaultapp.space/roadmap.pdf')} class="text-vault-accent hover:underline">roadmap</a>,
         not shipped — this page won't claim otherwise.
       </p>
     </div>
@@ -426,9 +435,9 @@
   <!-- Footer -->
   <footer class="w-full max-w-4xl mx-auto px-6 py-10 z-10 border-t border-vault-border/20 text-center">
     <div class="flex flex-wrap justify-center gap-3 mb-4">
-      <a href="https://x.com/VaultMessenger" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase">✖️ Twitter</a>
-      <a href="https://t.me/Vault_Space" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase">✈️ Telegram</a>
-      <a href="https://discord.gg/VZyvTsJcFQ" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase">👾 Discord</a>
+      <a href="https://x.com/VaultMessenger" target="_blank" rel="noopener noreferrer" on:click={(e) => openExternal(e, 'https://x.com/VaultMessenger')} class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase">✖️ Twitter</a>
+      <a href="https://t.me/Vault_Space" target="_blank" rel="noopener noreferrer" on:click={(e) => openExternal(e, 'https://t.me/Vault_Space')} class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase">✈️ Telegram</a>
+      <a href="https://discord.gg/VZyvTsJcFQ" target="_blank" rel="noopener noreferrer" on:click={(e) => openExternal(e, 'https://discord.gg/VZyvTsJcFQ')} class="flex items-center gap-1.5 px-3 py-1.5 rounded border border-vault-border/30 bg-vault-surface/40 text-vault-text-secondary hover:text-vault-accent hover:border-vault-accent/30 transition-all no-underline text-[10px] font-mono font-bold uppercase">👾 Discord</a>
     </div>
     <p class="text-[9px] text-vault-text-dim uppercase tracking-widest">Copyright © 2026 VAULT Core Developers &amp; Ecosystem · Open-source, MIT License</p>
   </footer>

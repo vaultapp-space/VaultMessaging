@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, clearSession, activePeer, activeChannelId, pendingChatId, syncPts, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients } from '../lib/stores/session.js';
+  import { currentUser, clearSession, activePeer, activeChannelId, pendingChatId, syncPts, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients, sidebarOpen } from '../lib/stores/session.js';
   import { conversations, addMessage, addMessages, setTyping, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
   import { setReactions } from '../lib/chat/reactions.js';
   import { applyEdit } from '../lib/chat/edit.js';
@@ -18,6 +18,9 @@
   import ChannelView from './ChannelView.svelte';
   import MiniCallBar from './MiniCallBar.svelte';
   import MobileTabBar from './MobileTabBar.svelte';
+  import { showToast } from '../lib/stores/toast.js';
+  import { hapticMedium } from '../lib/haptics.js';
+  import { requestNotificationPermission, notifyNewMessage } from '../lib/notifications.js';
 
   const unsubscribers = [];
   let ping = 32;
@@ -83,6 +86,12 @@
   }
 
   onMount(async () => {
+    // Asked once someone is actually in the app using it, not at the
+    // landing page — a permission prompt before anyone has a reason to
+    // want notifications from this origin gets reflexively denied, and
+    // Notification.permission can't be re-prompted once it's 'denied'.
+    requestNotificationPermission();
+
     // 1. Load the chat list from the chat model.
     //
     // This replaces the old pair of calls (/api/conversations + /api/groups),
@@ -297,7 +306,7 @@
   // dead server-side; clearing local state is what stops the UI continuing
   // to show an account it can no longer act on.
   function handleDeviceRevoked() {
-    alert('This device was signed out from another session.');
+    showToast('This device was signed out from another session.', { type: 'info', duration: 6000 });
     clearSession();
   }
 
@@ -454,6 +463,27 @@
       }
       return [...convs];
     });
+
+    // Desktop-only (see lib/notifications.js) and only while the tab is
+    // actually unfocused (checked inside notifyNewMessage) — otherwise this
+    // would fire for a message in the conversation already on screen.
+    if (data.senderId !== get(currentUser)?.id) {
+      notifyNewMessage({
+        title: data.groupName || data.senderUsername || 'New message',
+        // Cloud messages arrive as plaintext already (server-visible,
+        // nothing additional leaked by a notification). Secret-chat
+        // messages arrive as ciphertext at this point in the flow —
+        // decrypting just to populate a system notification would mean
+        // duplicating the ratchet's decrypt path here, so those get a
+        // content-free notification instead, matching how most E2EE
+        // messengers handle previews by default anyway.
+        body: data.mode === 'cloud' ? data.body : 'Sent you a new message',
+        onClick: () => {
+          activePeer.set(conv ? toActivePeer(conv) : { id: threadId, username: data.senderUsername, isGroup: !!data.groupId });
+          sidebarOpen.set(false);
+        },
+      });
+    }
   }
 
   function handleTyping(data) {
@@ -548,6 +578,7 @@
       direction: 'incoming',
       encryptedKey: data.encryptedKey
     });
+    hapticMedium();
   }
 
   function handleGlobalCallReject(data) {
@@ -559,7 +590,7 @@
         return [...calls];
       });
       activeCall.set(null);
-      alert(`${data.senderUsername || 'Peer'} rejected the call: ${data.reason || 'declined'}`);
+      showToast(`${data.senderUsername || 'Peer'} rejected the call: ${data.reason || 'declined'}`, { type: 'info' });
     }
   }
 
@@ -622,7 +653,7 @@
 
     } catch (err) {
       console.error('Failed to accept incoming call:', err);
-      alert('Encryption negotiation failed. Cannot accept call.');
+      showToast('Encryption negotiation failed. Cannot accept call.');
       declineIncomingCall();
     }
   }
@@ -752,28 +783,38 @@
      when it IS the active peer's chat). -->
 <MiniCallBar />
 
-<!-- Global Incoming Call Popup Overlay -->
+<!-- Global Incoming Call Popup Overlay.
+     A w-80 card in a corner is easy to miss entirely on a phone — real
+     phone call UIs go full-screen for exactly this reason. Below md this
+     is now a full-screen ringing screen; at md+ it stays the compact
+     centered card, since a desktop window is already fully in view. -->
 {#if $activeCall && $activeCall.status === 'incoming'}
-  <div class="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-80 p-4 bg-vault-surface/90 border border-vault-border rounded-2xl shadow-2xl flex flex-col gap-3 backdrop-blur-md animate-slide-down text-center text-vault-text">
-    <div class="w-12 h-12 rounded-full bg-vault-accent/10 flex items-center justify-center mx-auto text-vault-accent">
-      <svg class="w-6 h-6 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-      </svg>
+  <div class="fixed z-50 flex flex-col text-center text-vault-text animate-slide-down
+    max-md:inset-0 max-md:justify-between max-md:bg-vault-black/95 max-md:backdrop-blur-xl
+    max-md:pt-[max(env(safe-area-inset-top,0px),2.5rem)] max-md:pb-[max(env(safe-area-inset-bottom,0px),2rem)] max-md:px-6
+    md:top-6 md:left-1/2 md:-translate-x-1/2 md:w-80 md:p-4 md:gap-3 md:bg-vault-surface/90 md:border md:border-vault-border md:rounded-2xl md:shadow-2xl md:backdrop-blur-md"
+  >
+    <div class="max-md:mt-16 max-md:flex max-md:flex-col max-md:items-center">
+      <div class="rounded-full bg-vault-accent/10 flex items-center justify-center mx-auto text-vault-accent max-md:w-28 max-md:h-28 w-12 h-12">
+        <svg class="animate-bounce max-md:w-12 max-md:h-12 w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+        </svg>
+      </div>
+      <h4 class="font-semibold text-vault-text animate-pulse max-md:text-2xl max-md:mt-6 text-sm">{$activeCall.peerUsername}</h4>
+      <p class="text-vault-text-dim max-md:text-sm max-md:mt-2 text-[10px] mt-0.5">Incoming E2EE {$activeCall.type} call...</p>
     </div>
-    <div>
-      <h4 class="text-sm font-semibold text-vault-text animate-pulse">Incoming Call</h4>
-      <p class="text-[10px] text-vault-text-dim mt-0.5">{$activeCall.peerUsername} is calling you via E2EE {$activeCall.type}...</p>
-    </div>
-    <div class="flex gap-2">
+    <div class="flex gap-2 max-md:gap-6 max-md:mt-10">
       <button
         on:click={declineIncomingCall}
-        class="btn-ghost flex-1 py-2 text-xs border-vault-danger/30 text-vault-danger hover:bg-vault-danger/5 rounded-xl cursor-pointer focus:outline-none"
+        class="btn-ghost flex-1 border-vault-danger/30 text-vault-danger hover:bg-vault-danger/5 rounded-xl cursor-pointer focus:outline-none
+          max-md:py-4 max-md:text-sm max-md:font-semibold py-2 text-xs"
       >
         Decline
       </button>
       <button
         on:click={acceptIncomingCall}
-        class="btn-primary flex-1 py-2 text-xs bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none"
+        class="btn-primary flex-1 bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none
+          max-md:py-4 max-md:text-sm py-2 text-xs"
       >
         Accept
       </button>

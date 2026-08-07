@@ -16,6 +16,7 @@
   //     open. Forgetting to unwatch leaks the socket into a viewer set.
 
   import { onMount, onDestroy } from 'svelte';
+  import { Capacitor } from '@capacitor/core';
   import {
     fetchChannel, fetchChannelPosts, postToChannel, markPostViewed,
     subscribeChannel, unsubscribeChannel, fetchPostComments, commentOnPost,
@@ -32,6 +33,15 @@
   let loading = true;
   let error = '';
   let draft = '';
+  // Multi-line entry is now reachable on native Android (see the textarea's
+  // keydown handler below), which a fixed rows="1" box would just scroll
+  // instead of showing — same fix as ChatView.svelte's composer.
+  let composerEl;
+  $: if (composerEl) { void draft; autoGrowComposer(); }
+  function autoGrowComposer() {
+    composerEl.style.height = 'auto';
+    composerEl.style.height = Math.min(composerEl.scrollHeight, 120) + 'px';
+  }
   let posting = false;
 
   // Comments are loaded per post, on demand: fetching every thread up front
@@ -332,11 +342,12 @@
   {#if channel?.canPost}
     <div class="px-3 py-2 border-t border-vault-border glass-strong flex items-end gap-2">
       <textarea
+        bind:this={composerEl}
         bind:value={draft}
-        on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); publish(); } }}
+        on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !Capacitor.isNativePlatform()) { e.preventDefault(); publish(); } }}
         placeholder="Broadcast to subscribers..."
         rows="1"
-        class="flex-1 px-3 py-2 rounded-xl bg-vault-elevated border border-vault-border text-sm text-vault-text resize-none focus:outline-none focus:border-vault-accent"
+        class="flex-1 px-3 py-2 rounded-xl bg-vault-elevated border border-vault-border text-sm text-vault-text resize-none focus:outline-none focus:border-vault-accent max-h-[120px]"
       ></textarea>
       <button
         on:click={publish}

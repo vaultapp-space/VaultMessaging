@@ -1,3 +1,7 @@
+<script>
+  import { openExternal } from '../lib/openExternal.js';
+</script>
+
 <!-- VAULT (VLT) launcher — opens the real, separately-hosted VLT wallet.
      webwallet.vaultapp.space sends X-Frame-Options: SAMEORIGIN (a deliberate
      anti-clickjacking measure on a page that moves real funds) and lives on
@@ -7,6 +11,7 @@
   href="https://webwallet.vaultapp.space"
   target="_blank"
   rel="noopener noreferrer"
+  on:click={(e) => openExternal(e, 'https://webwallet.vaultapp.space')}
   class="flex items-center gap-3 p-3.5 bg-vault-accent/10 border border-vault-accent/20 rounded-2xl hover:bg-vault-accent/15 transition-all cursor-pointer no-underline group"
 >
   <div class="w-10 h-10 rounded-xl bg-vault-black/40 border border-vault-accent/20 flex items-center justify-center text-vault-accent shrink-0">

@@ -9,6 +9,7 @@
   // expires on its own.
 
   import { fetchDevices, revokeDevice } from '../lib/api/http.js';
+  import { showConfirm } from '../lib/stores/confirm.js';
 
   // Folded away behind a single row rather than always expanded — every
   // device was rendering inline in a settings panel that already has
@@ -48,7 +49,7 @@
     // this device" in a list of others is a good way to have someone lock
     // themselves out by accident.
     if (device.current) return;
-    if (!confirm(`Sign out ${describe(device)}? It will lose access immediately.`)) return;
+    if (!(await showConfirm(`Sign out ${describe(device)}? It will lose access immediately.`, { confirmLabel: 'Sign Out' }))) return;
 
     revoking = device.id;
     try {

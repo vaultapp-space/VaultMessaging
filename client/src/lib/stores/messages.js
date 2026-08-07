@@ -307,14 +307,6 @@ export function updateMessageStatus(peerId, messageId, status) {
 }
 
 /**
- * Get messages for a peer.
- */
-export function getMessages(peerId) {
-  const map = get(messagesByPeer);
-  return map.get(peerId) || [];
-}
-
-/**
  * Set typing indicator for a peer.
  */
 export function setTyping(peerId) {

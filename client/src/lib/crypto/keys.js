@@ -202,20 +202,6 @@ export async function hmacSHA256(key, data) {
 }
 
 /**
- * Wipe key material references.
- * CryptoKey objects are GC'd when dereferenced.
- * Uint8Arrays are zeroed out explicitly.
- */
-export function wipeKeyMaterial(...items) {
-  for (const item of items) {
-    if (item instanceof Uint8Array) {
-      item.fill(0);
-    }
-    // CryptoKey objects: set reference to null in the caller
-  }
-}
-
-/**
  * Generate N one-time prekey pairs.
  * Returns public keys as base64 (for server upload) and keeps key pairs in memory.
  * @param {number} count

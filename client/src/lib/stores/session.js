@@ -4,12 +4,11 @@
 // All state vanishes on tab close / reload.
 // ============================================================
 
-import { writable, derived, get } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 
 // ─── Session State ──────────────────────────────────────────
 
 export const currentUser = writable(null);        // { id, username }
-export const isAuthenticated = derived(currentUser, $u => $u !== null);
 export const isLoading = writable(true);           // Initial auth check
 
 // ─── Crypto Key Material (volatile only) ────────────────────

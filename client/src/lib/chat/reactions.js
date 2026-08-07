@@ -26,6 +26,7 @@ import { addReaction, removeReaction } from '../api/http.js';
 import { createOpEnvelope, OpKind } from '$shared/envelope.js';
 import { capabilities } from '$shared/capabilities.js';
 import { sendMessage } from './send.js';
+import { hapticLight } from '../haptics.js';
 
 /** True if `userId` has already reacted with `emoji`. */
 export function hasReacted(reactions, emoji, userId) {
@@ -110,6 +111,7 @@ export async function toggleReaction(chat, message, emoji, context = {}) {
 
   // Optimistic: the reaction should appear on tap, not after a round trip.
   setReactions(storeKey, message.seq, applySummary(previous, { emoji, userId: me, add }));
+  hapticLight();
 
   try {
     if (capabilities(chat).isCloud) {

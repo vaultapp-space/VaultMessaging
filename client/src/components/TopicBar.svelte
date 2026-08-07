@@ -94,6 +94,8 @@
     activeTopicId = topicId;
     onSelect?.(topicId);
   }
+
+  $: activeTopic = topics.find((t) => t.topicId === activeTopicId) ?? null;
 </script>
 
 {#if isForum}
@@ -108,7 +110,7 @@
       <button
         on:click={() => select(topic.topicId)}
         on:dblclick={() => canModerate && toggleClosed(topic)}
-        title={topic.closed ? 'Closed' : (canModerate ? 'Double-click to close' : topic.title)}
+        title={topic.closed ? 'Closed' : (canModerate ? 'Select, then use Close' : topic.title)}
         class="shrink-0 px-2 py-1 rounded-lg text-[10px] transition-colors focus:outline-none
           {activeTopicId === topic.topicId ? 'bg-vault-accent/15 text-vault-accent' : 'text-vault-text-dim hover:text-vault-text'}
           {topic.closed ? 'line-through opacity-60' : ''}"
@@ -116,6 +118,14 @@
         {topic.iconEmoji ?? ''}{topic.title}
       </button>
     {/each}
+
+    {#if canModerate && activeTopic}
+      <button
+        on:click={() => toggleClosed(activeTopic)}
+        class="shrink-0 px-2 py-1 rounded-lg text-[10px] text-vault-text-dim hover:text-vault-accent focus:outline-none"
+        title={activeTopic.closed ? 'Reopen this topic' : 'Close this topic'}
+      >{activeTopic.closed ? 'Reopen' : 'Close'}</button>
+    {/if}
 
     <button
       on:click={() => (showCreate = !showCreate)}

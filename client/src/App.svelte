@@ -11,6 +11,11 @@
   import NativeWelcome from './components/NativeWelcome.svelte';
   import { applyTheme } from './lib/theme.js';
   import { Capacitor } from '@capacitor/core';
+  import ToastHost from './components/ToastHost.svelte';
+  import ConfirmDialog from './components/ConfirmDialog.svelte';
+  import PassphrasePromptModal from './components/PassphrasePromptModal.svelte';
+  import { showToast } from './lib/stores/toast.js';
+  import { initBackButtonHandler, triggerBackOnEscape } from './lib/backHandler.js';
 
   // Decided once — the platform doesn't change mid-session, so this doesn't
   // need to be a store. The marketing landing page is for a browser visitor
@@ -79,6 +84,7 @@
 
   onMount(async () => {
     mounted = true;
+    initBackButtonHandler();
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', handleVisibilityChange);
     }
@@ -105,7 +111,7 @@
         activeView.set('chat');
       } catch (err) {
         console.error('Failed to join via invite:', err);
-        alert('That invite link is no longer valid.');
+        showToast('That invite link is no longer valid.');
       }
       window.history.replaceState({}, document.title, '/');
       isLoading.set(false);
@@ -219,6 +225,8 @@
   });
 </script>
 
+<svelte:window on:keydown={triggerBackOnEscape} />
+
 <!-- Android 15+ (targetSdk 36, see android/variables.gradle) enforces
      edge-to-edge rendering — apps can no longer opt out of drawing behind
      the system status/nav bars, so without this the top of every screen
@@ -280,4 +288,8 @@
       {/if}
     </div>
   {/if}
+
+  <ToastHost />
+  <ConfirmDialog />
+  <PassphrasePromptModal />
 </main>

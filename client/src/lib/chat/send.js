@@ -367,7 +367,11 @@ async function sendSecret(chat, envelope, context) {
     || Boolean(envelope.groupedId)
     // A sticker has no body and the legacy attachment shape has no way to
     // say "sticker", so without this it arrives as a generic file.
-    || envelope.t === MessageType.STICKER;
+    || envelope.t === MessageType.STICKER
+    // Same problem as the sticker case: the legacy shape below spreads only
+    // envelope.media, nothing else, so a caption on a lone attachment would
+    // otherwise be silently dropped rather than just not sent.
+    || (isAttachment && Boolean(envelope.body));
 
   const payload = carriesStructure
     ? serializeEnvelope(envelope)

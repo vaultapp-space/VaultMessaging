@@ -30,7 +30,17 @@ async function request(method, path, body = null, extraHeaders = {}) {
     options.body = JSON.stringify(body);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, options);
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, options);
+  } catch {
+    // fetch() itself rejects on network failure (no server reached at
+    // all), before there's any response to inspect — the browser's own
+    // message here ("Failed to fetch", "Load failed", ...) means nothing
+    // to a user and varies per browser, so it's replaced rather than
+    // shown as-is like the response-side errors below.
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
 
   if (!res.ok) {
     if (res.status === 401) {
@@ -38,6 +48,14 @@ async function request(method, path, body = null, extraHeaders = {}) {
         clearSession();
       });
       throw new Error('Session expired. Please log in again.');
+    }
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get('Retry-After'));
+      throw new Error(
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? `Too many requests — try again in ${retryAfter}s.`
+          : 'Too many requests. Please wait a moment and try again.'
+      );
     }
     const error = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(error.error || error.message || `HTTP ${res.status}`);

@@ -32,6 +32,18 @@
   // the interaction one tap.
   const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
   let showReactionPicker = false;
+  let reactionPickerPosition = 'below'; // 'below' | 'above'
+
+  function toggleReactionPicker(e) {
+    if (!showReactionPicker) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      // Viewport space below, not the scroll container's — the composer
+      // sits fixed at the bottom of the screen regardless, so it's the
+      // more reliable reference point.
+      reactionPickerPosition = window.innerHeight - rect.bottom < 120 ? 'above' : 'below';
+    }
+    showReactionPicker = !showReactionPicker;
+  }
 
   $: myUserId = $currentUser?.id;
   $: reactions = message.reactions || [];
@@ -474,6 +486,9 @@
                   </a>
                 {/if}
               {/if}
+              {#if envelope?.body}
+                <p class="text-sm text-vault-text break-words">{envelope.body}</p>
+              {/if}
             {/if}
           </div>
         {:else if isSticker}
@@ -660,7 +675,7 @@
           {#if canForward}
             <button
               on:click={() => onForward(message)}
-              class="px-1.5 py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+              class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
               title="Forward"
               aria-label="Forward this message"
             >
@@ -674,7 +689,7 @@
           {#if canPin}
             <button
               on:click={() => onTogglePin(message)}
-              class="px-1.5 py-0.5 rounded-full text-[11px] {message.pinnedAt ? 'text-vault-accent' : 'text-vault-text-dim'} hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+              class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] {message.pinnedAt ? 'text-vault-accent' : 'text-vault-text-dim'} hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
               title={message.pinnedAt ? 'Unpin' : 'Pin'}
               aria-label={message.pinnedAt ? 'Unpin this message' : 'Pin this message'}
             >
@@ -687,7 +702,7 @@
           {#if canDelete}
             <button
               on:click={() => onDelete(message)}
-              class="px-1.5 py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-danger hover:bg-vault-elevated transition-all focus:outline-none"
+              class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-danger hover:bg-vault-elevated transition-all focus:outline-none"
               title="Delete"
               aria-label="Delete this message"
             >
@@ -700,7 +715,7 @@
           {#if canEditThis}
             <button
               on:click={() => onEdit(message)}
-              class="px-1.5 py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+              class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
               title="Edit"
               aria-label="Edit this message"
             >
@@ -714,7 +729,7 @@
           {#if canReply}
             <button
               on:click={() => onReply(message)}
-              class="px-1.5 py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+              class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
               title="Reply"
               aria-label="Reply to this message"
             >
@@ -728,8 +743,8 @@
           {#if canReact}
             <div class="relative">
               <button
-                on:click={() => showReactionPicker = !showReactionPicker}
-                class="px-1.5 py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+                on:click={toggleReactionPicker}
+                class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
                 title="Add reaction"
                 aria-label="Add reaction"
               >
@@ -742,15 +757,20 @@
               </button>
 
               {#if showReactionPicker}
-                <!-- Opens downward. Upward put it above the floating toolbar,
-                     which for a message near the top of the list is inside the
-                     chat header's area — and the header has its own stacking
-                     context (glass-strong / backdrop filter), so no z-index on
-                     this element can win. The same trap is documented on the
-                     chat menu in ChatView. Downward there is always the
-                     transcript below, which clips nothing. -->
+                <!-- Opens downward by default. Upward put it above the floating
+                     toolbar, which for a message near the top of the list is
+                     inside the chat header's area — and the header has its own
+                     stacking context (glass-strong / backdrop filter), so no
+                     z-index on this element can win. The same trap is
+                     documented on the chat menu in ChatView. Downward usually
+                     has the rest of the transcript to render into — except for
+                     the newest message, sitting right above the composer,
+                     where there's nothing below but the scroll container's own
+                     edge (which clips an absolutely-positioned descendant same
+                     as anything else). toggleReactionPicker measures for that
+                     case at open time and flips this one popup upward instead. -->
                 <div
-                  class="absolute z-[60] top-full mt-1 {isOwn ? 'right-0' : 'left-0'} flex items-center gap-0.5 px-1.5 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
+                  class="absolute z-[60] {reactionPickerPosition === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'} {isOwn ? 'right-0' : 'left-0'} flex items-center gap-0.5 px-1.5 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
                   use:clickOutside={() => showReactionPicker = false}
                 >
                   {#each QUICK_REACTIONS as emoji}
