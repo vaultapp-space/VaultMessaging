@@ -4,7 +4,7 @@
   // lib/apkUpdater.js for why this checks rather than auto-installs.
   import { onMount } from 'svelte';
   import { checkForUpdate } from '../lib/apkUpdater.js';
-  import { openExternal } from '../lib/openExternal.js';
+  import { openInRealBrowser } from '../lib/externalOpener.js';
 
   let update = null;
   let dismissed = false;
@@ -23,7 +23,7 @@
     <span class="text-vault-text">Vault {update.versionName} is available.</span>
     <a
       href={update.downloadUrl}
-      on:click={(e) => openExternal(e, update.downloadUrl)}
+      on:click={(e) => { e.preventDefault(); openInRealBrowser(update.downloadUrl); }}
       class="font-semibold text-vault-accent hover:underline shrink-0"
     >Update</a>
     <button

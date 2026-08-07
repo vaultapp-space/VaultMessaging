@@ -37,10 +37,8 @@
   </div>
 
   <div class="relative flex-1 flex flex-col items-center px-6 pt-12 pb-8 max-w-md mx-auto w-full text-center">
-    <div class="w-[60px] h-[60px] rounded-3xl bg-vault-surface border border-vault-border flex items-center justify-center shadow-lg">
-      <svg class="w-7 h-7 text-vault-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-        <path d="M12 2L4 7v6c0 5.25 3.4 10.15 8 11.25 4.6-1.1 8-6 8-11.25V7l-8-5z" />
-      </svg>
+    <div class="w-[60px] h-[60px] rounded-3xl overflow-hidden border border-vault-border shadow-lg">
+      <img src="/logo.jpg" alt="Vault" class="w-full h-full object-cover" />
     </div>
 
     <h1 class="text-4xl font-semibold text-vault-text mt-5">Vault</h1>

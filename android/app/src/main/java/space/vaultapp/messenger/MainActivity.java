@@ -6,6 +6,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Must run before super.onCreate() — that's what actually builds
+        // the Bridge and consumes this registration list.
+        registerPlugin(ExternalOpenerPlugin.class);
         super.onCreate(savedInstanceState);
         // Android's WebView does not inherit the system Settings > Display >
         // Font size accessibility setting on its own — unlike native views,
