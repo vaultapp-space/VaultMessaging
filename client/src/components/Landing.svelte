@@ -2,6 +2,7 @@
   import { activeView } from '../lib/stores/session.js';
   import { onMount, onDestroy } from 'svelte';
   import { applyTheme } from '../lib/theme.js';
+  import QRCode from 'qrcode';
 
   let isLight = false;
   let techOpen = false;
@@ -18,8 +19,15 @@
     { id: 'how', label: 'How it works' },
     { id: 'compare', label: 'Compare' },
     { id: 'features', label: 'Features' },
+    { id: 'download', label: 'Android' },
     { id: 'faq', label: 'FAQ' }
   ];
+
+  const FDROID_REPO_URL = 'https://vaultapp.space/fdroid/repo';
+  // Rendered locally, same reasoning as the safety-number QR in the app
+  // itself — no reason to hand a third-party image service a URL tied to
+  // this deployment.
+  let fdroidQrUrl = '';
 
   /* ---- animated chat preview ---- */
   const mockMessages = [
@@ -126,6 +134,10 @@
   onMount(() => {
     isLight = document.documentElement.classList.contains('light');
     reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    QRCode.toDataURL(FDROID_REPO_URL, { width: 180, margin: 1 })
+      .then((url) => { fdroidQrUrl = url; })
+      .catch((err) => console.error('Failed to render F-Droid repo QR code:', err));
 
     const sectionObserver = new IntersectionObserver(
       (entries) => {
@@ -383,6 +395,37 @@
       </div>
     </section>
 
+    <section id="download">
+      <div class="section-head" use:reveal={0}>
+        <div class="eyebrow">Android</div>
+        <h2>The web app needs nothing installed — the Android app is there if you want it.</h2>
+        <p>Not on the Play Store or f-droid.org yet (official listing is in review). Three ways to get it in the meantime, two of which keep the app updated automatically.</p>
+      </div>
+      <div class="feature-grid download-grid">
+        <div class="feature" use:reveal={0}>
+          <div class="plate">AUTO-UPDATES</div>
+          <h3>F-Droid repo</h3>
+          <p>Add <code>{FDROID_REPO_URL}</code> as a repo in F-Droid or Droid-ify. Updates check and install the same as any F-Droid app.</p>
+          {#if fdroidQrUrl}
+            <img class="download-qr" src={fdroidQrUrl} width="90" height="90" alt="QR code for the Vault F-Droid repo URL" />
+          {/if}
+          <a class="download-link" href={FDROID_REPO_URL} target="_blank" rel="noopener noreferrer">Open repo →</a>
+        </div>
+        <div class="feature" use:reveal={60}>
+          <div class="plate">AUTO-UPDATES</div>
+          <h3>GitHub + Obtainium</h3>
+          <p>Point <a href="https://github.com/ImranR98/Obtainium" target="_blank" rel="noopener noreferrer">Obtainium</a> at the GitHub repo below and it tracks new releases and installs them for you.</p>
+          <a class="download-link" href="https://github.com/vaultapp-space/VaultMessaging/releases/latest" target="_blank" rel="noopener noreferrer">Latest release →</a>
+        </div>
+        <div class="feature" use:reveal={120}>
+          <div class="plate">ONE-TIME</div>
+          <h3>Direct APK</h3>
+          <p>A single download, signed and built by the Vault developer. No auto-updates — you'll need to re-download for future versions.</p>
+          <a class="download-link" href="https://github.com/vaultapp-space/VaultMessaging/releases/latest/download/Vault.apk" target="_blank" rel="noopener noreferrer">Download APK →</a>
+        </div>
+      </div>
+    </section>
+
     <section id="faq">
       <div class="section-head" use:reveal={0}>
         <div class="eyebrow">Questions</div>
@@ -423,7 +466,7 @@
         </details>
         <details class="faq-item">
           <summary>Is Vault open source?</summary>
-          <p>The client and server source are publicly viewable; a formal open-source license is being finalized.</p>
+          <p>Yes — licensed AGPL-3.0-or-later, with the full client and server source public on GitHub.</p>
         </details>
         <details class="faq-item">
           <summary>Can I self-host it?</summary>
@@ -755,6 +798,20 @@
   .feature:hover .plate { background: var(--accent-glow-strong); }
   .feature h3 { margin-top: 12px; font-size: 1.02rem; font-weight: 700; }
   .feature p { margin-top: 8px; color: var(--text-secondary); font-size: 0.9rem; }
+
+  .download-grid .feature p code {
+    display: block; margin-top: 8px; padding: 6px 8px; border-radius: 0.4rem;
+    background: var(--black); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+    color: var(--text-secondary); word-break: break-all;
+  }
+  .download-grid .feature p a { color: var(--accent); text-decoration: none; }
+  .download-grid .feature p a:hover { text-decoration: underline; }
+  .download-qr { margin-top: 14px; border-radius: 0.5rem; background: #fff; padding: 6px; }
+  .download-link {
+    display: inline-block; margin-top: 14px; color: var(--accent); font-weight: 700;
+    font-size: 0.85rem; text-decoration: none;
+  }
+  .download-link:hover { text-decoration: underline; }
 
   /* ---------- SHOWCASE ---------- */
   .showcase-grid { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; }
