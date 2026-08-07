@@ -25,5 +25,5 @@ Description: >-
   published only through this self-hosted repository. It is not built
   from source or distributed by f-droid.org.
 
-CurrentVersion: '1.1'
-CurrentVersionCode: 2
+CurrentVersion: '1.2'
+CurrentVersionCode: 3

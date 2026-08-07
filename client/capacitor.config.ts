@@ -43,6 +43,22 @@ const config: CapacitorConfig = {
     hostname: 'app.vaultapp.space',
     androidScheme: 'https',
   },
+  plugins: {
+    // @capacitor/status-bar defaults overlaysWebView to true, which makes
+    // it apply its OWN edge-to-edge implementation via the deprecated
+    // View.setSystemUiVisibility() flags. Android 15+ (targetSdk 36, see
+    // variables.gradle) already forces edge-to-edge on its own through the
+    // modern WindowInsets mechanism App.svelte's env(safe-area-inset-top)
+    // padding depends on — the plugin's older approach fighting with that
+    // OS-level enforcement is what brought back the status-bar overlap
+    // this app had already fixed once before. Disabling it here leaves
+    // Android's own edge-to-edge alone; setStyle() (icon color, the only
+    // thing this plugin is actually used for — see lib/theme.js) doesn't
+    // depend on overlaysWebView at all, so this doesn't affect that.
+    StatusBar: {
+      overlaysWebView: false,
+    },
+  },
   // No CapacitorUpdater plugin block: this app is distributed via a
   // self-hosted F-Droid-style repo (deploy/fdroid/), and F-Droid's
   // inclusion policy explicitly forbids an app downloading or installing
