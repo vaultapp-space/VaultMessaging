@@ -16,11 +16,7 @@
     typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const navLinks = [
-    { id: 'how', label: 'How it works' },
-    { id: 'compare', label: 'Compare' },
-    { id: 'features', label: 'Features' },
-    { id: 'download', label: 'Android' },
-    { id: 'faq', label: 'FAQ' }
+    { id: 'download', label: 'Android' }
   ];
 
   const FDROID_REPO_URL = 'https://vaultapp.space/fdroid/repo';
