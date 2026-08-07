@@ -226,6 +226,10 @@
           <div class="trust-item"><span class="chk">✓</span> Locked before it leaves your phone</div>
           <div class="trust-item"><span class="chk">✓</span> Gone in 24 hours</div>
         </div>
+        <a class="android-cta" href="https://github.com/vaultapp-space/VaultMessaging/releases/latest/download/Vault.apk" target="_blank" rel="noopener noreferrer" use:reveal={330}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M6 18c0 .55.45 1 1 1h1v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h2v3.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5V19h1c.55 0 1-.45 1-1V8H6v10zM3.5 8C2.67 8 2 8.67 2 9.5v7c0 .83.67 1.5 1.5 1.5S5 17.33 5 16.5v-7C5 8.67 4.33 8 3.5 8zm17 0c-.83 0-1.5.67-1.5 1.5v7c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5v-7c0-.83-.67-1.5-1.5-1.5zm-4.97-5.84l1.3-1.3c.2-.2.2-.51 0-.71-.2-.2-.51-.2-.71 0l-1.48 1.48C13.85 1.23 12.95 1 12 1c-.96 0-1.86.23-2.66.63L7.85.15c-.2-.2-.51-.2-.71 0-.2.2-.2.51 0 .71l1.31 1.31C6.97 3.26 6 5.01 6 7h12c0-1.99-.97-3.75-2.47-4.84zM10 5H9V4h1v1zm5 0h-1V4h1v1z"/></svg>
+          Download for Android
+        </a>
         <div class="community-row" use:reveal={360}>
           <span class="community-label">Join the community</span>
           <div class="community-links">
@@ -643,6 +647,12 @@
   .trust-row { display: flex; justify-content: center; gap: 26px; margin-top: 36px; flex-wrap: wrap; }
   .trust-item { display: flex; align-items: baseline; gap: 7px; font-size: 0.85rem; color: var(--text-secondary); }
   .trust-item .chk { color: var(--accent); font-weight: 700; }
+  .android-cta {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 28px; padding: 9px 18px;
+    border: 1px solid var(--border-subtle); border-radius: 0.6rem; color: var(--text-secondary);
+    font-size: 0.84rem; font-weight: 600; text-decoration: none; transition: all 0.25s ease;
+  }
+  .android-cta:hover { border-color: var(--accent); color: var(--text); background: var(--elevated); }
   .community-row { margin-top: 40px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
   .community-label {
     font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim);
