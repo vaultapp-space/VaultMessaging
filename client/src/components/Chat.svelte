@@ -312,6 +312,11 @@
   function handleDeviceRevoked(data) {
     if (data?.deviceId !== get(currentUser)?.deviceId) return;
     showToast('This device was signed out from another session.', { type: 'info', duration: 6000 });
+    // The server now force-closes this socket right after sending this
+    // event (see server/src/routes/devices.routes.js), so without this the
+    // client's auto-reconnect (ws.js) would immediately try to reconnect a
+    // session that no longer exists, fail, and retry forever with backoff.
+    disconnectWebSocket();
     clearSession();
   }
 

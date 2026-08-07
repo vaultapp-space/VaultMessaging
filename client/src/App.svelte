@@ -201,9 +201,6 @@
             console.error('Failed to replenish one-time prekeys after QR sync:', err);
           }
 
-          // Clear query params from URL
-          window.history.replaceState({}, document.title, window.location.pathname);
-
           // deviceId from the response, not decrypted.currentUser — the
           // vault payload was encrypted on the *other* device and carries
           // its deviceId, not this new one's freshly-issued id.
@@ -214,6 +211,16 @@
         }
       } catch (err) {
         console.error('Failed to execute QR session sync:', err);
+      } finally {
+        // Scrub the sync key out of the URL unconditionally — on the
+        // success path above too, but critically also here. This used to
+        // only run inside the `res.ok` branch, so any failure (an expired
+        // or already-consumed syncId, a wrong or corrupted key — both
+        // realistic for a single-use, short-TTL token) left the vault
+        // master key sitting in the URL fragment, and from there in
+        // browser history, directly undermining the "never persists
+        // anywhere" guarantee described above.
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
       isLoading.set(false);
     }

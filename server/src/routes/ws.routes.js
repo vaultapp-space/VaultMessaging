@@ -104,9 +104,17 @@ async function wsRoutes(fastify) {
       if (cookieValue) {
         const decoded = fastify.jwt.verify(cookieValue);
         const session = await fastify.store.getSession(decoded.jti);
-        if (session) {
+        // Matches plugins/auth.js's HTTP authenticate check: a valid jti
+        // whose session record belongs to a *different* user must not
+        // authenticate as the token's claimed id.
+        if (session && session.userId === decoded.id) {
           userId = decoded.id;
           authenticated = true;
+
+          // Tag the socket with its device so a later revocation/logout can
+          // find and force-close exactly this connection — see
+          // registry.closeLocalDeviceSockets.
+          socket.__vaultDeviceId = session.deviceId;
 
           // Register WebSocket connection
           fastify.store.registerConnection(userId, socket);
@@ -161,7 +169,7 @@ async function wsRoutes(fastify) {
         try {
           const decoded = fastify.jwt.verify(data.token);
           const session = await fastify.store.getSession(decoded.jti);
-          if (!session) {
+          if (!session || session.userId !== decoded.id) {
             socket.send(JSON.stringify({ type: 'error', message: 'Session expired' }));
             socket.close();
             return;
@@ -169,6 +177,7 @@ async function wsRoutes(fastify) {
 
           userId = decoded.id;
           authenticated = true;
+          socket.__vaultDeviceId = session.deviceId;
           fastify.store.registerConnection(userId, socket);
 
           heartbeatTimer = startHeartbeat(socket);

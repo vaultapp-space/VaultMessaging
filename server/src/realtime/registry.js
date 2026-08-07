@@ -119,6 +119,24 @@ export function createRegistry({ redis, processId }) {
       }
     },
 
+    // Force-closes every socket on THIS process tagged with the given
+    // deviceId (ws.routes.js sets socket.__vaultDeviceId on auth). Revoking
+    // a device or logging out must take effect on the open connection
+    // immediately — sending a `device_revoked` event and hoping the client
+    // disconnects itself isn't enough against a client that's been modified
+    // not to. See fanout.closeUserDeviceSockets for the cross-process half
+    // of this (a socket can be authenticated to a different process than
+    // the one handling the revocation request).
+    closeLocalDeviceSockets(userId, deviceId, code = 4001, reason = 'Device revoked') {
+      const sockets = local.get(userId);
+      if (!sockets) return;
+      for (const socket of sockets) {
+        if (socket.__vaultDeviceId === deviceId) {
+          try { socket.close(code, reason); } catch { /* already closing */ }
+        }
+      }
+    },
+
     channelViewers(chatId) {
       return channelViewers.get(chatId) || new Set();
     },

@@ -108,6 +108,22 @@ export function createFanout({ registry, bus, logger }) {
       return delivered;
     },
 
+    // Force-closes every open socket for a device, on whichever process(es)
+    // actually hold it — a revoked/logged-out device's connection can be
+    // authenticated to a different process than the one handling the HTTP
+    // request that revoked it. Mirrors deliverToUser's local-then-bus shape.
+    async closeUserDeviceSockets(userId, deviceId) {
+      registry.closeLocalDeviceSockets(userId, deviceId);
+
+      if (bus) {
+        const routes = await registry.routesFor(userId);
+        for (const target of routes) {
+          if (target === registry.processId) continue;
+          await bus.publishTo(target, { kind: 'closeDevice', userId, deviceId });
+        }
+      }
+    },
+
     // Applies a message that arrived from another process via the bus.
     handleBusMessage(envelope) {
       if (envelope?.kind === 'channel') {
@@ -116,6 +132,10 @@ export function createFanout({ registry, bus, logger }) {
         for (const socket of registry.channelViewers(envelope.chatId)) {
           try { socket.send(envelope.payload); } catch { /* dead socket */ }
         }
+        return;
+      }
+      if (envelope?.kind === 'closeDevice') {
+        registry.closeLocalDeviceSockets(envelope.userId, envelope.deviceId);
         return;
       }
       if (envelope?.kind !== 'deliver') return;

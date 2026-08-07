@@ -57,11 +57,15 @@ async function deviceRoutes(fastify) {
     // rather than whenever the token expires — up to a day later.
     await fastify.store.deleteSessionsForDevice(deviceId);
 
-    // And close its sockets, or a connected client keeps receiving messages
-    // on a connection that was authenticated before the revocation.
+    // Tell the device first (so a well-behaved client can show "signed out"
+    // before its connection disappears), then force-close its socket
+    // server-side — a modified or simply non-cooperative client must not be
+    // able to keep receiving messages on a connection that predates the
+    // revocation just by ignoring the event.
     await fastify.fanout.deliverToUser(request.user.id, {
       type: 'device_revoked', deviceId,
     });
+    await fastify.fanout.closeUserDeviceSockets(request.user.id, deviceId);
 
     return reply.send({ revoked: deviceId });
   });

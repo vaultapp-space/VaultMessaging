@@ -204,6 +204,14 @@ async function authRoutes(fastify) {
     // Destroy server-side session
     await fastify.store.deleteSession(request.user.jti);
 
+    // Close this device's live socket too — otherwise a tab left open
+    // elsewhere keeps receiving real-time traffic on a connection that
+    // outlives the session it was authenticated under, identical to the
+    // gap this closes for device revocation (devices.routes.js).
+    if (request.deviceId) {
+      await fastify.fanout.closeUserDeviceSockets(request.user.id, request.deviceId);
+    }
+
     reply
       .clearCookie(config.cookieName, { path: '/' })
       .send({ ok: true });
