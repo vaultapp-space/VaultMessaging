@@ -27,6 +27,7 @@
   import { promptPassphrase } from '../lib/stores/passphrasePrompt.js';
   import WalletSettings from './WalletSettings.svelte';
   import ActiveSessions from './ActiveSessions.svelte';
+  import DonateBar from './DonateBar.svelte';
   import Stories from './Stories.svelte';
   import QRCode from 'qrcode';
 
@@ -966,6 +967,8 @@
     </div>
   </div>
 
+  <DonateBar />
+
   <!-- Tab Navigation -->
   <div class="flex border-b border-vault-border text-xs px-2 pt-1 gap-1">
     <button
@@ -1498,6 +1501,8 @@
           </svg>
         </button>
       </div>
+
+      <DonateBar />
 
       <div class="p-5 space-y-4 text-left max-h-[380px] overflow-y-auto max-md:max-h-none max-md:flex-1">
         <!-- Account. Mobile-only: desktop already shows this in the
