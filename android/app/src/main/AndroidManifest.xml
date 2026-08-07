@@ -33,4 +33,13 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Camera/mic access for calls. Capacitor's BridgeWebChromeClient
+         already intercepts the WebView's getUserMedia() and shows the
+         native Allow/Deny runtime-permission dialog for whichever of
+         these the call needs — but only if they're declared here. Without
+         this, the WebView has no permission to even ask for, so it just
+         fails straight to the "enable it manually in Settings" error. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 </manifest>
