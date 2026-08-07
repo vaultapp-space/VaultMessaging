@@ -233,13 +233,15 @@
   <div class="donate-banner">
     <div class="wrap donate-banner-inner">
       <div class="donate-banner-text">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M18 8h1a4 4 0 010 8h-1" />
-          <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
-          <line x1="6" y1="1" x2="6" y2="4" />
-          <line x1="10" y1="1" x2="10" y2="4" />
-          <line x1="14" y1="1" x2="14" y2="4" />
-        </svg>
+        <span class="donate-banner-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8h1a4 4 0 010 8h-1" />
+            <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
+            <line x1="6" y1="1" x2="6" y2="4" />
+            <line x1="10" y1="1" x2="10" y2="4" />
+            <line x1="14" y1="1" x2="14" y2="4" />
+          </svg>
+        </span>
         <span>Enjoying Vault? Buy the developer a coffee.</span>
       </div>
       <button class="donate-btn" on:click={() => (donateOpen = true)}>Buy me a coffee →</button>
@@ -933,19 +935,28 @@
   .footer-links a:hover { color: var(--text); }
 
   /* ---------- DONATE BANNER + MODAL ---------- */
-  .donate-banner { background: var(--accent-glow); border-bottom: 1px solid var(--border-subtle); }
+  .donate-banner {
+    background: linear-gradient(180deg, var(--accent-glow-strong), var(--accent-glow));
+    border-bottom: 1px solid var(--border-subtle);
+  }
   .donate-banner-inner {
-    display: flex; align-items: center; justify-content: center; gap: 20px;
-    padding: 12px 28px; flex-wrap: wrap; text-align: center;
+    display: flex; align-items: center; justify-content: center; gap: 22px;
+    padding: 18px 28px; flex-wrap: wrap; text-align: center;
   }
-  .donate-banner-text { display: flex; align-items: flex-start; gap: 10px; color: var(--text-secondary); font-size: 0.85rem; text-align: left; }
-  .donate-banner-text svg { color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+  .donate-banner-text { display: flex; align-items: center; gap: 13px; color: var(--text); font-size: 0.95rem; font-weight: 500; text-align: left; }
+  .donate-banner-icon {
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    width: 38px; height: 38px; border-radius: 0.75rem;
+    background: var(--surface); border: 1px solid var(--accent-glow-strong); color: var(--accent);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
   .donate-btn {
-    background: none; border: 1px solid var(--accent); color: var(--accent); font-weight: 700;
-    font-size: 0.82rem; padding: 7px 14px; border-radius: 0.6rem; cursor: pointer; white-space: nowrap;
-    transition: all 0.25s ease;
+    background: var(--accent); border: 1px solid var(--accent); color: var(--surface); font-weight: 700;
+    font-size: 0.88rem; padding: 10px 20px; border-radius: 0.7rem; cursor: pointer; white-space: nowrap;
+    transition: all 0.25s ease; box-shadow: 0 2px 10px var(--accent-glow-strong);
   }
-  .donate-btn:hover { background: var(--accent); color: var(--surface); }
+  .donate-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--accent-glow-strong); }
+  @media (prefers-reduced-motion: reduce) { .donate-btn:hover { transform: none; } }
 
   .donate-overlay {
     position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
@@ -981,10 +992,11 @@
   }
   .donate-copy:hover { border-color: var(--accent); color: var(--accent); }
   @media (max-width: 600px) {
-    .donate-banner-inner { padding: 10px 18px; gap: 10px; justify-content: flex-start; }
-    .donate-banner-text { font-size: 0.78rem; flex: 1 1 auto; min-width: 0; }
-    .donate-banner-text svg { width: 16px; height: 16px; }
-    .donate-btn { flex-shrink: 0; }
+    .donate-banner-inner { padding: 14px 18px; gap: 12px; justify-content: flex-start; }
+    .donate-banner-text { font-size: 0.85rem; flex: 1 1 auto; min-width: 0; }
+    .donate-banner-icon { width: 32px; height: 32px; }
+    .donate-banner-icon svg { width: 17px; height: 17px; }
+    .donate-btn { flex-shrink: 0; padding: 8px 16px; font-size: 0.82rem; }
   }
 
   /* Tablets get two columns; a single column wastes most of the width there. */
