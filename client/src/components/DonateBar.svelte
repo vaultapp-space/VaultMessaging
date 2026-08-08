@@ -12,7 +12,7 @@
     { coin: 'Bitcoin', ticker: 'BTC', address: '1DKyDtvjyhCr1tu22Lfw9nxcQEB4MfFkr1' },
     { coin: 'Ethereum', ticker: 'ETH', address: '0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b' },
     { coin: 'Solana', ticker: 'SOL', address: '9tKGtaS3xAe3ZDtFmksW7NYrdKGN3YNxyUTivfw3mFk2' },
-    { coin: 'USDT (ERC-20)', ticker: 'USDT', address: '0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b' },
+    { coin: 'USDT (BEP-20)', ticker: 'USDT', address: '0x4ba2d083adab41b1f78e8118a85b12cde5adfa0b' },
   ];
 
   async function copyAddress(entry) {
