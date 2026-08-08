@@ -75,7 +75,19 @@ async function messageRoutes(fastify) {
     // The recipient has to be allowed to fetch the file. This lived in the
     // messages repo and called a method that repo does not have, so it threw
     // rather than authorising — every attachment sent in a secret chat 500'd.
+    //
+    // authorizeAttachmentUser grants access outright — it doesn't check who's
+    // asking. Without this ownership check, anyone who ever legitimately saw
+    // an attachment (a past recipient, a group member) could re-send that
+    // same attachmentId to an account of their choosing and hand it
+    // permanent access, regardless of who the file was actually meant for.
+    // The sender must already be the owner or an authorised viewer before
+    // they can extend that to someone else.
     if (attachmentId) {
+      const attachment = await fastify.repos.attachments.getAttachment(attachmentId);
+      if (!attachment || (attachment.owner_id !== senderId && !attachment.allowed_users.has(senderId))) {
+        return reply.code(403).send({ error: 'Not authorized to share this attachment' });
+      }
       await fastify.repos.attachments.authorizeAttachmentUser(attachmentId, recipientId);
     }
 

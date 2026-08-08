@@ -189,10 +189,22 @@ async function chatMessageRoutes(fastify) {
     // most of those carry no `id`, or an `id` that is not a file at all.
     // Inserting one blindly hits a foreign key and turns an ordinary send
     // into a 500.
-    if (media?.id && UUID_RE.test(String(media.id))
-        && await fastify.repos.attachments.getAttachment(media.id)) {
-      for (const memberId of memberIds) {
-        await fastify.repos.attachments.authorizeAttachmentUser(media.id, memberId);
+    // authorizeAttachmentUser grants access outright — it doesn't check who's
+    // asking. Without the ownership check below, anyone who ever legitimately
+    // saw an attachment elsewhere (a past recipient, a member of a different
+    // chat) could reference that same media.id here and it would authorise
+    // every member of *this* chat for a file that was never meant for them.
+    // The sender must already be the owner or an authorised viewer — and
+    // this can't reject the send outright the way messages.routes.js does,
+    // since createCloudMessage() above has already persisted the message; an
+    // unauthorised reference just doesn't get granted, same as the existing
+    // guard below already does for a media.id that isn't a real file at all.
+    if (media?.id && UUID_RE.test(String(media.id))) {
+      const attachment = await fastify.repos.attachments.getAttachment(media.id);
+      if (attachment && (attachment.owner_id === senderId || attachment.allowed_users.has(senderId))) {
+        for (const memberId of memberIds) {
+          await fastify.repos.attachments.authorizeAttachmentUser(media.id, memberId);
+        }
       }
     }
 
