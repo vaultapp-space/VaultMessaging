@@ -135,7 +135,20 @@ export class RatchetSession {
       return await decrypt(aesKey, iv, ciphertext);
     }
 
-    // Skip any missing messages
+    // Skip any missing messages. _skipKeys silently caps at 100 steps — if
+    // the real gap is bigger than that, the loop below stops short, but
+    // recvCount was still about to get force-set to header.messageNumber + 1
+    // as if every key through it had actually been derived. That mismatch
+    // between how far recvChainKey really advanced and what recvCount
+    // claims permanently desyncs the chain: every message after this one
+    // would derive from the wrong point in the chain and fail to decrypt,
+    // forever, not just this one. Refusing before mutating anything means
+    // only this one out-of-range message fails — the chain itself stays
+    // intact for whatever arrives next in range.
+    const skipGap = header.messageNumber - this.recvCount;
+    if (skipGap > 100) {
+      throw new Error(`Refusing to skip ${skipGap} messages (limit 100) — gap too large to recover safely without desyncing the chain.`);
+    }
     await this._skipKeys(header.publicKey, this.recvCount, header.messageNumber);
 
     // Derive message key

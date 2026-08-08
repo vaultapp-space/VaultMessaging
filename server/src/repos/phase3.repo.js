@@ -454,51 +454,76 @@ export function createPhase3({ pool }) {
      *
      * Returns { consumed } so the caller knows whether to broadcast.
      */
+    // Wrapped in a transaction with the message row locked (`FOR UPDATE`)
+    // for its duration: without that, two of a view-once message's last two
+    // viewers opening it at the same instant could each run the "remaining"
+    // count query before either's INSERT into message_views was visible to
+    // the other, so both see themselves as the last viewer, both take the
+    // consumed:true path, and both fire a message_consumed broadcast
+    // (phase3.routes.js). The lock serializes concurrent calls for the same
+    // message, so the second one always sees the first's view already
+    // counted.
     async recordView(chatId, seq, viewerId) {
-      const { rows: msgRows } = await this.pool.query(
-        `SELECT sender_id, view_once, body IS NULL AND media IS NULL AS already_cleared
-           FROM messages WHERE chat_id = $1 AND seq = $2`,
-        [chatId, seq]
-      );
-      if (msgRows.length === 0) return { ok: false, reason: 'not found' };
-      const message = msgRows[0];
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
 
-      await this.pool.query(
-        `INSERT INTO message_views (chat_id, seq, user_id) VALUES ($1, $2, $3)
-         ON CONFLICT (chat_id, seq, user_id) DO NOTHING`,
-        [chatId, seq, viewerId]
-      );
+        const { rows: msgRows } = await client.query(
+          `SELECT sender_id, view_once, body IS NULL AND media IS NULL AS already_cleared
+             FROM messages WHERE chat_id = $1 AND seq = $2
+             FOR UPDATE`,
+          [chatId, seq]
+        );
+        if (msgRows.length === 0) {
+          await client.query('ROLLBACK');
+          return { ok: false, reason: 'not found' };
+        }
+        const message = msgRows[0];
 
-      if (!message.view_once || message.already_cleared) {
-        return { ok: true, consumed: false };
+        await client.query(
+          `INSERT INTO message_views (chat_id, seq, user_id) VALUES ($1, $2, $3)
+           ON CONFLICT (chat_id, seq, user_id) DO NOTHING`,
+          [chatId, seq, viewerId]
+        );
+
+        if (!message.view_once || message.already_cleared || message.sender_id === viewerId) {
+          await client.query('COMMIT');
+          return { ok: true, consumed: false };
+        }
+
+        // Everyone who could see it has now seen it.
+        const { rows: pending } = await client.query(
+          `SELECT count(*)::int AS remaining
+             FROM chat_members cm
+            WHERE cm.chat_id = $1
+              AND cm.user_id <> $2
+              AND NOT EXISTS (
+                SELECT 1 FROM message_views v
+                 WHERE v.chat_id = $1 AND v.seq = $3 AND v.user_id = cm.user_id
+              )`,
+          [chatId, message.sender_id, seq]
+        );
+        if (pending[0].remaining > 0) {
+          await client.query('COMMIT');
+          return { ok: true, consumed: false };
+        }
+
+        // Cleared, not deleted: `deleted_at` would hide it from history
+        // entirely, and a view-once message should leave a visible "opened"
+        // marker where it was.
+        await client.query(
+          `UPDATE messages SET body = NULL, media = NULL, entities = NULL
+            WHERE chat_id = $1 AND seq = $2`,
+          [chatId, seq]
+        );
+        await client.query('COMMIT');
+        return { ok: true, consumed: true };
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
       }
-      if (message.sender_id === viewerId) {
-        return { ok: true, consumed: false };
-      }
-
-      // Everyone who could see it has now seen it.
-      const { rows: pending } = await this.pool.query(
-        `SELECT count(*)::int AS remaining
-           FROM chat_members cm
-          WHERE cm.chat_id = $1
-            AND cm.user_id <> $2
-            AND NOT EXISTS (
-              SELECT 1 FROM message_views v
-               WHERE v.chat_id = $1 AND v.seq = $3 AND v.user_id = cm.user_id
-            )`,
-        [chatId, message.sender_id, seq]
-      );
-      if (pending[0].remaining > 0) return { ok: true, consumed: false };
-
-      // Cleared, not deleted: `deleted_at` would hide it from history
-      // entirely, and a view-once message should leave a visible "opened"
-      // marker where it was.
-      await this.pool.query(
-        `UPDATE messages SET body = NULL, media = NULL, entities = NULL
-          WHERE chat_id = $1 AND seq = $2`,
-        [chatId, seq]
-      );
-      return { ok: true, consumed: true };
     },
 
     /**

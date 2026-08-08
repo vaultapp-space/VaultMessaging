@@ -53,6 +53,12 @@ export const p2pFileTransferState = writable({
 // ─── Non-reactive transport state (module-scoped, persistent) ─
 let peerConnection = null;
 let peerConnectionPromise = null;
+// Bumped by resetCallState() on every hangup/reset. initializePeerConnection
+// captures this before its TURN-credential fetch (an async gap the user can
+// hang up during) and checks it again after — a mismatch means this call
+// attempt was cancelled while waiting, so it bails out instead of creating
+// an RTCPeerConnection nothing will ever close.
+let callGeneration = 0;
 let localStream = null;
 let localStreamPromise = null;
 let screenStream = null;
@@ -259,16 +265,20 @@ function hasTurnServer(iceServers) {
 function initializePeerConnection(peerId) {
   if (peerConnectionPromise) return peerConnectionPromise;
 
+  const myGeneration = callGeneration;
+
   peerConnectionPromise = (async () => {
     let iceServers;
 
     try {
       const data = await fetchTurnCredentials();
+      if (myGeneration !== callGeneration) return; // cancelled while fetching TURN creds
       if (!data || !data.iceServers || !hasTurnServer(data.iceServers)) {
         throw new Error('TURN credentials response contained no relay servers');
       }
       iceServers = data.iceServers;
     } catch (e) {
+      if (myGeneration !== callGeneration) return; // already hung up — nothing to report
       console.error('Failed to fetch TURN relay credentials — cannot start a privacy-preserving call:', e);
       sendClientDebugLog('fetchTurnCredentials failed', e);
       peerConnectionPromise = null;
@@ -584,6 +594,7 @@ export async function stopScreenShare() {
 }
 
 export function resetCallState() {
+  callGeneration++;
   if (fileDataChannel) {
     try { fileDataChannel.close(); } catch (e) {}
     fileDataChannel = null;

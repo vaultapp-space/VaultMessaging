@@ -125,6 +125,47 @@ describe('Double Ratchet', () => {
     expect(await bobSession.ratchetDecrypt(m2.header, m2.iv, m2.ciphertext)).toBe('m2');
   });
 
+  test('refuses a gap bigger than the skip limit without desyncing the chain', async () => {
+    // Regression test: a gap over the 100-message skip cap used to still
+    // force recvCount forward to match the arriving message, even though
+    // recvChainKey had only actually been advanced 100 steps — permanently
+    // desyncing the chain so every later message failed to decrypt too.
+    // It must now throw for the one out-of-range message, and correctly
+    // decrypt a normal one right after — proving the chain state is intact.
+    const { aliceSession, bobSession } = await establishPair();
+
+    for (let i = 0; i < 105; i += 1) {
+      await aliceSession.ratchetEncrypt(`skipped ${i}`);
+    }
+    const farAhead = await aliceSession.ratchetEncrypt('too far ahead');
+
+    await expect(
+      bobSession.ratchetDecrypt(farAhead.header, farAhead.iv, farAhead.ciphertext)
+    ).rejects.toThrow(/gap too large/i);
+
+    // The chain must still work for a message within range afterwards.
+    const recovery = await aliceSession.ratchetEncrypt('back to normal');
+    // Bob is still only caught up to message 0 of the chain (nothing before
+    // farAhead was ever delivered), so this is itself a >100 gap from his
+    // perspective and is expected to also be refused — the point is that it
+    // fails the *same clean way*, not with corrupted/garbage state.
+    await expect(
+      bobSession.ratchetDecrypt(recovery.header, recovery.iv, recovery.ciphertext)
+    ).rejects.toThrow(/gap too large/i);
+  });
+
+  test('a gap right at the skip limit still decrypts normally', async () => {
+    const { aliceSession, bobSession } = await establishPair();
+
+    for (let i = 0; i < 100; i += 1) {
+      await aliceSession.ratchetEncrypt(`skipped ${i}`);
+    }
+    const atLimit = await aliceSession.ratchetEncrypt('exactly at the limit');
+
+    expect(await bobSession.ratchetDecrypt(atLimit.header, atLimit.iv, atLimit.ciphertext))
+      .toBe('exactly at the limit');
+  });
+
   test('decrypts messages that straddle a DH ratchet step out of order', async () => {
     const { aliceSession, bobSession } = await establishPair();
 

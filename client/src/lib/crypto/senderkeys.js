@@ -146,6 +146,19 @@ export class SenderKeySession {
       throw new Error('Message key already consumed or expired');
     }
 
+    // Unlike the pairwise ratchet (ratchet.js's _skipKeys), this had no cap:
+    // one group message with messageNumber set far ahead of the receiver's
+    // count would make every other member's client synchronously derive
+    // keys that many times, growing skippedKeys and blocking the tab until
+    // it runs out of memory — a single message as a DoS against the whole
+    // group. Same 100-message limit as the pairwise ratchet, and refusing
+    // before mutating chainKey/messageNumber so a too-large gap fails just
+    // this one message rather than leaving the chain in a half-advanced,
+    // permanently desynced state.
+    const skipGap = packet.messageNumber - this.messageNumber;
+    if (skipGap > 100) {
+      throw new Error(`Refusing to skip ${skipGap} group messages (limit 100) — gap too large to recover safely.`);
+    }
     while (this.messageNumber < packet.messageNumber) {
       const skippedMsgKey = await hmacSHA256(this.chainKey, CK_MSG);
       this.skippedKeys.set(this.messageNumber, skippedMsgKey);

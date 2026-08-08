@@ -23,7 +23,7 @@
 import { get } from 'svelte/store';
 
 import { historyKey, groupSenderKeys, groupKeyRecipients } from '../stores/session.js';
-import { addOptimisticMessage, confirmMessage, conversations } from '../stores/messages.js';
+import { addOptimisticMessage, confirmMessage, markMessageFailed, conversations } from '../stores/messages.js';
 import { sendMessage as postEncryptedMessage } from '../api/http.js';
 import { SenderKeySession } from '../crypto/senderkeys.js';
 import { encrypt as encryptSelf } from '../crypto/keys.js';
@@ -65,6 +65,14 @@ export async function encryptAndSend(text, isAttachment = false, context = {}) {
     expiresAt: new Date(Date.now() + ttlMinutes * 60000).toISOString(),
   });
 
+  // Not re-indented below — this wraps the existing group/1:1 send logic
+  // wholesale so any thrown error (network failure, the "all group members
+  // failed" throw a few dozen lines down, etc.) marks the optimistic bubble
+  // failed instead of leaving it stuck on its "sending" spinner forever,
+  // which is what happened before: confirmMessage() is only ever reached on
+  // success, and nothing else in this path used to touch the message on
+  // failure at all.
+  try {
   if (peer.isGroup) {
     // 1. Get or create our own Sender Key for this group
     const mySessionKey = `${peer.id}:${me.id}`;
@@ -309,6 +317,10 @@ export async function encryptAndSend(text, isAttachment = false, context = {}) {
       return [...convs];
     });
   }
+  } catch (err) {
+    markMessageFailed(peer.id, tempId);
+    throw err;
+  }
 }
 
 // ============================================================
@@ -424,20 +436,29 @@ async function sendCloud(chat, envelope, context = {}) {
     expiresAt: new Date(Date.now() + (envelope.ttl ?? 86400) * 1000).toISOString(),
   });
 
-  const stored = await sendCloudMessage(chat.id, {
-    type: envelope.t,
-    body: envelope.body,
-    entities: envelope.entities?.length ? envelope.entities : null,
-    media: envelope.media,
-    replyToSeq: envelope.replyTo?.seq ?? null,
-    groupedId: envelope.groupedId,
-    ttlSeconds: envelope.ttl,
-    clientRandomId,
-    viewOnce: envelope.viewOnce || false,
-    // Present only in a forum group with a topic selected; omitted, the
-    // message belongs to the chat as a whole.
-    topicId: context.topicId ?? null,
-  });
+  let stored;
+  try {
+    stored = await sendCloudMessage(chat.id, {
+      type: envelope.t,
+      body: envelope.body,
+      entities: envelope.entities?.length ? envelope.entities : null,
+      media: envelope.media,
+      replyToSeq: envelope.replyTo?.seq ?? null,
+      groupedId: envelope.groupedId,
+      ttlSeconds: envelope.ttl,
+      clientRandomId,
+      viewOnce: envelope.viewOnce || false,
+      // Present only in a forum group with a topic selected; omitted, the
+      // message belongs to the chat as a whole.
+      topicId: context.topicId ?? null,
+    });
+  } catch (err) {
+    // Otherwise the optimistic bubble above is stuck on its "sending"
+    // spinner forever — confirmMessage() below is the only thing that ever
+    // touched it again, and that only runs on success.
+    markMessageFailed(storeKey, tempId);
+    throw err;
+  }
 
   confirmMessage(storeKey, tempId, {
     id: stored.id,

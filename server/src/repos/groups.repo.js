@@ -92,36 +92,65 @@ export function createGroups({ pool }) {
   },
 
 
+  // chat_members and group_members are two views of the same membership —
+  // group routing/access checks key off chat_members, while group listings
+  // key off group_members. These used to be two unguarded queries, the first
+  // wrapped in a swallowed .catch(() => {}), so a mid-write failure (a
+  // connection blip, a deadlock) could leave someone in one table but not
+  // the other: removed from the group listing but still receiving its
+  // messages, or the reverse. Same BEGIN/COMMIT/ROLLBACK shape as
+  // createGroup() above — both tables move together or neither does.
   async removeGroupMember(groupId, userId) {
-    await this.pool.query(
-      `DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2`,
-      [groupId, userId]
-    ).catch(() => {});
-    await this.pool.query(
-      `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2`,
-      [groupId, userId]
-    );
-    const remaining = await this.pool.query(
-      `SELECT COUNT(*)::int AS count FROM group_members WHERE group_id = $1`,
-      [groupId]
-    );
-    if (remaining.rows[0].count === 0) {
-      await this.pool.query(`DELETE FROM groups WHERE id = $1`, [groupId]);
-      return { deleted: true };
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2`,
+        [groupId, userId]
+      );
+      await client.query(
+        `DELETE FROM group_members WHERE group_id = $1 AND user_id = $2`,
+        [groupId, userId]
+      );
+      const remaining = await client.query(
+        `SELECT COUNT(*)::int AS count FROM group_members WHERE group_id = $1`,
+        [groupId]
+      );
+      let deleted = false;
+      if (remaining.rows[0].count === 0) {
+        await client.query(`DELETE FROM groups WHERE id = $1`, [groupId]);
+        deleted = true;
+      }
+      await client.query('COMMIT');
+      return { deleted };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
     }
-    return { deleted: false };
   },
 
   async addGroupMember(groupId, userId) {
-    await this.pool.query(
-      `INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2)
-       ON CONFLICT (chat_id, user_id) DO NOTHING`,
-      [groupId, userId]
-    ).catch(() => {});
-    await this.pool.query(
-      `INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [groupId, userId]
-    );
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO chat_members (chat_id, user_id) VALUES ($1, $2)
+         ON CONFLICT (chat_id, user_id) DO NOTHING`,
+        [groupId, userId]
+      );
+      await client.query(
+        `INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [groupId, userId]
+      );
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   },
 
   // One query, not 1 + 2N. This used to fetch the caller's group ids and then

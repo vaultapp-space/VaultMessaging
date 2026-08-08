@@ -26,6 +26,10 @@
   export let onDelete = null;
   export let onTogglePin = null;
   export let onForward = null;
+  // Re-attempts a message stuck with message.failed === true (see
+  // lib/chat/send.js's markMessageFailed). Null in contexts that can't
+  // retry — a message list rendered outside a live chat, for instance.
+  export let onRetry = null;
 
   // A deliberately small set. A full emoji picker is Phase 2 work in its own
   // right; these six cover the overwhelming majority of real usage and keep
@@ -577,7 +581,14 @@
         <!-- Meta row -->
         <div class="flex items-center justify-end gap-1.5 mt-1 -mb-0.5">
           {#if message.failed}
-            <span class="text-[9px] text-vault-danger">Failed to send</span>
+            {#if onRetry}
+              <button
+                on:click={() => onRetry(message)}
+                class="text-[9px] text-vault-danger underline decoration-dotted hover:text-vault-danger/80 focus:outline-none"
+              >Failed to send · Tap to retry</button>
+            {:else}
+              <span class="text-[9px] text-vault-danger">Failed to send</span>
+            {/if}
           {/if}
 
           {#if message.pinnedAt}

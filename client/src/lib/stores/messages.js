@@ -307,6 +307,44 @@ export function updateMessageStatus(peerId, messageId, status) {
 }
 
 /**
+ * Marks an optimistic message as failed instead of leaving it stuck on
+ * "sending" forever. confirmMessage() is only ever called on a successful
+ * send — a thrown network/server error skipped it entirely with nothing to
+ * mark the bubble any other way. MessageBubble.svelte already has the
+ * `message.failed` rendering (red border, "Failed to send" label) built —
+ * this is what actually sets that flag.
+ */
+export function markMessageFailed(peerId, messageId) {
+  // Stays in knownMessageIds — the message is still present in the store,
+  // just flagged failed, unlike removeMessage() below.
+  messagesByPeer.update(map => {
+    const messages = map.get(peerId) || [];
+    const idx = messages.findIndex(m => m.id === messageId);
+    if (idx !== -1) {
+      messages[idx] = { ...messages[idx], optimistic: false, status: 'sent', failed: true };
+    }
+    map.set(peerId, messages);
+    return new Map(map);
+  });
+}
+
+/**
+ * Removes a message from the store — used to clear a failed bubble before
+ * retrying, so the retry's fresh optimistic message doesn't end up sitting
+ * next to a stale failed duplicate of itself.
+ */
+export function removeMessage(peerId, messageId) {
+  knownMessageIds.delete(messageId);
+  messagesByPeer.update(map => {
+    const messages = map.get(peerId) || [];
+    const idx = messages.findIndex(m => m.id === messageId);
+    if (idx !== -1) messages.splice(idx, 1);
+    map.set(peerId, messages);
+    return new Map(map);
+  });
+}
+
+/**
  * Set typing indicator for a peer.
  */
 export function setTyping(peerId) {

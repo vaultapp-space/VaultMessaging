@@ -80,6 +80,26 @@ describe('Sender Keys', () => {
     expect(await bob.decrypt(m1)).toBe('m1');
   });
 
+  test('refuses to skip an unbounded gap (DoS regression)', async () => {
+    // Regression test: this loop used to have no cap at all — one packet
+    // with messageNumber set far ahead made every member's client
+    // synchronously derive that many keys, growing skippedKeys without
+    // bound. A single crafted (or buggy) group message was a one-shot DoS
+    // against every other member.
+    const { sender, members: [bob] } = await senderWithMembers(1);
+
+    // Advance the sender's real counter without going through bob, so the
+    // forged-looking gap is genuine rather than a signature mismatch.
+    for (let i = 0; i < 150; i += 1) {
+      await sender.encrypt(`m${i}`);
+    }
+    const farAhead = await sender.encrypt('too far ahead');
+
+    await expect(bob.decrypt(farAhead)).rejects.toThrow(/gap too large/i);
+    // Must not have derived and stored 150+ skipped keys while failing.
+    expect(bob.skippedKeys.size).toBe(0);
+  });
+
   test('a forged signature is rejected', async () => {
     // Sender Keys are symmetric, so every member could otherwise forge
     // messages as the sender. The ECDSA signature is what prevents that.

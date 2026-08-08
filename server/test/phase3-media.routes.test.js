@@ -150,6 +150,32 @@ describe('view-once media', () => {
     assert.equal(gone.messages[0].body, null);
   });
 
+  test('two simultaneous last viewers only consume the message once', async () => {
+    // Regression test: recordView() used to read the "remaining viewers"
+    // count and write the consuming view as two separate unguarded
+    // statements. When the last two viewers opened it at the same instant,
+    // each could run that count query before the other's view was visible,
+    // so both saw themselves as last and both reported consumed:true —
+    // firing message_consumed twice for one message.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const carol = await registerUser(app);
+    const group = await makeCloudGroup(alice, [bob, carol]);
+
+    const sent = (await send(alice, group.id, { body: 'race me', viewOnce: true })).json();
+
+    const [bobRes, carolRes] = await Promise.all([
+      view(bob, group.id, sent.seq),
+      view(carol, group.id, sent.seq),
+    ]);
+    const consumedCount = [bobRes.json().consumed, carolRes.json().consumed]
+      .filter(Boolean).length;
+    assert.equal(consumedCount, 1, 'exactly one of the two simultaneous viewers should consume it');
+
+    const gone = (await history(carol, group.id)).json();
+    assert.equal(gone.messages[0].body, null);
+  });
+
   test('an ordinary message is unaffected by being viewed', async () => {
     const alice = await registerUser(app);
     const bob = await registerUser(app);

@@ -25,7 +25,7 @@
   import { encryptSignalingPayload as encryptSignaling } from '../lib/chat/sessions.js';
   import { onMount, afterUpdate, onDestroy, tick } from 'svelte';
   import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall } from '../lib/stores/session.js';
-  import { messagesByPeer, addMessages, typingUsers, conversations, restoreBackup } from '../lib/stores/messages.js';
+  import { messagesByPeer, addMessages, typingUsers, conversations, restoreBackup, removeMessage } from '../lib/stores/messages.js';
   import { fetchMessages, fetchChatMessages, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, leaveGroup, removeGroupMember } from '../lib/api/http.js';
   import { sendTyping, onWsEvent } from '../lib/api/ws.js';
   // `encryptFile`, not `encrypt` aliased to that name. The alias meant
@@ -349,6 +349,17 @@
     } finally {
       loading = false;
       loadInProgress = false;
+      // If the peer changed again while this load was in flight, the
+      // reactive block below only fires on a *change* to $activePeer or
+      // loadedPeerId — and the switch that happened mid-load hit the
+      // loadInProgress guard above and returned without updating
+      // loadedPeerId, so nothing would otherwise re-trigger a fetch for
+      // wherever the user actually ended up. Without this, that
+      // conversation's history just never loads until you navigate away
+      // and back.
+      if ($activePeer && $activePeer.id !== loadedPeerId) {
+        loadMessages();
+      }
     }
   }
 
@@ -834,6 +845,32 @@
       showToast(err?.message ? `Failed to send message: ${err.message}` : 'Failed to send message');
     } finally {
       sendingMessage = false;
+    }
+  }
+
+  // Tapping "Failed to send" on a stuck bubble (see lib/chat/send.js's
+  // markMessageFailed). Removes the failed placeholder and re-runs the send
+  // with its original envelope — the same one both send paths already store
+  // on the optimistic message for exactly this.
+  async function retryFailedMessage(message) {
+    if (!message?.envelope) {
+      showToast('Cannot retry this message — try sending it again.');
+      return;
+    }
+    removeMessage($activePeer.id, message.id);
+    try {
+      await sendToChat(
+        { id: $activePeer.chatId || $activePeer.id, mode: $activePeer.mode || 'secret' },
+        message.envelope,
+        {
+          peer: $activePeer, currentUser: $currentUser, ttlMinutes,
+          chatId: $activePeer.chatId,
+          topicId: activeTopicId,
+        }
+      );
+    } catch (err) {
+      console.error('Retry failed:', err);
+      showToast(err?.message ? `Failed to send message: ${err.message}` : 'Failed to send message');
     }
   }
 
@@ -1970,6 +2007,7 @@
           onTogglePin={handleTogglePin}
           onForward={startForward}
           onJumpToSeq={jumpToSeq}
+          onRetry={retryFailedMessage}
           quoted={quotedMessage(msg.replyToSeq)}
           message={msg}
           isOwn={msg.senderId === $currentUser?.id}
