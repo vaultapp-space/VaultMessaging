@@ -791,9 +791,14 @@
       </div>
     </div>
   {/if}
-</div>
 
-<MobileTabBar bind:showBackupModal />
+  <!-- Nested inside this wrapper, not a sibling of it: the wrapper's own
+       z-10 caps everything within it to one stacking layer, so a sibling
+       tab bar here would always paint above every sidebar/chat modal
+       (z-50+) no matter what z-index the tab bar used — only nesting lets
+       its z-index actually compete with theirs. -->
+  <MobileTabBar bind:showBackupModal />
+</div>
 
 <!-- Mini call bar: shown when a call is live but the user has navigated
      away from that peer's chat (ChatView renders the full call UI itself

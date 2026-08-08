@@ -826,7 +826,7 @@
      this stays in normal flow inside that already-padded <main> — hence the
      max-md: prefix rather than the previous $sidebarOpen-conditional style. -->
 <aside class="w-full md:w-80 md:min-w-[320px] h-full flex flex-col bg-vault-surface border-r border-vault-border relative z-20 max-md:pb-14
-  max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:pt-[max(env(safe-area-inset-top,0px),1.5rem)]
+  max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-[42] max-md:pt-[max(env(safe-area-inset-top,0px),1.5rem)]
   max-md:transition-transform max-md:duration-300 max-md:ease-out motion-reduce:max-md:transition-none"
   class:max-md:translate-x-0={$sidebarOpen}
   class:max-md:-translate-x-full={!$sidebarOpen}
@@ -1676,7 +1676,7 @@
         {/if}
 
         <div class="text-[10px] text-vault-text-dim leading-relaxed bg-vault-elevated p-3 border border-vault-border rounded-xl">
-          🔒 **Zero-Knowledge Security:** Your backup is encrypted on your client using PBKDF2/AES-GCM before writing to storage. The server never receives your passphrase or decrypted message logs.
+          🔒 <strong class="text-vault-text-secondary">Zero-Knowledge Security:</strong> Your backup is encrypted on your client using PBKDF2/AES-GCM before writing to storage. The server never receives your passphrase or decrypted message logs.
         </div>
 
         <div class="border-t border-vault-border pt-4 space-y-3">

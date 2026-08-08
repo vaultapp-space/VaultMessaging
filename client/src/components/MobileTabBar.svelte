@@ -31,7 +31,7 @@
 
 {#if !hidden}
   <nav
-    class="md:hidden fixed bottom-0 inset-x-0 z-[60] flex items-stretch bg-vault-surface border-t border-vault-border"
+    class="md:hidden fixed bottom-0 inset-x-0 z-[45] flex items-stretch bg-vault-surface border-t border-vault-border"
     style="padding-bottom: env(safe-area-inset-bottom, 0px)"
   >
     <button

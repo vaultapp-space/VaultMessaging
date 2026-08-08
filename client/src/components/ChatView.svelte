@@ -1593,7 +1593,7 @@
 <!-- The theme scopes to this pane, not the document: it recolours the open
      conversation without restyling the sidebar or anything else. -->
 <div
-  class="flex-1 flex flex-col bg-vault-black h-full animate-fade-in relative"
+  class="flex-1 min-w-0 flex flex-col bg-vault-black h-full animate-fade-in relative"
   data-chat-theme={chatTheme || undefined}
 >
   <DonateBar />
@@ -1604,11 +1604,11 @@
        paint underneath it. They stay visible but stop receiving clicks, which
        looks like a dead button rather than a z-index problem. -->
   <div class="flex items-center justify-between px-4 py-3 border-b border-vault-border glass-strong relative z-40">
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-3 min-w-0 flex-1">
       <!-- Back button (mobile) -->
       <button
         on:click={goBack}
-        class="md:hidden p-1.5 rounded-lg text-vault-text-dim hover:text-vault-text hover:bg-vault-elevated transition-all"
+        class="md:hidden p-1.5 rounded-lg text-vault-text-dim hover:text-vault-text hover:bg-vault-elevated transition-all flex-shrink-0"
         aria-label="Back to conversations"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1622,11 +1622,11 @@
       >
         {$activePeer?.username?.[0]?.toUpperCase() || '?'}
       </div>
-      <div>
+      <div class="min-w-0">
         <div class="flex items-center gap-1.5">
-          <div class="text-sm font-semibold text-vault-text">{$activePeer?.username || 'Unknown'}</div>
+          <div class="text-sm font-semibold text-vault-text truncate">{$activePeer?.username || 'Unknown'}</div>
           {#if savedIdentityKey && savedIdentityKey === currentRatchet?.peerIdentityKey}
-            <svg class="w-3.5 h-3.5 text-vault-accent" viewBox="0 0 24 24" fill="currentColor" title="Verified Identity">
+            <svg class="w-3.5 h-3.5 text-vault-accent flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" title="Verified Identity">
               <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
             </svg>
           {/if}
@@ -1634,7 +1634,7 @@
         {#if !$activePeer.isGroup && chatCaps.has('safetyNumbers')}
           <button
             on:click={() => { if (!isTyping) showSafetyNumberModal = true; }}
-            class="text-[10px] text-vault-text-dim flex items-center gap-1 hover:text-vault-accent transition-colors cursor-pointer text-left focus:outline-none"
+            class="text-[10px] text-vault-text-dim flex items-center gap-1 hover:text-vault-accent transition-colors cursor-pointer text-left focus:outline-none w-full min-w-0"
             title="Click to verify fingerprint"
             disabled={isTyping}
           >
@@ -1642,29 +1642,29 @@
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
-            End-to-end encrypted · verify
+            <span class="truncate">End-to-end encrypted · verify</span>
           </button>
         {:else if !$activePeer.isGroup}
           <!-- Cloud chat. Offering "fingerprint safety numbers" here would be
                actively misleading: there is no ratchet to verify, and the
                server can read this conversation. Say so plainly. -->
-          <div class="text-[10px] text-vault-text-dim flex items-center gap-1" title="Stored on the server so it can sync across your devices">
+          <div class="text-[10px] text-vault-text-dim flex items-center gap-1 min-w-0" title="Stored on the server so it can sync across your devices">
             {#if peerPresence && describePresence(peerPresence)}
               {#if peerPresence.online}
-                <span class="w-1.5 h-1.5 rounded-full bg-vault-success inline-block"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-vault-success inline-block flex-shrink-0"></span>
               {/if}
-              <span>{describePresence(peerPresence)}</span>
-              <span aria-hidden="true">·</span>
+              <span class="flex-shrink-0">{describePresence(peerPresence)}</span>
+              <span aria-hidden="true" class="flex-shrink-0">·</span>
             {/if}
             <svg class="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
             </svg>
-            Cloud chat · syncs across devices
+            <span class="truncate">Cloud chat · syncs across devices</span>
           </div>
         {:else}
           <button
             on:click={() => showMembersModal = true}
-            class="text-[10px] text-vault-text-dim flex items-center gap-1 hover:text-vault-accent transition-colors cursor-pointer text-left focus:outline-none"
+            class="text-[10px] text-vault-text-dim flex items-center gap-1 hover:text-vault-accent transition-colors cursor-pointer text-left focus:outline-none w-full min-w-0"
             title="Click to view group members"
           >
             <svg class="w-3 h-3 text-vault-text-dim flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1673,14 +1673,14 @@
               <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
               <path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
-            {$activePeer.members?.length || 0} members
+            <span class="truncate">{$activePeer.members?.length || 0} members</span>
           </button>
         {/if}
       </div>
     </div>
 
     <!-- Header Actions -->
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-1 flex-shrink-0">
       <button
         on:click={() => showTtlSelector = !showTtlSelector}
         class="p-2 rounded-lg {showTtlSelector ? 'text-vault-warning bg-vault-elevated' : 'text-vault-text-dim'} hover:text-vault-warning hover:bg-vault-elevated transition-all focus:outline-none"

@@ -1,6 +1,6 @@
 <script>
   // Mounted once at the app root (see App.svelte). Stacks above the mobile
-  // tab bar (z-[60]) and clears the bottom safe-area inset the same way
+  // tab bar (z-[45]) and clears the bottom safe-area inset the same way
   // MobileTabBar.svelte does, so a toast never lands under the gesture bar
   // or, on desktop, floats bottom-center above nothing in particular.
   import { fly, fade } from 'svelte/transition';

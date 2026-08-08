@@ -200,7 +200,7 @@
   }
 </script>
 
-<div class="flex-1 flex flex-col bg-vault-black h-full animate-fade-in">
+<div class="flex-1 min-w-0 flex flex-col bg-vault-black h-full animate-fade-in">
   <DonateBar />
 
   <!-- Header -->
