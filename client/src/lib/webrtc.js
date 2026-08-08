@@ -59,6 +59,16 @@ let peerConnectionPromise = null;
 // attempt was cancelled while waiting, so it bails out instead of creating
 // an RTCPeerConnection nothing will ever close.
 let callGeneration = 0;
+
+// How long an outgoing call rings before giving up on it. There was
+// previously no limit at all: calling someone offline (the server has
+// nowhere to deliver call_invite to — unlike messages, signaling isn't
+// queued for later) meant no call_accept/call_reject could ever arrive, and
+// the caller's UI — both the active-call screen and the Calls tab entry —
+// stayed on "ringing" forever. 45s matches ordinary phone/VoIP ring timeout
+// conventions.
+const RING_TIMEOUT_MS = 45000;
+let ringTimeoutId = null;
 let localStream = null;
 let localStreamPromise = null;
 let screenStream = null;
@@ -445,6 +455,26 @@ export async function startCall(peer, type, encryptCallKeyFn) {
       senderUsername: get(currentUser)?.username,
       encryptedKey
     });
+
+    if (ringTimeoutId) clearTimeout(ringTimeoutId);
+    ringTimeoutId = setTimeout(() => {
+      ringTimeoutId = null;
+      // Guards against a call that already resolved (accepted/rejected/
+      // hung up) by the time this fires, and against it firing for a
+      // *different*, later call — status/id are re-checked live rather than
+      // clearing this timer from every place a call can end.
+      const call = get(activeCall);
+      if (!call || call.id !== callId || call.status !== 'ringing') return;
+
+      wsSend({ type: 'call_hangup', recipientId: peer.id });
+      recentCalls.update(calls => {
+        const found = calls.find(c => c.id === callId);
+        if (found) found.status = 'missed';
+        return [...calls];
+      });
+      activeCall.set(null);
+      showToast(`${peer.username} didn't answer.`, { type: 'info' });
+    }, RING_TIMEOUT_MS);
   } catch (err) {
     console.error('Failed to complete call initialization:', err);
     showToast('Failed to establish encrypted call session.');
@@ -595,6 +625,10 @@ export async function stopScreenShare() {
 
 export function resetCallState() {
   callGeneration++;
+  if (ringTimeoutId) {
+    clearTimeout(ringTimeoutId);
+    ringTimeoutId = null;
+  }
   if (fileDataChannel) {
     try { fileDataChannel.close(); } catch (e) {}
     fileDataChannel = null;

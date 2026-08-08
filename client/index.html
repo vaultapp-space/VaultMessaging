@@ -9,19 +9,46 @@
 
     <title>Vault — Secure Anonymous Messaging</title>
 
+    <!-- Declares vaultapp.space (not www.vaultapp.space, which nginx now
+         redirects here — see deploy/nginx/vaultapp.space.conf) as the one
+         URL search engines should index, so ranking signals for the two
+         previously-identical origins consolidate onto a single page
+         instead of splitting. -->
+    <link rel="canonical" href="https://vaultapp.space/" />
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://vaultapp.space" />
+    <meta property="og:url" content="https://vaultapp.space/" />
     <meta property="og:title" content="Vault — Secure Anonymous Messaging" />
     <meta property="og:description" content="Vault combines double-ratcheted E2EE messaging with confidential voice/video calls. Zero PII, zero persistence, 24-hour auto-delete." />
     <meta property="og:image" content="https://vaultapp.space/og-image.png" />
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://vaultapp.space" />
+    <meta property="twitter:url" content="https://vaultapp.space/" />
     <meta property="twitter:title" content="Vault — Secure Anonymous Messaging" />
     <meta property="twitter:description" content="Vault combines double-ratcheted E2EE messaging with confidential voice/video calls. Zero PII, zero persistence, 24-hour auto-delete." />
     <meta property="twitter:image" content="https://vaultapp.space/og-image.png" />
+
+    <!-- Structured data: makes Vault eligible for richer search-result
+         treatment (an app card rather than a bare blue link). Price 0 is
+         literal, not a placeholder — there is no paid tier. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Vault",
+        "url": "https://vaultapp.space/",
+        "description": "End-to-end encrypted anonymous messaging. Zero PII, zero persistence, 24-hour auto-delete.",
+        "applicationCategory": "SocialNetworkingApplication",
+        "operatingSystem": "Android, Web",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    </script>
 
     <!-- Preconnect to Google Fonts for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
