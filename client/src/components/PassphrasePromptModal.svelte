@@ -3,6 +3,7 @@
   // ConfirmDialog.svelte/ToastHost.svelte.
   import { passphrasePromptState } from '../lib/stores/passphrasePrompt.js';
   import { estimatePasswordStrength } from '../lib/passwordStrength.js';
+  import { fade, scale } from 'svelte/transition';
 
   let value = '';
   let confirmValue = '';
@@ -44,13 +45,15 @@
   <div
     class="fixed inset-0 z-[80] flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text"
     on:click|self={cancel}
+    transition:fade={{ duration: 150 }}
   >
     <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
     <form
       on:submit|preventDefault={submit}
-      class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left"
+      class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden text-left"
       role="dialog"
       aria-modal="true"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
     >
       <div class="px-5 py-4 border-b border-vault-border">
         <h3 class="text-sm font-semibold text-vault-text">{$passphrasePromptState.title}</h3>

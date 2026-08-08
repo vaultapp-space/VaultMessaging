@@ -255,7 +255,7 @@
   </div>
 
   <!-- Feed -->
-  <div class="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2">
+  <div class="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2 bg-[radial-gradient(var(--color-vault-border)_1px,transparent_1px)] [background-size:22px_22px]">
     {#if loading}
       <div class="text-center text-xs text-vault-text-dim py-10">Loading…</div>
     {:else if posts.length === 0}

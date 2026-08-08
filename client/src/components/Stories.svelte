@@ -11,6 +11,7 @@
   // under, so there is no setting to extend it.
 
   import { onMount, onDestroy } from 'svelte';
+  import { fade, scale } from 'svelte/transition';
   import {
     fetchStories, postStory, markStoryViewed, fetchStoryViewers, deleteStory,
     uploadPublicMedia, publicMediaUrl,
@@ -297,8 +298,12 @@
   <div
     class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
     on:click|self={() => (open = null)}
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-2">
+    <div
+      class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-2"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <!-- One segment per story: filled for ones already seen, animating
            for the current one (restarted on every open.id change via the
            #key block), empty for what's ahead. min-w keeps segments legible
@@ -328,13 +333,21 @@
         >✕</button>
       </div>
 
-      <div class="relative min-h-24 flex flex-col items-center justify-center gap-2 rounded-xl bg-vault-elevated px-3 py-4">
+      <div class="relative min-h-24 flex flex-col items-center justify-center gap-2 rounded-xl bg-vault-elevated px-3 py-4 overflow-hidden">
         {#if open.media?.fileId}
-          <img
-            src={publicMediaUrl(open.media.fileId)}
-            alt={open.caption || 'Story'}
-            class="max-h-64 rounded-lg object-contain"
-          />
+          <!-- Keyed on the story id, not just a src swap: Svelte only fires
+               in:/out: transitions when a node is inserted/removed, and the
+               Ken Burns pan/zoom needs to restart clean per story rather
+               than continue mid-cycle on a reused <img>. Keying forces both. -->
+          {#key open.id}
+            <img
+              src={publicMediaUrl(open.media.fileId)}
+              alt={open.caption || 'Story'}
+              class="max-h-64 rounded-lg object-contain story-kenburns"
+              in:fade={{ duration: 200 }}
+              out:fade={{ duration: 200 }}
+            />
+          {/key}
         {/if}
         {#if open.caption}
           <p class="text-sm text-vault-text text-center break-words">{open.caption}</p>
@@ -389,5 +402,17 @@
       animation: none;
       width: 100%;
     }
+  }
+
+  /* Same 5000ms as STORY_DURATION_MS/story-progress above, so the slow
+     drift finishes right as the story advances rather than visibly
+     stopping partway through. app.css's global reduced-motion rule already
+     collapses this to a single static frame. */
+  .story-kenburns {
+    animation: story-kenburns 5000ms ease-out forwards;
+  }
+  @keyframes story-kenburns {
+    from { transform: scale(1) translate(0, 0); }
+    to   { transform: scale(1.08) translate(-1.5%, -1.5%); }
   }
 </style>

@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher, onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import { fade, scale } from 'svelte/transition';
   import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { openPrivateChat, fetchFolders, createFolder, setFolderChats, deleteFolder,
@@ -1479,7 +1480,10 @@
        max-md:pb-14 on the overlay reserves exactly the tab bar's height so
        it stays visible (and tappable) above the panel rather than the panel
        running underneath it. -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text max-md:p-0 max-md:pb-14 max-md:items-stretch">
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text max-md:p-0 max-md:pb-14 max-md:items-stretch"
+    transition:fade={{ duration: 150 }}
+  >
     <!-- max-md:pt-[env(...)] because max-md:h-full/fixed above escapes
          App.svelte's <main> padding-top the same way every other fixed
          full-screen panel in this app does — this one was missed when that
@@ -1492,7 +1496,10 @@
          built specifically to track that correctly instead of a stale
          value, which is what pushed the Done button below the visible
          area. -->
-    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up max-md:max-w-full max-md:h-full max-md:max-h-[100dvh] max-md:rounded-none max-md:flex max-md:flex-col max-md:pt-[max(env(safe-area-inset-top,0px),1.5rem)]">
+    <div
+      class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden max-md:max-w-full max-md:h-full max-md:max-h-[100dvh] max-md:rounded-none max-md:flex max-md:flex-col max-md:pt-[max(env(safe-area-inset-top,0px),1.5rem)]"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center max-md:flex-shrink-0">
         <h3 class="text-sm font-semibold text-vault-text">Settings</h3>
         <button on:click={() => showBackupModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close settings">
@@ -1750,8 +1757,14 @@
 {/if}
 
 {#if showSyncModal}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
-    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-center">
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text"
+    transition:fade={{ duration: 150 }}
+  >
+    <div
+      class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden text-center"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
         <h3 class="text-sm font-semibold text-vault-text">Device QR Sync</h3>
         <button on:click={() => showSyncModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close sync modal">
@@ -1813,8 +1826,14 @@
 {/if}
 
 {#if showGroupModal}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text">
-    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left">
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text"
+    transition:fade={{ duration: 150 }}
+  >
+    <div
+      class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden text-left"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center">
         <h3 class="text-sm font-semibold text-vault-text">Create E2EE Group</h3>
         <button on:click={() => { showGroupModal = false; groupMembersSearch = []; groupMembersQuery = ''; groupName = ''; groupAddedUsers = []; }} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close group creation">
@@ -1914,8 +1933,12 @@
   <div
     class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
     on:click|self={() => (showFolderEditor = false)}
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3">
+    <div
+      class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-vault-text">
           {editingFolder ? 'Edit folder' : 'New folder'}
@@ -1970,8 +1993,12 @@
   <div
     class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
     on:click|self={() => (showChannelModal = false)}
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3">
+    <div
+      class="w-full max-w-sm rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-vault-text">New channel</h3>
         <button

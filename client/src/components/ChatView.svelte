@@ -7,6 +7,7 @@
   import { encryptAndSend as sendEncrypted, sendMessage as sendToChat } from '../lib/chat/send.js';
   import { markChatRead, createPoll, updateChatSettings, markStickerUsed } from '../lib/api/http.js';
   import StickerPicker from './StickerPicker.svelte';
+  import VoiceWaveform from './VoiceWaveform.svelte';
   import VoiceChatBar from './VoiceChatBar.svelte';
   import TopicBar from './TopicBar.svelte';
   import { createTextEnvelope, createMediaEnvelope, MessageType } from '$shared/envelope.js';
@@ -24,6 +25,7 @@
   } from '../lib/api/http.js';
   import { encryptSignalingPayload as encryptSignaling } from '../lib/chat/sessions.js';
   import { onMount, afterUpdate, onDestroy, tick } from 'svelte';
+  import { fade, scale } from 'svelte/transition';
   import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall } from '../lib/stores/session.js';
   import { messagesByPeer, addMessages, typingUsers, conversations, restoreBackup, removeMessage } from '../lib/stores/messages.js';
   import { fetchMessages, fetchChatMessages, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, leaveGroup, removeGroupMember } from '../lib/api/http.js';
@@ -1915,10 +1917,15 @@
   {/if}
 
   <!-- Messages Area -->
+  <!-- The dot-grid wallpaper is a CSS radial-gradient, not an image asset:
+       zero network weight (this app avoids extra assets on principle — see
+       lib/safe-fetch.js), scales to any DPI, and rides the existing
+       --color-vault-border-subtle token so it's already correct in both
+       light/dark and never competes with bubble/text contrast. -->
   <div
     bind:this={messagesContainer}
     on:scroll={handleScroll}
-    class="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative"
+    class="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative bg-[radial-gradient(var(--color-vault-border)_1px,transparent_1px)] [background-size:22px_22px]"
   >
     {#if peerBlocked}
       <div class="mx-4 mt-3 mb-1 px-3 py-2 rounded-xl bg-vault-danger/10 border border-vault-danger/30 text-center">
@@ -2275,13 +2282,19 @@
           </button>
 
           <div class="flex flex-col items-center gap-3">
-            <div class="w-28 h-28 rounded-full bg-vault-accent/10 border border-vault-accent/20 flex items-center justify-center text-vault-accent text-4xl font-semibold">
+            <div
+              class="w-28 h-28 rounded-full bg-vault-accent/10 border border-vault-accent/20 flex items-center justify-center text-vault-accent text-4xl font-semibold"
+              class:animate-pulse-glow={$activeCall?.status !== 'ongoing'}
+            >
               {(callingPeer || '?')[0].toUpperCase()}
             </div>
             <div class="text-xl font-semibold text-vault-text">{callingPeer}</div>
             <div class="text-sm text-vault-text-dim">
               {$activeCall?.status === 'ongoing' ? formatDuration(callDurationSeconds) : 'Connecting…'}
             </div>
+            {#if $activeCall?.status === 'ongoing' && !$remoteMicMuted}
+              <VoiceWaveform stream={$remoteStreamStore} />
+            {/if}
             {#if $remoteMicMuted}
               <span class="text-vault-danger text-xs font-medium flex items-center gap-1 animate-pulse">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2314,6 +2327,20 @@
               </span>
             {/if}
           </span>
+          <!-- The video call's compact widget has a matching button (line
+               ~2070). Audio never had one, which left its fullscreen branch
+               below — the big avatar, the live waveform, the mic-muted
+               banner — permanently unreachable through the UI. -->
+          <button
+            on:click={() => callWindowSize = 'fullscreen'}
+            class="p-0.5 rounded hover:bg-vault-elevated text-vault-text-dim hover:text-vault-text transition-all focus:outline-none cursor-pointer"
+            title="Fullscreen"
+            aria-label="Expand to fullscreen"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+          </button>
         </div>
         {#if $verificationWords}
           <div class="text-[9px] bg-vault-black/30 border border-vault-border/50 text-vault-accent font-semibold px-2 py-1 rounded-lg text-center font-mono select-all">
@@ -2731,8 +2758,8 @@
 {/if}
 
 {#if showSafetyNumberModal}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
-    <div class="glass-strong rounded-2xl p-6 max-w-sm w-full border border-vault-border shadow-2xl animate-fade-in-scale">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" transition:fade={{ duration: 150 }}>
+    <div class="glass-strong rounded-2xl p-6 max-w-sm w-full border border-vault-border shadow-2xl" transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}>
       <div class="flex items-center gap-3 mb-4">
         <div class="w-10 h-10 rounded-xl bg-vault-accent/10 flex items-center justify-center text-vault-accent">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2826,8 +2853,8 @@
 {/if}
 
 {#if showMembersModal && $activePeer?.isGroup}
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
-    <div class="glass-strong rounded-2xl p-6 max-w-sm w-full border border-vault-border shadow-2xl animate-fade-in-scale text-left">
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" transition:fade={{ duration: 150 }}>
+    <div class="glass-strong rounded-2xl p-6 max-w-sm w-full border border-vault-border shadow-2xl text-left" transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}>
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-sm font-semibold text-vault-text">Group Members</h3>
         <button on:click={() => showMembersModal = false} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close members list">
@@ -2979,8 +3006,12 @@
     role="dialog"
     aria-modal="true"
     aria-label="Send attachment"
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm rounded-2xl bg-vault-surface border border-vault-border p-4 flex flex-col gap-3">
+    <div
+      class="w-full max-w-sm rounded-2xl bg-vault-surface border border-vault-border p-4 flex flex-col gap-3"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-vault-text">Send file</h3>
         <button
@@ -3042,8 +3073,13 @@
     role="dialog"
     aria-modal="true"
     aria-label="Forward message"
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm rounded-2xl bg-vault-surface border border-vault-border p-4" use:clickOutside={() => forwardingMessage = null}>
+    <div
+      class="w-full max-w-sm rounded-2xl bg-vault-surface border border-vault-border p-4"
+      use:clickOutside={() => forwardingMessage = null}
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-vault-text">Forward to…</h3>
         <button
@@ -3094,8 +3130,12 @@
   <div
     class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
     on:click|self={() => (showPollComposer = false)}
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-md rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3">
+    <div
+      class="w-full max-w-md rounded-2xl glass-strong border border-vault-border p-4 flex flex-col gap-3"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-vault-text">New poll</h3>
         <button

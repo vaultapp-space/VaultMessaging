@@ -19,7 +19,7 @@
   import MiniCallBar from './MiniCallBar.svelte';
   import MobileTabBar from './MobileTabBar.svelte';
   import { showToast } from '../lib/stores/toast.js';
-  import { hapticMedium } from '../lib/haptics.js';
+  import { hapticMedium, hapticLight } from '../lib/haptics.js';
   import { requestNotificationPermission, notifyNewMessage } from '../lib/notifications.js';
 
   const unsubscribers = [];
@@ -817,7 +817,7 @@
     md:top-6 md:left-1/2 md:-translate-x-1/2 md:w-80 md:p-4 md:gap-3 md:bg-vault-surface/90 md:border md:border-vault-border md:rounded-2xl md:shadow-2xl md:backdrop-blur-md"
   >
     <div class="max-md:mt-16 max-md:flex max-md:flex-col max-md:items-center">
-      <div class="rounded-full bg-vault-accent/10 flex items-center justify-center mx-auto text-vault-accent max-md:w-28 max-md:h-28 w-12 h-12">
+      <div class="rounded-full bg-vault-accent/10 flex items-center justify-center mx-auto text-vault-accent max-md:w-28 max-md:h-28 w-12 h-12 animate-pulse-glow">
         <svg class="animate-bounce max-md:w-12 max-md:h-12 w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
         </svg>
@@ -827,14 +827,14 @@
     </div>
     <div class="flex gap-2 max-md:gap-6 max-md:mt-10">
       <button
-        on:click={declineIncomingCall}
+        on:click={() => { hapticLight(); declineIncomingCall(); }}
         class="btn-ghost flex-1 border-vault-danger/30 text-vault-danger hover:bg-vault-danger/5 rounded-xl cursor-pointer focus:outline-none
           max-md:py-4 max-md:text-sm max-md:font-semibold py-2 text-xs"
       >
         Decline
       </button>
       <button
-        on:click={acceptIncomingCall}
+        on:click={() => { hapticMedium(); acceptIncomingCall(); }}
         class="btn-primary flex-1 bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none
           max-md:py-4 max-md:text-sm py-2 text-xs"
       >

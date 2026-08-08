@@ -8,6 +8,7 @@
   import { onMount } from 'svelte';
   import { checkForUpdate } from '../lib/apkUpdater.js';
   import { openInRealBrowser } from '../lib/externalOpener.js';
+  import { fade, scale } from 'svelte/transition';
 
   let update = null;
   let dismissed = false;
@@ -23,8 +24,14 @@
   <div
     class="fixed inset-0 z-[80] flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text"
     on:click|self={() => (dismissed = true)}
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left" role="alertdialog" aria-modal="true">
+    <div
+      class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden text-left"
+      role="alertdialog"
+      aria-modal="true"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="px-5 py-4">
         <h2 class="text-sm font-semibold text-vault-text">Update available</h2>
         <p class="text-sm text-vault-text-dim mt-1.5 leading-relaxed">Vault {update.versionName} is ready to download.</p>

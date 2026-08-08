@@ -4,6 +4,8 @@
   import { currentUser } from '../lib/stores/session.js';
   import { clickOutside } from '../lib/actions/clickOutside.js';
   import { onDestroy, onMount } from 'svelte';
+  import { scale } from 'svelte/transition';
+  import { hapticLight } from '../lib/haptics.js';
   import { decryptFile, decryptChunk } from '../lib/crypto/keys.js';
   import { fetchAttachment, fetchAttachmentChunk, markMessageViewed, publicMediaUrl } from '../lib/api/http.js';
   import { getAvatarGradient } from '../lib/avatar.js';
@@ -663,6 +665,7 @@
                   : 'bg-vault-elevated border-vault-border-subtle text-vault-text-dim hover:border-vault-border'}"
               title={reactedByMe(entry) ? 'Remove your reaction' : 'React'}
               aria-label="{reactedByMe(entry) ? 'Remove your' : 'Add'} {entry.emoji} reaction ({entry.count})"
+              transition:scale={{ duration: 200, start: 0.5 }}
             >
               <span>{entry.emoji}</span>
               {#if entry.count > 1}<span class="font-medium">{entry.count}</span>{/if}
@@ -685,7 +688,7 @@
           >
           {#if canForward}
             <button
-              on:click={() => onForward(message)}
+              on:click={() => { hapticLight(); onForward(message); }}
               class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
               title="Forward"
               aria-label="Forward this message"
@@ -699,7 +702,7 @@
 
           {#if canPin}
             <button
-              on:click={() => onTogglePin(message)}
+              on:click={() => { hapticLight(); onTogglePin(message); }}
               class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] {message.pinnedAt ? 'text-vault-accent' : 'text-vault-text-dim'} hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
               title={message.pinnedAt ? 'Unpin' : 'Pin'}
               aria-label={message.pinnedAt ? 'Unpin this message' : 'Pin this message'}
@@ -712,7 +715,7 @@
 
           {#if canDelete}
             <button
-              on:click={() => onDelete(message)}
+              on:click={() => { hapticLight(); onDelete(message); }}
               class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-danger hover:bg-vault-elevated transition-all focus:outline-none"
               title="Delete"
               aria-label="Delete this message"
@@ -725,7 +728,7 @@
 
           {#if canEditThis}
             <button
-              on:click={() => onEdit(message)}
+              on:click={() => { hapticLight(); onEdit(message); }}
               class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
               title="Edit"
               aria-label="Edit this message"
@@ -739,7 +742,7 @@
 
           {#if canReply}
             <button
-              on:click={() => onReply(message)}
+              on:click={() => { hapticLight(); onReply(message); }}
               class="flex items-center justify-center p-2 md:px-1.5 md:py-0.5 rounded-full text-[11px] text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
               title="Reply"
               aria-label="Reply to this message"
@@ -783,13 +786,15 @@
                 <div
                   class="absolute z-[60] {reactionPickerPosition === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'} {isOwn ? 'right-0' : 'left-0'} flex items-center gap-0.5 px-1.5 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg"
                   use:clickOutside={() => showReactionPicker = false}
+                  transition:scale={{ duration: 150, start: 0.9, opacity: 0 }}
                 >
-                  {#each QUICK_REACTIONS as emoji}
+                  {#each QUICK_REACTIONS as emoji, i}
                     <button
                       on:click={() => toggle(emoji)}
-                      class="w-7 h-7 rounded-lg text-base hover:bg-vault-elevated transition-all focus:outline-none"
+                      class="w-7 h-7 rounded-lg text-base hover:scale-125 hover:bg-vault-elevated transition-all focus:outline-none"
                       title="React with {emoji}"
                       aria-label="React with {emoji}"
+                      in:scale={{ duration: 150, delay: i * 20, start: 0.5 }}
                     >
                       {emoji}
                     </button>

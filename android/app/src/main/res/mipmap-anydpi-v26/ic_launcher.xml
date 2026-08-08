@@ -6,4 +6,12 @@
     <foreground>
         <inset android:drawable="@mipmap/ic_launcher_foreground" android:inset="16.7%" />
     </foreground>
+    <!-- Android 13+ (API 33) themed icons: the launcher re-tints this
+         silhouette to match the user's wallpaper palette instead of using
+         ic_launcher_foreground's own colour. Generated from that same
+         foreground art (its white shield, alpha-keyed from luminance) so
+         the themed icon is the identical shape, not a redrawn approximation. -->
+    <monochrome>
+        <inset android:drawable="@mipmap/ic_launcher_monochrome" android:inset="16.7%" />
+    </monochrome>
 </adaptive-icon>

@@ -5,6 +5,8 @@
   // spots rather than two copies that could drift apart. Mirrors
   // Landing.svelte's donate banner/modal, but in the app's own Tailwind +
   // vault-* design tokens instead of the marketing site's separate CSS.
+  import { fade, scale } from 'svelte/transition';
+
   let open = false;
   let copiedTicker = '';
 
@@ -55,8 +57,15 @@
   <div
     class="fixed inset-0 z-[90] flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text"
     on:click|self={() => (open = false)}
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm max-h-[85vh] bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left flex flex-col" role="dialog" aria-modal="true" aria-label="Donate">
+    <div
+      class="w-full max-w-sm max-h-[85vh] bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden text-left flex flex-col"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Donate"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="px-5 py-4 border-b border-vault-border flex justify-between items-center shrink-0">
         <h3 class="text-sm font-semibold text-vault-text">Buy me a coffee</h3>
         <button on:click={() => (open = false)} class="text-vault-text-dim hover:text-vault-text focus:outline-none" aria-label="Close">

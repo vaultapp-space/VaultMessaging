@@ -9,6 +9,7 @@
   import { isPrfSupported } from '../lib/crypto/webauthn.js';
   import { enableBiometric, isBiometricEnabled } from '../lib/biometric.js';
   import { showToast } from '../lib/stores/toast.js';
+  import { fade, scale } from 'svelte/transition';
 
   let show = false;
   let enabling = false;
@@ -51,8 +52,14 @@
   <div
     class="fixed inset-0 z-[80] flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text"
     on:click|self={dismiss}
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left" role="alertdialog" aria-modal="true">
+    <div
+      class="w-full max-w-sm bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden text-left"
+      role="alertdialog"
+      aria-modal="true"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="px-5 py-4">
         <h2 class="text-sm font-semibold text-vault-text flex items-center gap-2">
           <svg class="w-4 h-4 text-vault-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

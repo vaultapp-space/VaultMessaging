@@ -3,6 +3,7 @@
   // ToastHost.svelte. Renders whatever lib/stores/confirm.js's showConfirm()
   // last set, or nothing.
   import { confirmState } from '../lib/stores/confirm.js';
+  import { fade, scale } from 'svelte/transition';
 
   function handleKeydown(e) {
     if (e.key === 'Escape' && $confirmState) $confirmState.resolve('cancel');
@@ -17,8 +18,14 @@
   <div
     class="fixed inset-0 z-[80] flex items-center justify-center bg-vault-black/80 backdrop-blur-sm p-4 text-vault-text"
     on:click|self={() => $confirmState.resolve('cancel')}
+    transition:fade={{ duration: 150 }}
   >
-    <div class="w-full max-w-sm max-h-[85vh] bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden animate-scale-up text-left flex flex-col" role="alertdialog" aria-modal="true">
+    <div
+      class="w-full max-w-sm max-h-[85vh] bg-vault-surface border border-vault-border rounded-2xl shadow-xl overflow-hidden text-left flex flex-col"
+      role="alertdialog"
+      aria-modal="true"
+      transition:scale={{ duration: 200, start: 0.95, opacity: 0 }}
+    >
       <div class="px-5 py-4 overflow-y-auto">
         <p class="text-sm text-vault-text leading-relaxed break-words">{$confirmState.message}</p>
       </div>

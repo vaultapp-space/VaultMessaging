@@ -109,6 +109,23 @@ body {
   min-height: 100vh;
 }
 
+/* ─── Reduced Motion ────────────────────────────────────── */
+/* Applies globally — to Tailwind's own animate-spin/pulse/ping/bounce
+   utilities and to every @keyframes-driven class below and in every
+   component — rather than requiring each new animation to opt in
+   individually the way Landing.svelte and Stories.svelte previously had to.
+   Motion collapses to a single frame; the state it conveys (a spinner still
+   renders, a banner still appears, a skeleton still shows) is untouched,
+   only the movement is removed. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ─── Animations ────────────────────────────────────────── */
 
 @keyframes fadeIn {
