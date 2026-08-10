@@ -101,12 +101,66 @@ html {
 body {
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  /* dvh, not vh. Android 15 (targetSdk 36) forces edge-to-edge, and there
+     100vh is the *large* viewport — it includes the strip behind the gesture
+     nav bar, so the app shell measured taller than the area actually visible.
+     Landing.svelte and ChatView.svelte had already moved to dvh; the base
+     stylesheet hadn't, so everything sized off body/#app kept the old bug. */
+  min-height: 100dvh;
   overflow: hidden;
 }
 
 #app {
-  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ─── Touch Behaviour ───────────────────────────────────── */
+/* This app ships as an Android WebView (android/), where the browser
+   defaults below are what make a wrapped web app read as a web page rather
+   than an app. None of it changes anything on desktop. */
+
+html {
+  /* Android WebView flashes a translucent grey box over *every* tapped
+     element by default. It's the single loudest "this is a website" tell in
+     the app, and it fires on message bubbles and avatars as well as buttons.
+     Feedback is provided deliberately by the :active states below instead. */
+  -webkit-tap-highlight-color: transparent;
+  /* Stops a scroll that reaches the end of any inner scroller from chaining
+     out to the document and stretch-overscrolling the whole app shell. */
+  overscroll-behavior: none;
+}
+
+/* Interactive chrome shouldn't be text. Long-pressing a button label or a
+   tab-bar item otherwise pops Android's selection handles and a
+   Copy/Share callout on top of the UI. Deliberately scoped to controls:
+   message bodies render into plain <div>s (see MessageBubble.svelte), so
+   they stay selectable, which is the one place selection is wanted. */
+button,
+label,
+summary,
+[role='button'],
+[role='tab'],
+nav a {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Inputs must stay selectable regardless of any rule above. */
+input,
+textarea,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Tailwind's scroll utilities are real class names, so the containment can
+   be attached here once rather than hand-added to every scroller in the
+   component tree. Keeps a chat list's rubber-band inside the chat list. */
+.overflow-y-auto,
+.overflow-auto,
+.overflow-y-scroll {
+  overscroll-behavior: contain;
 }
 
 /* ─── Reduced Motion ────────────────────────────────────── */
@@ -223,14 +277,26 @@ body {
   letter-spacing: -0.01em;
 }
 
-.btn-primary:hover {
-  background: var(--color-vault-accent-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px var(--color-vault-accent-glow-strong);
+/* Hover-dependent feedback is desktop-only by definition. Gated behind a
+   real pointer so a touch device doesn't get the lifted state stuck on
+   after a tap — Android WebView emulates :hover on the last-tapped element
+   and leaves it applied until something else is touched. */
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover {
+    background: var(--color-vault-accent-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--color-vault-accent-glow-strong);
+  }
 }
 
+/* The touch equivalent, and the replacement for the tap highlight removed
+   in the base reset: a quick press-in. Applies on desktop too, where it
+   reads as the button being pushed. */
 .btn-primary:active {
-  transform: translateY(0);
+  transform: scale(0.97);
+  background: var(--color-vault-accent-dim);
+  box-shadow: none;
+  transition-duration: 0.05s;
 }
 
 .btn-primary:disabled {
@@ -256,10 +322,29 @@ body {
   transition: all 0.2s ease;
 }
 
-.btn-ghost:hover {
+@media (hover: hover) and (pointer: fine) {
+  .btn-ghost:hover {
+    background: var(--color-vault-elevated);
+    color: var(--color-vault-text);
+    border-color: var(--color-vault-muted);
+  }
+}
+
+.btn-ghost:active {
   background: var(--color-vault-elevated);
   color: var(--color-vault-text);
-  border-color: var(--color-vault-muted);
+  transform: scale(0.97);
+  transition-duration: 0.05s;
+}
+
+/* Catch-all press feedback for the many one-off icon buttons that don't use
+   .btn-* at all (message actions, the tab bar, sidebar rows). Without this
+   they were left with no touch feedback whatsoever once the tap highlight
+   was removed. :not() keeps it off the two classes that style their own
+   press above, and off anything already disabled. */
+button:not(.btn-primary):not(.btn-ghost):not(:disabled):active {
+  transform: scale(0.96);
+  transition: transform 0.05s ease;
 }
 
 /* ─── Input Base ────────────────────────────────────────── */
