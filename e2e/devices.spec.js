@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, clickConfirm } from './fixtures.js';
 
 // ============================================================
 // Devices and multi-device sync
@@ -99,8 +99,8 @@ test.describe('active sessions', () => {
       expect(before).toBe(200);
 
       await openSettings(first);
-      first.once('dialog', (d) => d.accept());
       await first.getByRole('button', { name: 'Sign out' }).first().click();
+      await clickConfirm(first, 'Sign Out');
       await expect(first.getByRole('button', { name: 'Sign out' })).toHaveCount(0, { timeout: 15_000 });
 
       // And now it does not — this is the assertion the feature rests on.

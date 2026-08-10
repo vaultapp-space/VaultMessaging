@@ -95,7 +95,6 @@ test.describe('invite links', () => {
       const third = await thirdCtx.newPage();
       await register(third, uniqueUsername('ivd'));
 
-      third.once('dialog', (d) => d.accept());
       await third.goto(`/join/${invite.hash}`);
       await third.waitForTimeout(2500);
 
@@ -137,7 +136,6 @@ test.describe('invite links', () => {
       const c = await cCtx.newPage();
       await register(c, uniqueUsername('sud'));
 
-      c.once('dialog', (d) => d.accept());
       await c.goto(`/join/${invite.hash}`);
       await c.waitForTimeout(2500);
 

@@ -47,10 +47,27 @@ for (const mode of ['secret', 'cloud']) {
     const alice = await aliceCtx.newPage();
     const bob = await bobCtx.newPage();
 
-    // A failed send raises an alert; catching it turns a silent failure into
-    // a named one.
-    const alerts = [];
-    alice.on('dialog', (d) => { alerts.push(d.message()); d.accept(); });
+    // A failed send surfaces an error toast (role="alert"); watching for one
+    // turns a silent failure into a named one. This used to listen for a
+    // native dialog, which ebc6d13 replaced with the toast store — so the
+    // assertion below had quietly become vacuous: no dialog is ever emitted
+    // now, so the collected list was always empty whether the send failed or
+    // not. Collected via an exposed binding rather than a query at the end,
+    // because toasts self-dismiss after 4s and would be gone by then.
+    const toastMessages = [];
+    await alice.exposeBinding('__recordToast', (_source, message) => {
+      toastMessages.push(message);
+    });
+    await alice.addInitScript(() => {
+      const seen = new WeakSet();
+      new MutationObserver(() => {
+        for (const el of document.querySelectorAll('[role="alert"]')) {
+          if (seen.has(el)) continue;
+          seen.add(el);
+          window.__recordToast?.(el.textContent?.trim() ?? '');
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    });
 
     try {
       const aliceName = uniqueUsername('vna');
@@ -74,7 +91,7 @@ for (const mode of ['secret', 'cloud']) {
 
       // It renders for the sender as playable audio, not a failed send.
       await expect(alice.locator('audio').first()).toBeVisible({ timeout: 25_000 });
-      expect(alerts, 'the send must not raise an error dialog').toEqual([]);
+      expect(toastMessages, 'the send must not raise an error toast').toEqual([]);
 
       // And it decrypts and renders for the recipient, which is what proves
       // the key material actually travelled with it.

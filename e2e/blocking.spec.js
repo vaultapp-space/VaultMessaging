@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, clickConfirm } from './fixtures.js';
 
 // ============================================================
 // Blocking
@@ -61,8 +61,8 @@ async function setup(browser) {
 
 async function block(page) {
   await page.getByRole('button', { name: 'More options' }).click();
-  page.once('dialog', (d) => d.accept());
   await page.getByRole('button', { name: /^Block / }).click();
+  await clickConfirm(page, 'Block');
 }
 
 test.describe('blocking', () => {

@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, clickConfirm } from './fixtures.js';
 
 // ============================================================
 // Polls and folders
@@ -201,8 +201,8 @@ test.describe('folders', () => {
       await expect(filtered).toHaveCount(1, { timeout: 15_000 });
 
       // Deleting the folder restores the full list — folders never own chats.
-      alice.once('dialog', (d) => d.accept());
       await alice.getByTitle('Delete this folder').click();
+      await clickConfirm(alice, 'Delete');
       await expect(alice.getByRole('button', { name: 'All', exact: true })).toBeVisible({ timeout: 10_000 });
       await expect(
         alice.locator('button').filter({ hasText: new RegExp(`${bobName}|${carolName}`) })

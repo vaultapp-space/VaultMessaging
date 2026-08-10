@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, confirmDialog, clickConfirm } from './fixtures.js';
 
 // ============================================================
 // Delete and pin, in both chat modes
@@ -77,9 +77,9 @@ test.describe('deleting messages', () => {
         await openConversation(bob, aliceName);
         await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
 
-        // Accept the "for everyone" confirmation.
-        alice.once('dialog', (d) => d.accept());
+        // Take the "for everyone" branch of the three-button confirm.
         await alice.getByRole('button', { name: 'Delete this message' }).first().click();
+        await clickConfirm(alice, 'Delete for Everyone');
 
         // A tombstone, not a hole: the transcript keeps its shape.
         await expect(alice.getByText('This message was deleted').first())
@@ -106,9 +106,11 @@ test.describe('deleting messages', () => {
       await openConversation(bob, aliceName);
       await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
 
-      // Alice declines "for everyone", which falls back to hiding it for her.
-      alice.once('dialog', (d) => d.dismiss());
+      // Alice takes "for me" instead of "for everyone". This used to be
+      // expressed as dismissing a two-button confirm(); the three-button
+      // dialog makes it an explicit choice rather than Cancel-means-something.
       await alice.getByRole('button', { name: 'Delete this message' }).first().click();
+      await clickConfirm(alice, 'Delete for Me');
 
       await expect(alice.getByText(text)).toHaveCount(0, { timeout: 20_000 });
 
@@ -131,11 +133,14 @@ test.describe('deleting messages', () => {
       await openConversation(bob, aliceName);
       await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
 
-      let promptText = '';
-      bob.once('dialog', (d) => { promptText = d.message(); d.accept(); });
       await bob.getByRole('button', { name: 'Delete this message' }).first().click();
 
-      expect(promptText).toMatch(/only from your view|from your view/i);
+      // The wording is the assertion here: deleting someone else's message
+      // must not look like it removes it for them too. Read off the modal now
+      // rather than from a native dialog's message().
+      await expect(confirmDialog(bob)).toContainText(/only from your view|from your view/i);
+      await clickConfirm(bob, 'Remove');
+
       await expect(bob.getByText(text)).toHaveCount(0, { timeout: 20_000 });
 
       // Alice's copy is untouched.
