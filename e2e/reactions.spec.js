@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // Reactions, in both chat modes
@@ -54,7 +54,7 @@ async function sendMessage(page, text) {
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill(text);
   await composer.press('Enter');
-  await expect(page.getByText(text)).toBeVisible({ timeout: 20_000 });
+  await expect(messageBubble(page, text)).toBeVisible({ timeout: 20_000 });
 }
 
 async function react(page, emoji) {

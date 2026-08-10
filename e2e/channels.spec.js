@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // Channels
@@ -63,7 +63,7 @@ test.describe('channels', () => {
       const text = `broadcast ${Date.now()}`;
       await publish(owner, text);
 
-      await expect(reader.getByText(text)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(reader, text)).toBeVisible({ timeout: 30_000 });
     } finally {
       await ownerCtx.close();
       await readerCtx.close();
@@ -128,11 +128,11 @@ test.describe('channels', () => {
       await makeChannel(owner, 'Viewed', handle);
       const text = `counted ${Date.now()}`;
       await publish(owner, text);
-      await expect(owner.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(owner, text)).toBeVisible({ timeout: 20_000 });
 
       await reader.getByPlaceholder('Search users...').fill(handle);
       await reader.getByText('Viewed').first().click({ timeout: 20_000 });
-      await expect(reader.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(reader, text)).toBeVisible({ timeout: 20_000 });
 
       // The reader's view is recorded server-side and deduplicated.
       const views = await reader.evaluate(async (handleName) => {

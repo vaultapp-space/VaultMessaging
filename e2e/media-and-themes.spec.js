@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // View-once media, albums, chat themes
@@ -69,17 +69,24 @@ test.describe('view-once messages', () => {
       await alice.getByLabel('Attach').click();
       await alice.getByRole('button', { name: /View once/ }).click();
       await sendMessage(alice, secret);
-      await expect(alice.getByText(secret)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, secret)).toBeVisible({ timeout: 20_000 });
 
       await bob.getByText(aliceName, { exact: false }).first().click({ timeout: 20_000 });
 
       // Bob sees a placeholder, not the message.
       const openButton = bob.getByRole('button', { name: /Tap to view once/ });
       await expect(openButton).toBeVisible({ timeout: 20_000 });
+      // Deliberately a bare getByText, not messageBubble: this must match the
+      // text *anywhere* on the page, including the sr-only live region.
+      // Narrowing it to the visible bubble is exactly what would hide the bug
+      // this assertion exists to catch — ChatView used to announce a
+      // view-once message's contents to screen readers before it was opened
+      // (fixed in 28c07c4), and the only reason that was ever found is that
+      // this locator was broad enough to see it.
       await expect(bob.getByText(secret)).toHaveCount(0);
 
       await openButton.click();
-      await expect(bob.getByText(secret)).toBeVisible({ timeout: 15_000 });
+      await expect(messageBubble(bob, secret)).toBeVisible({ timeout: 15_000 });
 
       // The server no longer holds the content — this is the assertion the
       // feature actually rests on.
@@ -112,7 +119,7 @@ test.describe('view-once messages', () => {
       await sendMessage(alice, ordinary);
 
       await bob.getByText(aliceName, { exact: false }).first().click({ timeout: 20_000 });
-      await expect(bob.getByText(ordinary)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(bob, ordinary)).toBeVisible({ timeout: 20_000 });
     } finally {
       await ctx.aliceCtx.close();
       await ctx.bobCtx.close();

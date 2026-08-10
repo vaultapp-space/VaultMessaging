@@ -1,4 +1,4 @@
-import { test, expect, clickConfirm } from './fixtures.js';
+import { test, expect, messageBubble, clickConfirm } from './fixtures.js';
 
 // ============================================================
 // Polls and folders
@@ -116,11 +116,11 @@ test.describe('polls', () => {
       await alice.getByPlaceholder('Option 2').fill('Tacos');
       await alice.getByRole('button', { name: 'Create poll' }).click();
 
-      await expect(alice.getByText(question)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, question)).toBeVisible({ timeout: 20_000 });
 
       // Bob opens the group and sees the poll.
       await reopen(bob, group.name);
-      await expect(bob.getByText(question)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, question)).toBeVisible({ timeout: 30_000 });
 
       // Before voting, no tally is shown — seeing it first would bias the answer.
       await expect(bob.getByText('No votes yet')).toBeVisible({ timeout: 10_000 });

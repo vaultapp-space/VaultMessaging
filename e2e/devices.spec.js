@@ -1,4 +1,4 @@
-import { test, expect, clickConfirm } from './fixtures.js';
+import { test, expect, messageBubble, clickConfirm } from './fixtures.js';
 
 // ============================================================
 // Devices and multi-device sync
@@ -169,7 +169,7 @@ test.describe('multi-device sync', () => {
       // Alice's second device sees it without ever having opened the chat
       // on her first.
       await aliceTwo.getByText(bobName, { exact: false }).first().click({ timeout: 30_000 });
-      await expect(aliceTwo.getByText(text)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(aliceTwo, text)).toBeVisible({ timeout: 30_000 });
     } finally {
       await aliceCtx.close();
       await aliceTwoCtx.close();
@@ -209,7 +209,7 @@ test.describe('multi-device sync', () => {
       const composer = alice.getByPlaceholder('Type a message...');
       await composer.fill(text);
       await composer.press('Enter');
-      await expect(alice.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, text)).toBeVisible({ timeout: 20_000 });
 
       const caught = await bob.evaluate(async (from) => {
         const res = await fetch(`/api/updates?pts=${from}`, { credentials: 'include' });

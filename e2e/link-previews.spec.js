@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // Link previews
@@ -76,7 +76,7 @@ test.describe('link previews', () => {
       const text = `check http://169.254.169.254/latest/meta-data/ now ${Date.now()}`;
       await sendMessage(alice, text);
 
-      await expect(alice.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, text)).toBeVisible({ timeout: 20_000 });
       await alice.waitForTimeout(3000);
 
       // No preview card rendered for a blocked address.
@@ -95,7 +95,7 @@ test.describe('link previews', () => {
       const text = `see http://127.0.0.1:3001/health ${Date.now()}`;
       await sendMessage(alice, text);
 
-      await expect(alice.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, text)).toBeVisible({ timeout: 20_000 });
       await alice.waitForTimeout(3000);
       await expect(alice.locator('a[rel*="nofollow"]')).toHaveCount(0);
     } finally {
@@ -115,7 +115,7 @@ test.describe('link previews', () => {
       const text = `slow link http://10.255.255.1/ ${started}`;
       await sendMessage(alice, text);
 
-      await expect(alice.getByText(text)).toBeVisible({ timeout: 10_000 });
+      await expect(messageBubble(alice, text)).toBeVisible({ timeout: 10_000 });
       expect(Date.now() - started).toBeLessThan(10_000);
     } finally {
       await ctx.aliceCtx.close();
@@ -134,7 +134,7 @@ test.describe('link previews', () => {
       const text = `secret link https://example.com/ ${Date.now()}`;
       await sendMessage(alice, text);
 
-      await expect(alice.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, text)).toBeVisible({ timeout: 20_000 });
       await alice.waitForTimeout(3000);
       await expect(alice.locator('a[rel*="nofollow"]')).toHaveCount(0);
     } finally {
@@ -150,7 +150,7 @@ test.describe('link previews', () => {
     try {
       const text = `no links here ${Date.now()}`;
       await sendMessage(alice, text);
-      await expect(alice.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, text)).toBeVisible({ timeout: 20_000 });
       await expect(alice.locator('a[rel*="nofollow"]')).toHaveCount(0);
     } finally {
       await ctx.aliceCtx.close();

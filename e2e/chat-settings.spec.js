@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // Chat-level features: search, archive, mute, drafts, forwarding
@@ -40,7 +40,7 @@ async function sendMessage(page, text) {
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill(text);
   await composer.press('Enter');
-  await expect(page.getByText(text)).toBeVisible({ timeout: 20_000 });
+  await expect(messageBubble(page, text)).toBeVisible({ timeout: 20_000 });
 }
 
 async function setup(browser, mode = 'cloud') {
@@ -240,7 +240,7 @@ test.describe('forwarding', () => {
       // chat that is currently open.
       await carol.getByText(aliceName, { exact: false }).first().click({ timeout: 30_000 });
       await expect(carol.getByPlaceholder('Type a message...')).toBeVisible({ timeout: 20_000 });
-      await expect(carol.getByText(text)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(carol, text)).toBeVisible({ timeout: 30_000 });
 
       await carolCtx.close();
     } finally {
