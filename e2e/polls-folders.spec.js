@@ -88,7 +88,6 @@ async function userId(page) {
 
 async function reopen(page, chatName) {
   await page.reload();
-  await page.getByRole('button', { name: /start a private chat/i }).first().click();
   await page.getByPlaceholder('Enter password').fill(PASSWORD);
   await page.getByRole('button', { name: /unlock vault/i }).click();
   await expect(page.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });
@@ -203,7 +202,14 @@ test.describe('folders', () => {
       // Deleting the folder restores the full list — folders never own chats.
       await alice.getByTitle('Delete this folder').click();
       await clickConfirm(alice, 'Delete');
-      await expect(alice.getByRole('button', { name: 'All', exact: true })).toBeVisible({ timeout: 10_000 });
+      // The folder strip — "All" tab included — only renders while at least
+      // one folder exists (see ChatSidebar.svelte's `{#if folders.length > 0}`),
+      // so deleting the last folder removes the tabs entirely rather than
+      // falling back to "All". Asserting the deleted folder is gone is the
+      // property that was actually meant here; the chat count below is what
+      // proves the chats outlived it.
+      await expect(alice.getByRole('button', { name: 'Work', exact: true }))
+        .toHaveCount(0, { timeout: 10_000 });
       await expect(
         alice.locator('button').filter({ hasText: new RegExp(`${bobName}|${carolName}`) })
       ).toHaveCount(2, { timeout: 15_000 });

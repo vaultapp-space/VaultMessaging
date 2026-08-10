@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // Message editing, in both chat modes
@@ -50,7 +50,7 @@ async function sendMessage(page, text) {
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill(text);
   await composer.press('Enter');
-  await expect(page.getByText(text)).toBeVisible({ timeout: 20_000 });
+  await expect(messageBubble(page, text)).toBeVisible({ timeout: 20_000 });
 }
 
 async function editFirst(page, newText) {
@@ -89,19 +89,19 @@ test.describe('message editing', () => {
 
         await sendMessage(alice, original);
         await openConversation(bob, aliceName);
-        await expect(bob.getByText(original)).toBeVisible({ timeout: 30_000 });
+        await expect(messageBubble(bob, original)).toBeVisible({ timeout: 30_000 });
 
         await editFirst(alice, corrected);
 
         // The author sees the correction and an "edited" marker.
-        await expect(alice.getByText(corrected)).toBeVisible({ timeout: 20_000 });
-        await expect(alice.getByText(original)).toHaveCount(0);
+        await expect(messageBubble(alice, corrected)).toBeVisible({ timeout: 20_000 });
+        await expect(messageBubble(alice, original)).toHaveCount(0);
         await expect(alice.getByTitle('This message was edited').first())
           .toBeVisible({ timeout: 20_000 });
 
         // And so does the recipient.
-        await expect(bob.getByText(corrected)).toBeVisible({ timeout: 30_000 });
-        await expect(bob.getByText(original)).toHaveCount(0);
+        await expect(messageBubble(bob, corrected)).toBeVisible({ timeout: 30_000 });
+        await expect(messageBubble(bob, original)).toHaveCount(0);
       } finally {
         await ctx.aliceCtx.close();
         await ctx.bobCtx.close();
@@ -141,7 +141,7 @@ test.describe('message editing', () => {
       await alice.getByRole('button', { name: 'Cancel edit' }).click();
       await expect(alice.getByText('Editing message')).toHaveCount(0);
 
-      await expect(alice.getByText(original)).toBeVisible();
+      await expect(messageBubble(alice, original)).toBeVisible();
       await expect(alice.getByTitle('This message was edited')).toHaveCount(0);
     } finally {
       await ctx.aliceCtx.close();

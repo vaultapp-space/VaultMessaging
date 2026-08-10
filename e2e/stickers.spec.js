@@ -98,7 +98,6 @@ test.describe('stickers', () => {
       try {
         await seedStickerSet(alice);
         await alice.reload();
-        await alice.getByRole('button', { name: /start a private chat/i }).first().click();
         await alice.getByPlaceholder('Enter password').fill(PASSWORD);
         await alice.getByRole('button', { name: /unlock vault/i }).click();
         await expect(alice.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });
@@ -130,7 +129,6 @@ test.describe('stickers', () => {
     try {
       const { sticker } = await seedStickerSet(alice, '🔒');
       await alice.reload();
-      await alice.getByRole('button', { name: /start a private chat/i }).first().click();
       await alice.getByPlaceholder('Enter password').fill(PASSWORD);
       await alice.getByRole('button', { name: /unlock vault/i }).click();
       await expect(alice.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });

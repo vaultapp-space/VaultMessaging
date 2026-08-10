@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // Replies, in both chat modes
@@ -48,7 +48,7 @@ async function sendMessage(page, text) {
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill(text);
   await composer.press('Enter');
-  await expect(page.getByText(text)).toBeVisible({ timeout: 20_000 });
+  await expect(messageBubble(page, text)).toBeVisible({ timeout: 20_000 });
 }
 
 async function replyTo(page, text) {
@@ -84,19 +84,19 @@ test.describe('replies', () => {
         await sendMessage(alice, question);
 
         await openConversation(bob, aliceName);
-        await expect(bob.getByText(question)).toBeVisible({ timeout: 30_000 });
+        await expect(messageBubble(bob, question)).toBeVisible({ timeout: 30_000 });
 
         const answer = `answer ${Date.now()}`;
         await replyTo(bob, answer);
 
         // Bob sees his reply with the original quoted above it.
-        await expect(bob.getByText(answer)).toBeVisible({ timeout: 20_000 });
+        await expect(messageBubble(bob, answer)).toBeVisible({ timeout: 20_000 });
         await expect(bob.getByTitle('Jump to the original message').first())
           .toBeVisible({ timeout: 20_000 });
 
         // And it arrives at Alice with the reference intact — the part that
         // breaks silently if envelope serialisation regresses.
-        await expect(alice.getByText(answer)).toBeVisible({ timeout: 30_000 });
+        await expect(messageBubble(alice, answer)).toBeVisible({ timeout: 30_000 });
         await expect(alice.getByTitle('Jump to the original message').first())
           .toBeVisible({ timeout: 20_000 });
       } finally {
@@ -144,7 +144,7 @@ test.describe('replies', () => {
       const answer = `readable answer ${Date.now()}`;
       await replyTo(bob, answer);
 
-      await expect(alice.getByText(answer)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(alice, answer)).toBeVisible({ timeout: 30_000 });
       await expect(alice.getByText('"replyTo"')).toHaveCount(0);
       await expect(alice.getByText('"v":1')).toHaveCount(0);
     } finally {

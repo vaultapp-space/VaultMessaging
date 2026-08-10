@@ -39,7 +39,18 @@ async function signInAs(page, username) {
 
 async function openSettings(page) {
   await page.getByTitle('Settings').click();
-  await expect(page.getByText('Active Sessions')).toBeVisible({ timeout: 15_000 });
+  // 134823a ("Collapse Sessions into a single row in Settings") renamed the
+  // heading from "Active Sessions" to "Sessions" and put the device list
+  // behind a View/Hide toggle. The rename alone is what failed these tests,
+  // but expanding matters more than it looks: with the list collapsed the
+  // "no Sign out button next to the current device" and "exactly one Sign
+  // out button" assertions would both hold trivially, passing without ever
+  // rendering a session. Waiting on the expanded body rather than the button
+  // flipping to "Hide" keeps that honest.
+  await expect(page.getByText('Sessions', { exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'View' }).click();
+  await expect(page.getByText(/Signing one out takes effect at once/))
+    .toBeVisible({ timeout: 15_000 });
 }
 
 test.describe('active sessions', () => {

@@ -53,7 +53,6 @@ test.describe('voice chats', () => {
       }, memberId);
 
       await owner.reload();
-      await owner.getByRole('button', { name: /start a private chat/i }).first().click();
       await owner.getByPlaceholder('Enter password').fill(PASSWORD);
       await owner.getByRole('button', { name: /unlock vault/i }).click();
       await expect(owner.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });
@@ -109,7 +108,6 @@ test.describe('forum topics', () => {
       }, memberId);
 
       await owner.reload();
-      await owner.getByRole('button', { name: /start a private chat/i }).first().click();
       await owner.getByPlaceholder('Enter password').fill(PASSWORD);
       await owner.getByRole('button', { name: /unlock vault/i }).click();
       await expect(owner.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });

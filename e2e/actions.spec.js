@@ -1,4 +1,4 @@
-import { test, expect, confirmDialog, clickConfirm } from './fixtures.js';
+import { test, expect, messageBubble, confirmDialog, clickConfirm } from './fixtures.js';
 
 // ============================================================
 // Delete and pin, in both chat modes
@@ -46,7 +46,7 @@ async function sendMessage(page, text) {
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill(text);
   await composer.press('Enter');
-  await expect(page.getByText(text)).toBeVisible({ timeout: 20_000 });
+  await expect(messageBubble(page, text)).toBeVisible({ timeout: 20_000 });
 }
 
 async function setup(browser, mode) {
@@ -75,7 +75,7 @@ test.describe('deleting messages', () => {
         const text = `unsend me ${Date.now()}`;
         await sendMessage(alice, text);
         await openConversation(bob, aliceName);
-        await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
+        await expect(messageBubble(bob, text)).toBeVisible({ timeout: 30_000 });
 
         // Take the "for everyone" branch of the three-button confirm.
         await alice.getByRole('button', { name: 'Delete this message' }).first().click();
@@ -84,11 +84,11 @@ test.describe('deleting messages', () => {
         // A tombstone, not a hole: the transcript keeps its shape.
         await expect(alice.getByText('This message was deleted').first())
           .toBeVisible({ timeout: 20_000 });
-        await expect(alice.getByText(text)).toHaveCount(0);
+        await expect(messageBubble(alice, text)).toHaveCount(0);
 
         await expect(bob.getByText('This message was deleted').first())
           .toBeVisible({ timeout: 30_000 });
-        await expect(bob.getByText(text)).toHaveCount(0);
+        await expect(messageBubble(bob, text)).toHaveCount(0);
       } finally {
         await ctx.aliceCtx.close();
         await ctx.bobCtx.close();
@@ -104,7 +104,7 @@ test.describe('deleting messages', () => {
       const text = `only bob keeps this ${Date.now()}`;
       await sendMessage(alice, text);
       await openConversation(bob, aliceName);
-      await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, text)).toBeVisible({ timeout: 30_000 });
 
       // Alice takes "for me" instead of "for everyone". This used to be
       // expressed as dismissing a two-button confirm(); the three-button
@@ -112,10 +112,10 @@ test.describe('deleting messages', () => {
       await alice.getByRole('button', { name: 'Delete this message' }).first().click();
       await clickConfirm(alice, 'Delete for Me');
 
-      await expect(alice.getByText(text)).toHaveCount(0, { timeout: 20_000 });
+      await expect(messageBubble(alice, text)).toHaveCount(0, { timeout: 20_000 });
 
       // Bob still has it, and it is not a tombstone.
-      await expect(bob.getByText(text)).toBeVisible();
+      await expect(messageBubble(bob, text)).toBeVisible();
       await expect(bob.getByText('This message was deleted')).toHaveCount(0);
     } finally {
       await ctx.aliceCtx.close();
@@ -131,7 +131,7 @@ test.describe('deleting messages', () => {
       const text = `alice wrote this ${Date.now()}`;
       await sendMessage(alice, text);
       await openConversation(bob, aliceName);
-      await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, text)).toBeVisible({ timeout: 30_000 });
 
       await bob.getByRole('button', { name: 'Delete this message' }).first().click();
 
@@ -141,10 +141,10 @@ test.describe('deleting messages', () => {
       await expect(confirmDialog(bob)).toContainText(/only from your view|from your view/i);
       await clickConfirm(bob, 'Remove');
 
-      await expect(bob.getByText(text)).toHaveCount(0, { timeout: 20_000 });
+      await expect(messageBubble(bob, text)).toHaveCount(0, { timeout: 20_000 });
 
       // Alice's copy is untouched.
-      await expect(alice.getByText(text)).toBeVisible();
+      await expect(messageBubble(alice, text)).toBeVisible();
     } finally {
       await ctx.aliceCtx.close();
       await ctx.bobCtx.close();
@@ -161,7 +161,7 @@ test.describe('pinning messages', () => {
       const text = `pin me ${Date.now()}`;
       await sendMessage(alice, text);
       await openConversation(bob, aliceName);
-      await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, text)).toBeVisible({ timeout: 30_000 });
 
       await alice.getByRole('button', { name: 'Pin this message' }).first().click();
 
@@ -198,7 +198,7 @@ test.describe('pinning messages', () => {
       const text = `bob pins this ${Date.now()}`;
       await sendMessage(alice, text);
       await openConversation(bob, aliceName);
-      await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, text)).toBeVisible({ timeout: 30_000 });
 
       await bob.getByRole('button', { name: 'Pin this message' }).first().click();
       await expect(alice.getByTitle('Pinned message').first()).toBeVisible({ timeout: 30_000 });

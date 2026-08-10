@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // Group messaging end-to-end
@@ -85,28 +85,28 @@ test.describe('group messaging', () => {
 
       const first = `group hello ${Date.now()}`;
       await sendMessage(alice, first);
-      await expect(alice.getByText(first)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, first)).toBeVisible({ timeout: 20_000 });
 
       // Each member sees it independently.
       await openConversation(bob, groupName);
-      await expect(bob.getByText(first)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, first)).toBeVisible({ timeout: 30_000 });
 
       await openConversation(carol, groupName);
-      await expect(carol.getByText(first)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(carol, first)).toBeVisible({ timeout: 30_000 });
 
       // A second message, so the steady-state path is covered as well as the
       // first-message one.
       const second = `second message ${Date.now()}`;
       await sendMessage(alice, second);
-      await expect(bob.getByText(second)).toBeVisible({ timeout: 30_000 });
-      await expect(carol.getByText(second)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, second)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(carol, second)).toBeVisible({ timeout: 30_000 });
 
       // A reply from another member: the fanout has to reach the sender's
       // peers as well as the original poster's.
       const reply = `bob replies ${Date.now()}`;
       await sendMessage(bob, reply);
-      await expect(alice.getByText(reply)).toBeVisible({ timeout: 30_000 });
-      await expect(carol.getByText(reply)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(alice, reply)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(carol, reply)).toBeVisible({ timeout: 30_000 });
     } finally {
       await Promise.all(contexts.map((c) => c.close()));
     }

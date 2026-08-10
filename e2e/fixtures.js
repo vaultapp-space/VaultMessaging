@@ -114,6 +114,32 @@ export { expect };
 // role="alertdialog" so a label like "Delete" cannot match some other button
 // that happens to be on the page behind the modal.
 
+// ─── Message text ────────────────────────────────────────────
+// ebc6d13 also added a screen-reader live region to ChatView that announces
+// the newest incoming message as "New message from <peer>: <text>". Because
+// getByText() is a substring match by default, asserting on a message body
+// then resolves to two elements — the visible bubble and that announcement —
+// and Playwright fails the locator as ambiguous rather than picking one.
+//
+// The live region is correct accessibility behaviour and is deliberately left
+// alone; it is the assertion that needs to be specific. Matching exactly is
+// what disambiguates: a bubble's text is the message and nothing else, while
+// the announcement always carries the "New message from …" prefix. The
+// :not(.sr-only) intersection is belt-and-braces for the typing-indicator
+// region next to it, which is also sr-only and live.
+//
+// Use this for message *bodies*. Plain getByText is still right for usernames,
+// labels and other chrome, which the live region does not duplicate.
+
+/**
+ * The visible message bubble carrying exactly this text.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} text
+ */
+export function messageBubble(page, text) {
+  return page.getByText(text, { exact: true }).and(page.locator(':not(.sr-only)'));
+}
+
 /** The open confirmation modal, if any. */
 export function confirmDialog(page) {
   return page.getByRole('alertdialog');

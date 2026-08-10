@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, messageBubble } from './fixtures.js';
 
 // ============================================================
 // Two-user end-to-end smoke test
@@ -87,25 +87,25 @@ test.describe('end-to-end encrypted messaging', () => {
       await sendMessage(alice, fromAlice);
 
       // It must render as plaintext for the sender...
-      await expect(alice.getByText(fromAlice)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, fromAlice)).toBeVisible({ timeout: 20_000 });
 
       // ...and decrypt on Bob's side, which is the property that matters.
       // The message list only renders the open conversation, so Bob has to
       // open it before anything can be asserted about the decrypted text.
       await openChatWith(bob, aliceName);
-      await expect(bob.getByText(fromAlice)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, fromAlice)).toBeVisible({ timeout: 30_000 });
 
       // Bob replies: this exercises the responder path and a DH ratchet step.
       const fromBob = `hi alice ${Date.now()}`;
       await sendMessage(bob, fromBob);
 
-      await expect(bob.getByText(fromBob)).toBeVisible({ timeout: 20_000 });
-      await expect(alice.getByText(fromBob)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, fromBob)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, fromBob)).toBeVisible({ timeout: 30_000 });
 
       // A second message from Alice runs the ratchet forward past the step.
       const followUp = `follow up ${Date.now()}`;
       await sendMessage(alice, followUp);
-      await expect(bob.getByText(followUp)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, followUp)).toBeVisible({ timeout: 30_000 });
     } finally {
       await aliceContext.close();
       await bobContext.close();
@@ -134,7 +134,7 @@ test.describe('end-to-end encrypted messaging', () => {
       await sendMessage(alice, secret);
 
       await openConversation(bob, aliceName);
-      await expect(bob.getByText(secret)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, secret)).toBeVisible({ timeout: 30_000 });
 
       // Pull the conversation back through the API using Bob's session and
       // confirm the stored payload is ciphertext, not the typed string.
@@ -186,10 +186,10 @@ test.describe('end-to-end encrypted messaging', () => {
 
       await openChatWith(alice, bobName); // cloud by default
       await sendMessage(alice, text);
-      await expect(alice.getByText(text)).toBeVisible({ timeout: 20_000 });
+      await expect(messageBubble(alice, text)).toBeVisible({ timeout: 20_000 });
 
       await openConversation(bob, aliceName);
-      await expect(bob.getByText(text)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, text)).toBeVisible({ timeout: 30_000 });
 
       const cookies = await bobContext.cookies();
       const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');

@@ -149,14 +149,16 @@ test.describe('chat themes', () => {
       await expect(alice.locator('[data-chat-theme="ocean"]')).toBeVisible({ timeout: 15_000 });
 
       // It survives a reload, so the client reads it back from the server
-      // rather than holding it in local state. The app always opens on the
-      // landing page, so getting back to a themed pane means going through
-      // the CTA and reopening the conversation.
+      // rather than holding it in local state, so getting back to a themed
+      // pane means unlocking again and reopening the conversation.
       await alice.reload();
-      await alice.getByRole('button', { name: /start a private chat/i }).first().click();
       // The identity keys live in memory only, so a reload always comes back
       // to the unlock screen — there is no way to reach a themed pane without
-      // going through it.
+      // going through it. It comes back to that screen *directly*: App.svelte
+      // finds the session cookie still valid and goes straight to 'auth', so
+      // there is no landing page and no CTA to click on the way. These specs
+      // still clicked one, and waited out the full 60s test budget for a
+      // button that a signed-in reload never renders.
       await alice.getByPlaceholder('Enter password').fill(PASSWORD);
       await alice.getByRole('button', { name: /unlock vault/i }).click();
       await expect(alice.getByPlaceholder('Search users...')).toBeVisible({ timeout: 45_000 });

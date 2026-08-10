@@ -1,4 +1,4 @@
-import { test, expect, clickConfirm } from './fixtures.js';
+import { test, expect, messageBubble, clickConfirm } from './fixtures.js';
 
 // ============================================================
 // Blocking
@@ -93,7 +93,7 @@ test.describe('blocking', () => {
       await sendMessage(alice, before);
 
       await openConversation(bob, aliceName);
-      await expect(bob.getByText(before)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(bob, before)).toBeVisible({ timeout: 30_000 });
 
       await block(alice);
       await expect(alice.getByText(/You blocked/)).toBeVisible({ timeout: 20_000 });
@@ -104,7 +104,7 @@ test.describe('blocking', () => {
       // Bob's client may show its own optimistic copy; what matters is that
       // Alice never receives it.
       await alice.waitForTimeout(3000);
-      await expect(alice.getByText(after)).toHaveCount(0);
+      await expect(messageBubble(alice, after)).toHaveCount(0);
     } finally {
       await ctx.aliceCtx.close();
       await ctx.bobCtx.close();
@@ -152,7 +152,7 @@ test.describe('blocking', () => {
       // And delivery resumes.
       const after = `after unblock ${Date.now()}`;
       await sendMessage(bob, after);
-      await expect(alice.getByText(after)).toBeVisible({ timeout: 30_000 });
+      await expect(messageBubble(alice, after)).toBeVisible({ timeout: 30_000 });
     } finally {
       await ctx.aliceCtx.close();
       await ctx.bobCtx.close();
