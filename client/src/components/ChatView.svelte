@@ -88,6 +88,21 @@
     return last && last.senderId !== $currentUser?.id ? last : null;
   })();
 
+  // What the live region below is allowed to say. A view-once message is the
+  // one case where the announcement must not be the message: MessageBubble
+  // deliberately renders it as "Tap to view once" and hides the text until
+  // the recipient taps, and that tap is also what consumes it server-side.
+  // Reading the body out here disclosed the content to a screen-reader user
+  // without the tap *and* left the message unspent, so it stayed readable
+  // afterwards too — the opposite of what view-once promises. Caught by
+  // e2e/media-and-themes.spec.js, which asserts the text is absent from the
+  // recipient's page before opening.
+  $: incomingAnnouncement = !lastIncomingMessage
+    ? ''
+    : lastIncomingMessage.viewOnce
+      ? 'a view-once message'
+      : (lastIncomingMessage.text || 'attachment');
+
   // Album membership, computed once for the whole list rather than per bubble.
   // A run is *consecutive* messages sharing a groupedId — the same rule
   // Telegram uses, and the reason a later unrelated send never joins an
@@ -2440,7 +2455,7 @@
          (e.g. loading older history) don't re-trigger it. -->
     <div class="sr-only" aria-live="polite" aria-atomic="true">
       {#if lastIncomingMessage}
-        New message from {$activePeer?.username || 'peer'}: {lastIncomingMessage.text || 'attachment'}
+        New message from {$activePeer?.username || 'peer'}: {incomingAnnouncement}
       {/if}
     </div>
   </div>
