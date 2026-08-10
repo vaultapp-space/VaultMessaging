@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dark-mode counterpart to values/colors.xml. Matches the drawable-night/
+  splash.png that already existed, so the window behind the splash is now dark
+  too instead of staying white underneath a dark splash image.
+
+  Values mirror client/src/app.css's default (dark) @theme block.
+-->
+<resources>
+    <color name="colorPrimary">#10b981</color>
+    <color name="colorPrimaryDark">#059669</color>
+    <color name="colorAccent">#34d399</color>
+
+    <!-- Mirrors the CSS var color-vault-black in the dark theme -->
+    <color name="vaultWindowBackground">#09090b</color>
+</resources>

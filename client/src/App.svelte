@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
   import { currentUser, isLoading, setUser, activeView, pendingChatId, identityKeyPair, signedPrekeyPair, oneTimePrekeyPairs, vaultMasterKey, localBackupKey, localBackupPassphrase, localBackupEnabled, ratchetSessions, groupSenderKeys } from './lib/stores/session.js';
-  import { getMe, replenishPrekeys } from './lib/api/http.js';
+  import { getMe, replenishPrekeys, API_BASE } from './lib/api/http.js';
   import { decryptSyncPayload, generateOneTimePrekeys } from './lib/crypto/keys.js';
   import { fromBase64 } from './lib/crypto/utils.js';
   import { RatchetSession } from './lib/crypto/ratchet.js';
@@ -104,7 +104,7 @@
       try {
         const user = await getMe();
         setUser(user);
-        const res = await fetch(`/api/invites/${joinMatch[1]}/join`, {
+        const res = await fetch(`${API_BASE}/invites/${joinMatch[1]}/join`, {
           method: 'POST',
           credentials: 'include',
         });
@@ -137,7 +137,9 @@
         const query = new URLSearchParams(
           Object.fromEntries(Object.entries(deviceInfo).filter(([, v]) => v != null))
         );
-        const res = await fetch(`/api/auth/sync/retrieve/${syncId}?${query}`);
+        const res = await fetch(`${API_BASE}/auth/sync/retrieve/${syncId}?${query}`, {
+          credentials: 'include',
+        });
         if (res.ok) {
           const { payload, deviceId } = await res.json();
           const keyRaw = fromBase64(decodeURIComponent(keyParam));

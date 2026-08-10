@@ -7,7 +7,7 @@
   import { applyEdit } from '../lib/chat/edit.js';
   import { tombstoneLocally, setPinned, setPreview, setPoll, consumeViewOnce } from '../lib/chat/actions.js';
   import { hydrateBlocked } from '../lib/chat/chatSettings.js';
-  import { fetchPoll, fetchUpdates, fetchChats, fetchPendingMessages, logout, getPrekeyCount, replenishPrekeys } from '../lib/api/http.js';
+  import { fetchPoll, fetchUpdates, fetchChats, fetchPendingMessages, logout, getPrekeyCount, replenishPrekeys, API_BASE } from '../lib/api/http.js';
   import { connectWebSocket, disconnectWebSocket, onWsEvent, wsConnected, wsError, wsSend } from '../lib/api/ws.js';
   import { generateOneTimePrekeys, importStaticKey } from '../lib/crypto/keys.js';
   import { decryptSignalingPayload } from '../lib/crypto/decryption.js';
@@ -691,7 +691,7 @@
 
     try {
       const registration = await navigator.serviceWorker.register('/sw.js');
-      const res = await fetch('/api/push/public-key');
+      const res = await fetch(`${API_BASE}/push/public-key`, { credentials: 'include' });
       const data = await res.json();
       const vapidPublicKey = data.publicKey;
 
@@ -704,9 +704,12 @@
       }
 
       const rawSub = JSON.parse(JSON.stringify(subscription));
-      await fetch('/api/push/subscribe', {
+      await fetch(`${API_BASE}/push/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // Cross-origin inside the Android app, so the session cookie needs
+        // asking for explicitly — fetch defaults to 'same-origin'.
+        credentials: 'include',
         body: JSON.stringify({ subscription: rawSub })
       });
       console.log('Web Push subscription registered on server.');

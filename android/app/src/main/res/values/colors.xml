@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Light-mode values; values-night/colors.xml holds the dark ones.
+
+  Until now this file did not exist at all, so @color/colorPrimary and friends
+  resolved against the defaults in @capacitor/android's own colors.xml — stock
+  Material indigo (#3F51B5) and pink (#FF4081), i.e. nothing to do with this
+  app. They were only ever visible in system-drawn chrome, which is why it went
+  unnoticed, but the window background was the real cost: AppTheme inherited a
+  *Light* AppCompat theme, so the frame behind the WebView was white on every
+  device regardless of the in-app theme, and dark-mode users got a white flash
+  between the splash drawable and the WebView's first paint.
+
+  Values mirror client/src/app.css: vault-black / vault-surface / the emerald
+  accent, using the light-theme (:root.light) variants here.
+-->
+<resources>
+    <color name="colorPrimary">#059669</color>
+    <color name="colorPrimaryDark">#047857</color>
+    <color name="colorAccent">#10b981</color>
+
+    <!-- Mirrors the CSS var color-vault-black under :root.light -->
+    <color name="vaultWindowBackground">#fafafa</color>
+</resources>

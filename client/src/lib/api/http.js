@@ -16,7 +16,26 @@ import { Capacitor } from '@capacitor/core';
 // through to the network is if the host doesn't match the app's own origin
 // at all. See capacitor.config.ts's server.hostname comment for the other
 // half of this — verified against a real device, not assumed.
-const API_BASE = Capacitor.isNativePlatform() ? 'https://vaultapp.space/api' : '/api';
+export const API_BASE = Capacitor.isNativePlatform() ? 'https://vaultapp.space/api' : '/api';
+
+// The origin to put in a link that will be *handed to someone else* — an
+// invite URL, a device-sync QR code. Not the same question as API_BASE, and
+// not answerable with window.location.origin: inside the Android app that
+// evaluates to https://app.vaultapp.space, the spoofed local-asset origin
+// described in capacitor.config.ts, which by design has no DNS record at
+// all. Links built from it were dead on arrival for whoever received them —
+// and unlike a failed fetch, nothing surfaced an error, because generating
+// the string always succeeded.
+//
+// On web it stays window.location.origin so local dev and any future
+// alternate host keep producing links that point back at themselves.
+// The `typeof window` arm is for non-browser contexts — the vitest suite
+// imports this module transitively — where reading window.location at module
+// scope would throw on import and take the whole file down with it.
+export const PUBLIC_ORIGIN =
+  Capacitor.isNativePlatform() || typeof window === 'undefined'
+    ? 'https://vaultapp.space'
+    : window.location.origin;
 
 async function request(method, path, body = null, extraHeaders = {}) {
   const options = {

@@ -11,7 +11,7 @@
     runSearch, hydrateDrafts, refreshPresence, presence, describePresence,
   } from '../lib/chat/chatSettings.js';
   import { clickOutside } from '../lib/actions/clickOutside.js';
-  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault } from '../lib/api/http.js';
+  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, API_BASE, PUBLIC_ORIGIN } from '../lib/api/http.js';
   import { wsConnected } from '../lib/api/ws.js';
   import { getAvatarGradient } from '../lib/avatar.js';
   import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault } from '../lib/crypto/keys.js';
@@ -133,9 +133,13 @@
 
       const encryptedPayload = await encryptSyncPayload(syncPayload, aesKeyBytes);
       
-      const res = await fetch('/api/auth/sync/initiate', {
+      const res = await fetch(`${API_BASE}/auth/sync/initiate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // Cross-origin inside the Android app (app.vaultapp.space →
+        // vaultapp.space), where fetch's default 'same-origin' credentials
+        // mode would drop the session cookie.
+        credentials: 'include',
         body: JSON.stringify({ syncId, payload: encryptedPayload })
       });
       
@@ -145,7 +149,7 @@
         // (not this page load, not the /sync/retrieve call below), so it never
         // reaches nginx access logs. syncId alone is a single-use, 120s-TTL
         // capability token and is useless without the fragment key.
-        syncLink = `${window.location.origin}/?syncId=${syncId}#key=${encodeURIComponent(keyBase64)}`;
+        syncLink = `${PUBLIC_ORIGIN}/?syncId=${syncId}#key=${encodeURIComponent(keyBase64)}`;
         // Rendered locally — never hand the link (with the key) to a third
         // party like api.qrserver.com to generate the QR image.
         syncQrUrl = await QRCode.toDataURL(syncLink, { width: 200, margin: 1 });

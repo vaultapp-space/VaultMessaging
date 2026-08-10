@@ -5,7 +5,7 @@
   import { clickOutside } from '../lib/actions/clickOutside.js';
   import { stripJpegExif, stripPngMetadata } from '../lib/chat/metadata.js';
   import { encryptAndSend as sendEncrypted, sendMessage as sendToChat } from '../lib/chat/send.js';
-  import { markChatRead, createPoll, updateChatSettings, markStickerUsed } from '../lib/api/http.js';
+  import { markChatRead, createPoll, updateChatSettings, markStickerUsed, PUBLIC_ORIGIN } from '../lib/api/http.js';
   import StickerPicker from './StickerPicker.svelte';
   import VoiceWaveform from './VoiceWaveform.svelte';
   import VoiceChatBar from './VoiceChatBar.svelte';
@@ -560,7 +560,7 @@
   }
 
   async function copyInvite(hash) {
-    const link = `${window.location.origin}/join/${hash}`;
+    const link = `${PUBLIC_ORIGIN}/join/${hash}`;
     try {
       await navigator.clipboard.writeText(link);
       inviteCopied = hash;
