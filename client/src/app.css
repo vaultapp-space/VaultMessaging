@@ -436,46 +436,12 @@ button:not(.btn-primary):not(.btn-ghost):not(:disabled):active {
   animation: hud-rotate 15s linear infinite reverse;
 }
 
-@keyframes neon-pulse {
-  0%, 100% { filter: drop-shadow(0 0 2px var(--color-vault-accent)); }
-  50% { filter: drop-shadow(0 0 8px var(--color-vault-accent)); }
-}
-
-.animate-neon-pulse {
-  animation: neon-pulse 2s infinite ease-in-out;
-}
-
-@keyframes flash-green {
-  0% { background-color: rgba(16, 185, 129, 0.2); }
-  100% { background-color: transparent; }
-}
-
-@keyframes flash-red {
-  0% { background-color: rgba(239, 68, 68, 0.2); }
-  100% { background-color: transparent; }
-}
-
-.animate-flash-green {
-  animation: flash-green 1s ease-out forwards;
-}
-
-.animate-flash-red {
-  animation: flash-red 1s ease-out forwards;
-}
-
-@keyframes dash {
-  to {
-    stroke-dashoffset: -24;
-  }
-}
-
-.flow-line {
-  stroke-dasharray: 8, 4;
-  animation: dash 1s linear infinite;
-  filter: drop-shadow(0 0 4px var(--color-vault-accent));
-}
-
-
+/* Removed here: .animate-neon-pulse, .animate-flash-green, .animate-flash-red
+   and .flow-line (with their keyframes). None had a single call site anywhere
+   in the app, and the flash pair duplicated .reply-flash in
+   MessageBubble.svelte, which is the one that is actually wired up — to the
+   jump-to-quoted-message highlight. Kept .animate-hud-rotate and its -reverse
+   variant, which VaultCoin.svelte does use. */
 
 /* ============================================================
    Per-chat themes

@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import { currentUser, clearSession, activePeer, activeChannelId, pendingChatId, syncPts, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients, sidebarOpen } from '../lib/stores/session.js';
-  import { conversations, addMessage, addMessages, setTyping, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
+  import { conversations, conversationsLoaded, addMessage, addMessages, setTyping, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
   import { setReactions } from '../lib/chat/reactions.js';
   import { applyEdit } from '../lib/chat/edit.js';
   import { tombstoneLocally, setPinned, setPreview, setPoll, consumeViewOnce } from '../lib/chat/actions.js';
@@ -103,6 +103,7 @@
       const { chats } = await fetchChats();
       const convs = chats.map(toConversation);
       conversations.set(convs);
+      conversationsLoaded.set(true);
 
       // Arrived through an invite link: open what they joined, rather than
       // dropping them into a list with no explanation of why it changed.
@@ -114,6 +115,11 @@
       }
     } catch (err) {
       console.error('Failed to fetch chats:', err);
+      // Marked loaded on failure too. The flag answers "has the first attempt
+      // finished", not "did it succeed" — leaving it false would park the
+      // sidebar on skeleton rows indefinitely, which reads as a hang rather
+      // than the empty state plus whatever error surfaced.
+      conversationsLoaded.set(true);
     }
 
     // Blocked users are global state, not per-conversation: loading them here

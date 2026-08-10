@@ -4,7 +4,8 @@
   import { currentUser } from '../lib/stores/session.js';
   import { clickOutside } from '../lib/actions/clickOutside.js';
   import { onDestroy, onMount } from 'svelte';
-  import { scale } from 'svelte/transition';
+  import { scale, fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { hapticLight } from '../lib/haptics.js';
   import { decryptFile, decryptChunk } from '../lib/crypto/keys.js';
   import { fetchAttachment, fetchAttachmentChunk, markMessageViewed, publicMediaUrl } from '../lib/api/http.js';
@@ -12,6 +13,9 @@
 
   export let message;
   export let isOwn = false;
+  // 0 suppresses the entry animation entirely. ChatView sets it that way for
+  // the render that swaps conversations — see its allowMessageIntro.
+  export let introDuration = 220;
   export let showAvatar = true;
   export let searchQuery = '';
   // Supplied by the message list; null in contexts that cannot react (e.g. a
@@ -211,6 +215,22 @@
     ? { ...envelope.media, type: 'attachment' }
     : null;
 
+  // aspect-ratio reserves the image's box from the moment the bubble renders,
+  // before the ciphertext has even been fetched. Without it the transcript
+  // reflows twice for every photo — once when the "Decrypting…" row is
+  // replaced, and again when the decoded image settles at its real height —
+  // and because the list is pinned to the bottom, both jumps land under
+  // whatever the reader is looking at. Only present on attachments sent by a
+  // client new enough to include the dimensions (see ChatView's
+  // readImageDimensions); everything older simply behaves as before.
+  $: isImageAttachment = Boolean(attachmentData?.mimeType?.startsWith('image/'));
+  $: imageAspect = attachmentData?.width && attachmentData?.height
+    ? `${attachmentData.width} / ${attachmentData.height}`
+    : null;
+  $: reservedImageStyle = imageAspect
+    ? `aspect-ratio: ${imageAspect}; max-height: 200px; width: 100%;`
+    : null;
+
   $: if (isAttachment && attachmentData && !attachmentData.burnOnRead && !objectUrl && !loadingFile && !loadFileError) {
     loadAndDecryptFile();
   }
@@ -331,11 +351,28 @@
 
 <!-- data-seq is the anchor jumpToSeq() scrolls to when a quoted reply is
      tapped; without it a reply can reference a message the UI cannot find. -->
+<!--
+  Entry animation, replacing the animate-slide-* CSS classes that used to sit
+  here. Two things were wrong with those:
+
+  1. A CSS class animates whenever the element is created, which includes the
+     initial render — so opening a conversation with fifty messages played
+     fifty slide-ins at once. A Svelte `in:` transition does not run on the
+     component tree's first render, so history now simply appears and only
+     messages arriving afterwards animate. Switching conversations is the one
+     case that rule does not cover (those bubbles are created after mount, so
+     they would all animate); ChatView passes introDuration=0 for exactly that
+     render.
+
+  2. The directions were swapped. animate-slide-right starts at +20px and was
+     applied to !isOwn — the left-aligned incoming bubble — so each message
+     flew in from the side opposite the one it belongs to, crossing the
+     transcript to get home. Each bubble now enters from its own edge.
+-->
 <div
   data-seq={message.seq ?? undefined}
   class="flex {isOwn ? 'justify-end' : 'justify-start'} {showAvatar ? 'mt-3' : 'mt-0.5'}"
-  class:animate-slide-right={!isOwn}
-  class:animate-slide-left={isOwn}
+  in:fly={{ x: isOwn ? 24 : -24, duration: introDuration, easing: cubicOut }}
 >
   <!-- items-start, not items-end: the bubble column also holds the reaction
        and action row, so bottom-aligning put the avatar level with the
@@ -432,13 +469,26 @@
                 {/if}
               </div>
               {#if loadingFile}
-                <div class="flex items-center gap-2 text-xs text-vault-text-dim py-2">
-                  <svg class="w-4 h-4 animate-spin text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
-                    <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
-                  </svg>
-                  Decrypting...
-                </div>
+                {#if isImageAttachment && reservedImageStyle}
+                  <!-- Occupies exactly the box the decoded image will, so the
+                       swap is a cross-fade rather than a reflow. The shimmer
+                       is app.css's .skeleton, which the design system has
+                       always defined and nothing had ever used. -->
+                  <div
+                    class="skeleton rounded-lg border border-vault-border"
+                    style={reservedImageStyle}
+                    role="img"
+                    aria-label="Decrypting image"
+                  ></div>
+                {:else}
+                  <div class="flex items-center gap-2 text-xs text-vault-text-dim py-2">
+                    <svg class="w-4 h-4 animate-spin text-vault-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+                      <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
+                    </svg>
+                    Decrypting...
+                  </div>
+                {/if}
               {:else if loadFileError}
                 <div class="text-xs text-vault-danger py-1">
                   ⚠️ {loadFileError}
@@ -450,9 +500,22 @@
                     class="bg-transparent border-none p-0 cursor-pointer text-left block max-w-full focus:outline-none"
                     aria-label="View full size image"
                   >
+                    <!-- The message list is anchored to the bottom, so an
+                         image that finishes decoding after layout pushes
+                         everything below it — the jump lands exactly where
+                         the reader is looking. width/height give the box its
+                         aspect ratio up front so the space is already
+                         reserved (the max-* classes still control the
+                         rendered size; these are a ratio hint, not a size).
+                         decoding="async" keeps a large photo off the main
+                         thread while it is decoded. Landing.svelte already
+                         does all of this for its screenshots; the in-app
+                         images never got the same treatment. -->
                     <img
                       src={objectUrl}
                       alt={attachmentData.filename}
+                      decoding="async"
+                      style={reservedImageStyle}
                       class="max-w-full max-h-[200px] rounded-lg border border-vault-border object-contain"
                     />
                   </button>

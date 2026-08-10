@@ -3,7 +3,7 @@
   import QRCode from 'qrcode';
   import { draggable } from '../lib/chat/draggable.js';
   import { clickOutside } from '../lib/actions/clickOutside.js';
-  import { stripJpegExif, stripPngMetadata } from '../lib/chat/metadata.js';
+  import { stripJpegExif, stripPngMetadata, readImageDimensions } from '../lib/chat/metadata.js';
   import { sendMessage as sendToChat } from '../lib/chat/send.js';
   import { markChatRead, createPoll, updateChatSettings, markStickerUsed, PUBLIC_ORIGIN } from '../lib/api/http.js';
   import StickerPicker from './StickerPicker.svelte';
@@ -83,6 +83,42 @@
   // Drives the aria-live announcement below — null for an empty thread or
   // when the newest message is the current user's own (already implied by
   // having just sent it).
+  // Whether a message bubble may play its entry animation (MessageBubble's
+  // introDuration). Svelte already suppresses intro transitions on a
+  // component tree's first render, which covers opening the app; this covers
+  // the case it does not. Switching conversations destroys every bubble and
+  // builds new ones *after* mount, so without this the whole incoming
+  // transcript would slide in at once — fifty simultaneous transforms, which
+  // is both noisy and the most compositor work the app ever asks for in one
+  // frame. Suppressed for the render that swaps the list, restored on the
+  // next tick so genuinely new messages still animate.
+  let allowMessageIntro = false;
+  // Plain object, not a `let`: a reactive block that both reads and writes the
+  // same top-level variable makes itself one of its own dependencies and
+  // re-runs. Mutating a const object's field is invisible to Svelte's
+  // dependency tracking, so this block depends on the peer id and nothing
+  // else.
+  //
+  // eslint's svelte/infinite-reactive-loop still flags the assignment inside
+  // the .then() below — it warns on any async write from a reactive block,
+  // without checking whether the block reads what it writes. This one cannot
+  // loop: allowMessageIntro is written here and read only in the template.
+  // The rule is a warning rather than an error in eslint.config.js precisely
+  // because it is a heuristic worth investigating case by case; this is one
+  // of the cases where it is wrong.
+  const introGate = { token: 0 };
+  $: {
+    $activePeer?.id;
+    allowMessageIntro = false;
+    const token = ++introGate.token;
+    tick().then(() => {
+      // Only the most recent switch may re-enable: flicking between two
+      // conversations quickly would otherwise let an earlier tick turn intros
+      // back on just as the next list is being built.
+      if (introGate.token === token) allowMessageIntro = true;
+    });
+  }
+
   $: lastIncomingMessage = (() => {
     const last = peerMessages[peerMessages.length - 1];
     return last && last.senderId !== $currentUser?.id ? last : null;
@@ -1334,6 +1370,9 @@
     sendingFile = true;
     uploadProgress = 0;
     uploadFileName = file.name;
+    // Read before the EXIF strip below, which rewrites the buffer but never
+    // the pixel dimensions. null for anything that is not a decodable image.
+    const imageDimensions = await readImageDimensions(file);
     try {
       // 1. Read entire file into ArrayBuffer
       let arrayBuffer = await new Promise((resolve, reject) => {
@@ -1413,6 +1452,12 @@
           chunked: true,
           totalChunks: totalChunks,
           burnOnRead: burnOnReadActive,
+          // Lets the recipient reserve the right-shaped box before the image
+          // has downloaded and decrypted — see readImageDimensions. Spread so
+          // a non-image (or an undecodable one) adds nothing at all rather
+          // than two null keys, keeping the envelope byte-identical to before
+          // for every case this does not apply to.
+          ...(imageDimensions ?? {}),
         }, { groupedId, viewOnce: viewOnceActive }),
         { peer: $activePeer, currentUser: $currentUser, ttlMinutes, chatId: $activePeer.chatId }
       );
@@ -1928,10 +1973,23 @@
        lib/safe-fetch.js), scales to any DPI, and rides the existing
        --color-vault-border-subtle token so it's already correct in both
        light/dark and never competes with bubble/text contrast. -->
+  <!-- z-0 below pins the whole transcript into its own stacking context,
+       underneath the header (relative z-40) and the menu it opens. Without it,
+       any descendant that establishes a stacking context of its own — the
+       delivery tick carries an `animation: … forwards`, and a transform does
+       exactly that — can paint over the chat menu and swallow clicks on it.
+       This was previously masked by accident: bubbles used to carry
+       animate-slide-* with a forwards fill, leaving a permanent transform on
+       every bubble that boxed the tick in. Replacing those classes with a
+       Svelte transition (which removes its inline styles when it ends) took
+       the accident away and exposed the real bug, which e2e caught as
+       "Unblock" being unclickable behind a message. Fixed here rather than by
+       restoring the transform, so the transcript can never overlay the header
+       again regardless of what animates inside it. -->
   <div
     bind:this={messagesContainer}
     on:scroll={handleScroll}
-    class="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative bg-[radial-gradient(var(--color-vault-border)_1px,transparent_1px)] [background-size:22px_22px]"
+    class="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative z-0 bg-[radial-gradient(var(--color-vault-border)_1px,transparent_1px)] [background-size:22px_22px]"
   >
     {#if peerBlocked}
       <div class="mx-4 mt-3 mb-1 px-3 py-2 rounded-xl bg-vault-danger/10 border border-vault-danger/30 text-center">
@@ -2026,6 +2084,7 @@
           isOwn={msg.senderId === $currentUser?.id}
           showAvatar={i === 0 || peerMessages[i - 1]?.senderId !== msg.senderId}
           searchQuery={searchQuery}
+          introDuration={allowMessageIntro ? 220 : 0}
         />
         </div>
       {/each}

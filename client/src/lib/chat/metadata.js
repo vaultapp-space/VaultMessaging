@@ -122,3 +122,49 @@ export function stripPngMetadata(arrayBuffer) {
   }
   return cleanBuffer.buffer;
 }
+
+/**
+ * Intrinsic pixel dimensions of an image file, or null for anything that is
+ * not an image or fails to decode.
+ *
+ * Sent alongside the attachment so the recipient can reserve the right box
+ * before the bytes arrive. The message list is anchored to the bottom, so an
+ * image whose size is only known once it has downloaded *and* decrypted *and*
+ * decoded shifts the transcript under the reader at the worst moment. The
+ * dimensions are the only part of an image safe to send in the clear here —
+ * they travel inside the same end-to-end encrypted envelope as the rest of
+ * the media metadata (filename, mimeType), so this adds nothing the server
+ * can see.
+ *
+ * Deliberately reads the *original* file rather than the EXIF-stripped copy:
+ * stripping only removes metadata segments and never touches the pixel
+ * dimensions, and reading first keeps this off the critical path of the
+ * upload itself.
+ *
+ * @param {File|Blob} file
+ * @returns {Promise<{width: number, height: number} | null>}
+ */
+export function readImageDimensions(file) {
+  if (!file?.type?.startsWith('image/')) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+
+    const done = (value) => {
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+
+    img.onload = () => done(
+      img.naturalWidth && img.naturalHeight
+        ? { width: img.naturalWidth, height: img.naturalHeight }
+        : null
+    );
+    // A format the browser cannot decode (or a corrupt file) is not worth
+    // failing a send over — the attachment still goes, just without the
+    // size hint.
+    img.onerror = () => done(null);
+    img.src = url;
+  });
+}

@@ -2,8 +2,9 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { fade, scale } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
   import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
-  import { conversations, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
+  import { conversations, conversationsLoaded, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { openPrivateChat, fetchFolders, createFolder, setFolderChats, deleteFolder,
     fetchChannels, createChannel, searchChannels, subscribeChannel } from '../lib/api/http.js';
   import {
@@ -1243,6 +1244,31 @@
             class="text-[10px] text-vault-accent hover:underline mt-1 focus:outline-none"
           >Add chats to it</button>
         </div>
+      {:else if !$conversationsLoaded && !searchQuery}
+        <!-- The list has never been fetched yet, which is not the same thing
+             as it being empty — the branch below used to catch both, so a
+             returning user was told "No conversations yet" for the length of
+             a round trip before their chats replaced it. Skeleton rows are
+             shaped like the real ones (avatar, name, preview) so the swap is
+             a fill rather than a relayout, using app.css's .skeleton, which
+             the design system defined and nothing had used. aria-hidden and
+             aria-busy keep a screen reader out of placeholder content that
+             says nothing. -->
+        <div class="px-1 py-1" aria-busy="true" aria-label="Loading conversations">
+          {#each Array(5) as _, i (i)}
+            <div
+              class="w-full flex items-center gap-3 px-3 py-2.5 mb-0.5"
+              style="opacity: {1 - i * 0.15}"
+              aria-hidden="true"
+            >
+              <div class="skeleton w-10 h-10 rounded-full flex-shrink-0"></div>
+              <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+                <div class="skeleton h-3 rounded" style="width: {55 + ((i * 37) % 30)}%"></div>
+                <div class="skeleton h-2 rounded" style="width: {70 + ((i * 23) % 25)}%"></div>
+              </div>
+            </div>
+          {/each}
+        </div>
       {:else if $conversations.length === 0 && !searchQuery}
         <div class="text-center py-12 px-4">
           <div class="w-12 h-12 rounded-2xl bg-vault-elevated flex items-center justify-center mx-auto mb-3">
@@ -1258,7 +1284,24 @@
           {@const isActive = $activePeer?.id === conv.peerId}
           {@const isTyping = $typingUsers.has(conv.peerId)}
           {@const presenceEntry = conv.isGroup ? null : $presence.get(conv.peerId)}
-          <div class="relative group/row">
+          <!-- Every incoming message moves its conversation to the front of
+               this list (Chat.svelte's "insertion-sort: move to front"), which
+               is the most frequent list mutation in the app and, without this,
+               the least legible: the row teleported from wherever it was to
+               the top and everything below it snapped down a slot, with no
+               indication that the thing you were looking at had moved. flip
+               animates the positional delta instead, so the row visibly
+               travels and the eye can follow it. Cheap because the block is
+               already keyed by peerId — flip needs a stable key to know which
+               row is which, and would silently do nothing without one.
+               Duration is a function of distance rather than a constant so a
+               one-slot hop stays snappy while a jump from the bottom of a
+               long list still reads. app.css's prefers-reduced-motion rule
+               collapses this to a single frame like everything else. -->
+          <div
+            class="relative group/row"
+            animate:flip={{ duration: (d) => Math.min(400, 120 + Math.sqrt(d) * 12) }}
+          >
           <button
             on:click={() => selectPeer({ id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup, members: conv.members, createdBy: conv.createdBy, chatId: conv.chatId, mode: conv.mode, isEmpty: conv.isEmpty, lastMessageAt: conv.lastMessageAt, isForum: conv.isForum })}
             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left mb-0.5 group

@@ -94,6 +94,15 @@ const knownMessageIds = new Set();
 // Conversations list from server
 export const conversations = writable([]);
 
+// Whether the first /api/chats fetch has come back. Distinct from
+// `conversations.length === 0`, which cannot tell "you have no chats" apart
+// from "we have not asked yet" — so the sidebar showed a returning user the
+// "No conversations yet" empty state for the length of a network round trip
+// before their chats replaced it. Reset by clearConversations() on sign-out
+// so the next account starts from "unknown" rather than inheriting the
+// previous one's answer.
+export const conversationsLoaded = writable(false);
+
 // Typing indicators
 export const typingUsers = writable(new Map()); // peerId → timestamp
 
@@ -386,6 +395,7 @@ export function updateMessageDeliveryStatus(peerId, messageId, delivered) {
 export function clearMessages() {
   messagesByPeer.set(new Map());
   conversations.set([]);
+  conversationsLoaded.set(false);
   typingUsers.set(new Map());
   knownMessageIds.clear();
 }
