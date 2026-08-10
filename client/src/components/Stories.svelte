@@ -358,11 +358,11 @@
         <!-- Invisible tap zones over the media only, not the header/footer
              controls, matching the tap-left/tap-right convention every
              other story viewer already uses. -->
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
+        <!-- No svelte-ignore needed on these two, unlike the other click
+             handlers in this file: aria-hidden already tells the compiler
+             these are decorative, so the a11y rules never fire. Keyboard
+             users get the same navigation from the arrow-key handler. -->
         <div class="absolute inset-y-0 left-0 w-1/3" on:click={prevStory} aria-hidden="true"></div>
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
         <div class="absolute inset-y-0 right-0 w-2/3" on:click={nextStory} aria-hidden="true"></div>
       </div>
 

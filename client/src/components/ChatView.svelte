@@ -4,7 +4,7 @@
   import { draggable } from '../lib/chat/draggable.js';
   import { clickOutside } from '../lib/actions/clickOutside.js';
   import { stripJpegExif, stripPngMetadata } from '../lib/chat/metadata.js';
-  import { encryptAndSend as sendEncrypted, sendMessage as sendToChat } from '../lib/chat/send.js';
+  import { sendMessage as sendToChat } from '../lib/chat/send.js';
   import { markChatRead, createPoll, updateChatSettings, markStickerUsed, PUBLIC_ORIGIN } from '../lib/api/http.js';
   import StickerPicker from './StickerPicker.svelte';
   import VoiceWaveform from './VoiceWaveform.svelte';
@@ -778,15 +778,6 @@
     } catch (err) {
       console.error('Failed to toggle reaction:', err);
     }
-  }
-
-  // Binds the component's conversation context to the extracted send path.
-  function encryptAndSend(text, isAttachment = false) {
-    return sendEncrypted(text, isAttachment, {
-      peer: $activePeer,
-      currentUser: $currentUser,
-      ttlMinutes,
-    });
   }
 
   async function handleSend() {

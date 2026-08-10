@@ -3,8 +3,8 @@ import { describe, test, expect } from 'vitest';
 import {
   capabilities, supports, assertSupports, ChatMode,
 } from '../../shared/capabilities.js';
-import { createTextEnvelope, createMediaEnvelope, MessageType } from '../../shared/envelope.js';
-import { normalizeMessage, isMediaMessage } from '../src/lib/chat/normalize.js';
+import { createTextEnvelope, createMediaEnvelope, MessageType, isMedia } from '../../shared/envelope.js';
+import { normalizeMessage } from '../src/lib/chat/normalize.js';
 
 // ============================================================
 // Capabilities
@@ -134,7 +134,7 @@ describe('message normalisation', () => {
       media: { id: 'f1', mimeType: 'image/png', filename: 'a.png' },
     });
 
-    expect(isMediaMessage(normalized)).toBe(true);
+    expect(isMedia(normalized.envelope)).toBe(true);
     expect(normalized.media.filename).toBe('a.png');
   });
 
@@ -147,7 +147,7 @@ describe('message normalisation', () => {
       { decryptedText: JSON.stringify(envelope) }
     );
 
-    expect(isMediaMessage(normalized)).toBe(true);
+    expect(isMedia(normalized.envelope)).toBe(true);
     expect(normalized.messageType).toBe(MessageType.VOICE);
   });
 
@@ -161,7 +161,7 @@ describe('message normalisation', () => {
       { decryptedText: legacy }
     );
 
-    expect(isMediaMessage(normalized)).toBe(true);
+    expect(isMedia(normalized.envelope)).toBe(true);
     expect(normalized.media.filename).toBe('old.png');
   });
 

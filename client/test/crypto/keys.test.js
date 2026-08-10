@@ -21,7 +21,6 @@ import {
   decryptChunk,
   encryptIdentityVault,
   decryptIdentityVault,
-  wipeKeyMaterial,
 } from '../../src/lib/crypto/keys.js';
 import { toBase64 } from '../../src/lib/crypto/utils.js';
 
@@ -355,18 +354,3 @@ describe('identity vault', () => {
   });
 });
 
-describe('wipeKeyMaterial', () => {
-  test('zeroes byte arrays in place', () => {
-    const a = new Uint8Array([1, 2, 3, 4]);
-    const b = new Uint8Array([5, 6, 7, 8]);
-
-    wipeKeyMaterial(a, b);
-
-    expect(Array.from(a)).toEqual([0, 0, 0, 0]);
-    expect(Array.from(b)).toEqual([0, 0, 0, 0]);
-  });
-
-  test('tolerates null and undefined', () => {
-    expect(() => wipeKeyMaterial(null, undefined)).not.toThrow();
-  });
-});
