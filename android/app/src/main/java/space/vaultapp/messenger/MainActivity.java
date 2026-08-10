@@ -12,7 +12,17 @@ public class MainActivity extends BridgeActivity {
         // Must run before super.onCreate() — that's what actually builds
         // the Bridge and consumes this registration list.
         registerPlugin(ExternalOpenerPlugin.class);
+        registerPlugin(ScreenSecurityPlugin.class);
         super.onCreate(savedInstanceState);
+
+        // Applied here, from SharedPreferences, rather than left to the JS
+        // side to turn on once it boots: the recents-thumbnail snapshot this
+        // is mostly guarding against can be taken as soon as the window
+        // exists, which is well before the WebView has loaded far enough to
+        // read its own localStorage. Reading the preference natively means a
+        // user who enabled it never gets an unprotected window, not even for
+        // the length of a cold start.
+        ScreenSecurityPlugin.apply(this, ScreenSecurityPlugin.isEnabled(this));
         // Android's WebView does not inherit the system Settings > Display >
         // Font size accessibility setting on its own — unlike native views,
         // where it applies automatically to `sp` units. `textZoom` is the

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31) backup/transfer policy. The companion to
+  android:allowBackup="false" in AndroidManifest.xml, not a duplicate of it:
+  allowBackup="false" stops cloud backup, but on API 31+ device-to-device
+  transfer is governed *only* by this file, so without it a phone-to-phone
+  migration would still copy everything allowBackup was set to protect.
+
+  Everything is excluded, deliberately. The WebView's localStorage and
+  IndexedDB live under the app data dir, and between them they hold:
+    - vault_bio_wrapped_master_<userId> — the vault master key wrapped under
+      the WebAuthn PRF key (client/src/lib/biometric.js)
+    - the vault_local_backup IndexedDB store — the passphrase-encrypted vault
+      (client/src/lib/db.js)
+  Both are ciphertext, so this was never a plaintext leak. But replicating an
+  encrypted vault plus a wrapped master key into a user's Google Drive hands
+  anyone who reaches that account an offline cracking target, and directly
+  contradicts the "key material never leaves the device" property the rest of
+  the design is built around. Recovery is what the passphrase-encrypted cloud
+  vault and QR device sync are for — both of which are explicit user actions
+  with their own key handling, unlike a silent OS-level copy.
+
+  <exclude domain="root" /> covers the entire app data directory, which is the
+  documented way to opt out wholesale; the narrower domains are listed anyway
+  so this stays correct if a future OS release changes what "root" spans.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

@@ -36,7 +36,19 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
+            // R8 on. Capacitor is reflection-heavy (plugins are resolved by
+            // class name from assets/capacitor.plugins.json, and by the
+            // @CapacitorPlugin annotation), which is normally the reason a
+            // Capacitor app is left unminified — but @capacitor/android ships
+            // consumerProguardFiles with the necessary -keep rules, so those
+            // are applied to this module automatically. proguard-rules.pro
+            // adds the same protection for this app's own two plugins.
+            //
+            // shrinkResources is deliberately left off: the web app's assets
+            // live in assets/, not res/, so resource shrinking would buy
+            // almost nothing here while adding a class of failure that only
+            // shows up at runtime.
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }

@@ -17,6 +17,7 @@
   import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault } from '../lib/crypto/keys.js';
   import { isPrfSupported, authenticateBiometric } from '../lib/crypto/webauthn.js';
   import { enableBiometric, disableBiometric } from '../lib/biometric.js';
+  import { isScreenSecuritySupported, isScreenSecurityEnabled, setScreenSecurityEnabled } from '../lib/screenSecurity.js';
 
   import { syncCloudVault } from '../lib/crypto/sync.js';
   import { encryptSyncPayload } from '../lib/crypto/keys.js';
@@ -188,6 +189,8 @@
 
   let biometricSupported = false;
   let biometricEnabled = false;
+  const screenSecuritySupported = isScreenSecuritySupported();
+  let screenSecurityEnabled = false;
   let ping = 32;
   let pingInterval;
 
@@ -195,6 +198,11 @@
     biometricSupported = isPrfSupported();
     if ($currentUser) {
       biometricEnabled = localStorage.getItem(`vault_bio_enabled_${$currentUser.id}`) === 'true';
+    }
+    // Native is the source of truth for this one (SharedPreferences, read in
+    // MainActivity.onCreate) — see lib/screenSecurity.js.
+    if (screenSecuritySupported) {
+      isScreenSecurityEnabled().then((v) => (screenSecurityEnabled = v));
     }
 
     pingInterval = setInterval(() => {
@@ -1619,6 +1627,43 @@
             </label>
           {/if}
         </div>
+
+        <!-- Android only: there is no browser equivalent of FLAG_SECURE, so
+             on web this row is hidden rather than shown as a dead control. -->
+        {#if screenSecuritySupported}
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="text-xs font-semibold text-vault-text block">Block Screenshots</span>
+              <span class="text-[10px] text-vault-text-dim font-normal block">
+                Also hides Vault in the app switcher
+              </span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={screenSecurityEnabled}
+                on:change={async (e) => {
+                  const wanted = e.target.checked;
+                  const actual = await setScreenSecurityEnabled(wanted);
+                  screenSecurityEnabled = actual;
+                  if (actual !== wanted) {
+                    // Native rejected it — put the switch back rather than
+                    // leaving it showing protection that isn't on.
+                    e.target.checked = actual;
+                    showToast('Could not change screenshot blocking.');
+                  } else {
+                    showToast(
+                      actual ? 'Screenshots are now blocked.' : 'Screenshots are allowed again.',
+                      { type: 'success' }
+                    );
+                  }
+                }}
+                class="sr-only peer"
+              />
+              <div class="w-9 h-5 bg-vault-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-vault-text after:border-vault-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-vault-accent"></div>
+            </label>
+          </div>
+        {/if}
 
         <div class="flex items-center justify-between">
           <div>

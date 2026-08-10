@@ -56,7 +56,10 @@ export default [
     rules: { 'svelte/no-at-html-tags': 'off' },
   },
   {
-    files: ['test/**/*.js', 'vitest.config.js'],
+    // Build-time tooling: runs under Node, not in the browser. scripts/ holds
+    // the font vendoring step (see index.html) — a one-shot generator, not
+    // part of the bundle.
+    files: ['test/**/*.js', 'vitest.config.js', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: {
         ...globals.node,

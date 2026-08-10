@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Narrowed from Capacitor's stock template, which mapped both external-path
+  and cache-path at path="." — the entire external storage root and the whole
+  cache directory. The provider is android:exported="false" (see
+  AndroidManifest.xml), so nothing could ever query it uninvited; the exposure
+  was only ever through URIs this app itself hands out. But a content:// URI
+  built against a root-level mapping can name any file under that root, so the
+  blast radius of a mistake at any grant site was "all of external storage"
+  rather than "the file we meant to share". Scoping the mappings to the
+  subdirectories actually used costs nothing and removes that entirely.
+
+  Keep in step with any new share/export path added on the native side.
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- Attachment downloads handed to another app via a share sheet. -->
+    <external-files-path name="attachments" path="attachments/" />
+    <!-- Transient files staged for sharing, cleared by the OS with the cache. -->
+    <cache-path name="shared_cache" path="shared/" />
 </paths>
