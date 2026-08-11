@@ -114,6 +114,26 @@ body {
   min-height: 100dvh;
 }
 
+/* ─── Theme Switch ──────────────────────────────────────── */
+/* Toggling light/dark used to be an instant repaint of the entire app. This
+   eases the colour change instead, which is the difference between the theme
+   "changing" and the app "flickering".
+   Deliberately narrow. A blanket `transition: all` on every element would
+   fight the transforms and opacity the rest of this file animates, and would
+   make every hover feel laggy; only the three colour properties that actually
+   differ between themes are transitioned, and only on the surfaces that carry
+   them. Excluded from anything mid-transition or being dragged, where a
+   colour tween would compete with a transform already in flight. */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-switching,
+  html.theme-switching body,
+  html.theme-switching [class*='bg-vault-'],
+  html.theme-switching [class*='text-vault-'],
+  html.theme-switching [class*='border-vault-'] {
+    transition: background-color 220ms ease, color 220ms ease, border-color 220ms ease;
+  }
+}
+
 /* ─── Touch Behaviour ───────────────────────────────────── */
 /* This app ships as an Android WebView (android/), where the browser
    defaults below are what make a wrapped web app read as a web page rather
@@ -192,14 +212,17 @@ textarea,
   to   { opacity: 1; transform: scale(1); }
 }
 
-@keyframes slideInRight {
-  from { opacity: 0; transform: translateX(20px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-20px); }
-  to   { opacity: 1; transform: translateX(0); }
+/* Drops in from above. Used by the full-screen incoming-call screen
+   (Chat.svelte) and the persistent mini call bar (MiniCallBar.svelte), both of
+   which referenced .animate-slide-down while nothing defined it — not here,
+   and not in Tailwind, which ships only spin/ping/pulse/bounce. The class was
+   silently inert, so the two most dramatic entrances in the app (a call
+   arriving, the call bar appearing) simply popped into place. Both elements
+   are already translate-x centred, so the keyframe composes the horizontal
+   offset into its own transform rather than clobbering it. */
+@keyframes slideInDown {
+  from { opacity: 0; transform: translate(var(--slide-x, 0), -16px); }
+  to   { opacity: 1; transform: translate(var(--slide-x, 0), 0); }
 }
 
 @keyframes slideUp {
@@ -229,8 +252,10 @@ textarea,
 
 .animate-fade-in      { animation: fadeIn 0.3s ease-out forwards; }
 .animate-fade-in-scale { animation: fadeInScale 0.25s ease-out forwards; }
-.animate-slide-right  { animation: slideInRight 0.3s ease-out forwards; }
-.animate-slide-left   { animation: slideInLeft 0.3s ease-out forwards; }
+/* .animate-slide-right / .animate-slide-left removed: their only callers were
+   the message bubbles, which now use a Svelte in:fly transition instead (see
+   MessageBubble.svelte). The rules outlived the change by one commit. */
+.animate-slide-down   { animation: slideInDown 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .animate-slide-up     { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 .animate-pulse-glow   { animation: pulse-glow 2s ease-in-out infinite; }
 .animate-scale-up     { animation: fadeInScale 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }

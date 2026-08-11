@@ -17,6 +17,7 @@
   import PassphrasePromptModal from './components/PassphrasePromptModal.svelte';
   import UpdateBanner from './components/UpdateBanner.svelte';
   import BiometricPrompt from './components/BiometricPrompt.svelte';
+  import Lightbox from './components/Lightbox.svelte';
   import { showToast } from './lib/stores/toast.js';
   import { initBackButtonHandler, triggerBackOnEscape } from './lib/backHandler.js';
 
@@ -322,4 +323,5 @@
   <PassphrasePromptModal />
   <UpdateBanner />
   <BiometricPrompt />
+  <Lightbox />
 </main>

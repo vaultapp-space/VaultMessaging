@@ -823,7 +823,7 @@
   <div class="fixed z-50 flex flex-col text-center text-vault-text animate-slide-down
     max-md:inset-0 max-md:justify-between max-md:bg-vault-black/95 max-md:backdrop-blur-xl
     max-md:pt-[max(env(safe-area-inset-top,0px),2.5rem)] max-md:pb-[max(env(safe-area-inset-bottom,0px),2rem)] max-md:px-6
-    md:top-6 md:left-1/2 md:-translate-x-1/2 md:w-80 md:p-4 md:gap-3 md:bg-vault-surface/90 md:border md:border-vault-border md:rounded-2xl md:shadow-2xl md:backdrop-blur-md"
+    md:top-6 md:left-1/2 md:-translate-x-1/2 md:[--slide-x:-50%] md:w-80 md:p-4 md:gap-3 md:bg-vault-surface/90 md:border md:border-vault-border md:rounded-2xl md:shadow-2xl md:backdrop-blur-md"
   >
     <div class="max-md:mt-16 max-md:flex max-md:flex-col max-md:items-center">
       <div class="rounded-full bg-vault-accent/10 flex items-center justify-center mx-auto text-vault-accent max-md:w-28 max-md:h-28 w-12 h-12 animate-pulse-glow">

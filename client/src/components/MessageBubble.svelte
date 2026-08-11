@@ -10,6 +10,8 @@
   import { decryptFile, decryptChunk } from '../lib/crypto/keys.js';
   import { fetchAttachment, fetchAttachmentChunk, markMessageViewed, publicMediaUrl } from '../lib/api/http.js';
   import { getAvatarGradient } from '../lib/avatar.js';
+  import { openLightbox } from '../lib/stores/lightbox.js';
+  import { swipeToReply } from '../lib/chat/swipeToReply.js';
 
   export let message;
   export let isOwn = false;
@@ -347,6 +349,24 @@
   $: msgStatus = message.status || (message.delivered ? 'delivered' : 'sent');
   $: isSessionDesyncError = message.decryptionError && message.text && message.text.includes('Ratchet session not initialized');
 
+  // Swipe-to-reply. SWIPE_TRIGGER is shared between the action (which decides
+  // whether the gesture fired) and the arrow's fill state, so the moment the
+  // icon goes solid is exactly the moment releasing would reply — the two
+  // cannot drift apart.
+  const SWIPE_TRIGGER = 56;
+  let swipeX = 0;
+  // Reuses canReply (declared above) rather than re-deriving it — an earlier
+  // draft of this defined a second `canReply`, silently shadowing the one the
+  // reply button uses, which is exactly how the gesture and the button would
+  // drift apart. The extra !isDeleted mirrors the action row's own wrapper
+  // condition, and the view-once clause covers the one case the button never
+  // has to think about: a sealed message has no visible text to quote, and
+  // swiping it must not be the thing that reveals it.
+  $: canSwipeReply = canReply
+    && !isDeleted
+    && !message.decryptionError
+    && !(isViewOnce && !isOwn && !viewOnceOpen);
+
   </script>
 
 <!-- data-seq is the anchor jumpToSeq() scrolls to when a quoted reply is
@@ -369,11 +389,44 @@
      flew in from the side opposite the one it belongs to, crossing the
      transcript to get home. Each bubble now enters from its own edge.
 -->
+<!--
+  Swipe-to-reply. The gesture drags the row toward the centre of the screen —
+  leftward for your own right-aligned message, rightward for an incoming one —
+  so it always moves *away* from the edge it is pinned to and never looks like
+  the bubble is being pushed off screen. The arrow behind it fades in with
+  travel and locks solid at the trigger point, which is the whole feedback: you
+  can see how far is far enough before committing.
+
+  Disabled for messages that cannot be replied to (a tombstone, a failed send,
+  an unopened view-once) so the gesture never promises an action the composer
+  would then refuse.
+-->
 <div
   data-seq={message.seq ?? undefined}
-  class="flex {isOwn ? 'justify-end' : 'justify-start'} {showAvatar ? 'mt-3' : 'mt-0.5'}"
+  class="flex {isOwn ? 'justify-end' : 'justify-start'} {showAvatar ? 'mt-3' : 'mt-0.5'} relative"
   in:fly={{ x: isOwn ? 24 : -24, duration: introDuration, easing: cubicOut }}
+  use:swipeToReply={{
+    direction: isOwn ? -1 : 1,
+    enabled: canSwipeReply,
+    onReply: () => { hapticLight(); onReply?.(message); },
+    onOffset: (px) => (swipeX = px),
+  }}
+  style="transform: translateX({swipeX}px); transition: {swipeX === 0 ? 'transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)' : 'none'};"
 >
+  {#if swipeX !== 0}
+    <div
+      class="absolute inset-y-0 flex items-center pointer-events-none {isOwn ? 'right-0 -mr-9' : 'left-0 -ml-9'}"
+      style="opacity: {Math.min(1, Math.abs(swipeX) / SWIPE_TRIGGER)}"
+    >
+      <div
+        class="w-7 h-7 rounded-full flex items-center justify-center transition-colors {Math.abs(swipeX) >= SWIPE_TRIGGER ? 'bg-vault-accent text-vault-black' : 'bg-vault-elevated text-vault-text-dim'}"
+      >
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 17l-5-5 5-5M4 12h11a5 5 0 015 5v1" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </div>
+    </div>
+  {/if}
   <!-- items-start, not items-end: the bubble column also holds the reaction
        and action row, so bottom-aligning put the avatar level with the
        buttons instead of the message it belongs to. -->
@@ -496,7 +549,7 @@
               {:else if objectUrl && attachmentData}
                 {#if attachmentData.mimeType.startsWith('image/')}
                   <button
-                    on:click={() => window.open(objectUrl, '_blank')}
+                    on:click={() => openLightbox(objectUrl, attachmentData.filename || 'Image')}
                     class="bg-transparent border-none p-0 cursor-pointer text-left block max-w-full focus:outline-none"
                     aria-label="View full size image"
                   >

@@ -19,7 +19,11 @@
        viewport, not any padded ancestor, so a plain top-3 sits under the
        status bar on edge-to-edge Android — same reasoning as every other
        fixed top-anchored element in this app. -->
-  <div class="fixed top-[calc(0.75rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 pl-3 pr-2 py-2 bg-vault-surface/95 border border-vault-border rounded-full shadow-xl backdrop-blur-md animate-slide-down cursor-pointer select-none"
+  <!-- [--slide-x:-50%] feeds the horizontal centring into slideInDown's own
+       transform. An animation's transform replaces the element's, so without
+       it the keyframe would cancel -translate-x-1/2 and the bar would settle
+       off-centre. -->
+  <div class="fixed top-[calc(0.75rem+env(safe-area-inset-top,0px))] left-1/2 -translate-x-1/2 [--slide-x:-50%] z-40 flex items-center gap-3 pl-3 pr-2 py-2 bg-vault-surface/95 border border-vault-border rounded-full shadow-xl backdrop-blur-md animate-slide-down cursor-pointer select-none"
     on:click={returnToCall}
     role="button"
     tabindex="0"
