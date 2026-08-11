@@ -406,7 +406,14 @@ async function startOfferNegotiation(peerId) {
 export async function startCall(peer, type, encryptCallKeyFn) {
   const rawKeyBytes = crypto.getRandomValues(new Uint8Array(32));
   const staticCallKeyBase64 = toBase64(rawKeyBytes);
-  currentCallKey = await importStaticKey(rawKeyBytes);
+  // Through setCurrentCallKey, not a bare assignment: that helper is what
+  // derives the verification words, and assigning the field directly is why
+  // the caller never had any. The words are the user's only defence against a
+  // man-in-the-middle on the call key, and they are useless unless *both*
+  // parties can read them out — one side seeing a code the other cannot is
+  // not a weaker check, it is no check at all. The callee reached this helper
+  // through the activeCall subscription below; the caller reached nothing.
+  setCurrentCallKey(await importStaticKey(rawKeyBytes));
 
   const callId = crypto.randomUUID();
 

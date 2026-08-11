@@ -10,7 +10,7 @@
   import { decryptFile, decryptChunk } from '../lib/crypto/keys.js';
   import { fetchAttachment, fetchAttachmentChunk, markMessageViewed, publicMediaUrl } from '../lib/api/http.js';
   import { getAvatarGradient } from '../lib/avatar.js';
-  import { openLightbox } from '../lib/stores/lightbox.js';
+  import { openLightbox, closeLightboxFor } from '../lib/stores/lightbox.js';
   import { swipeToReply } from '../lib/chat/swipeToReply.js';
 
   export let message;
@@ -165,6 +165,9 @@
       burnOnReadCountdownTimer = null;
     }
     if (objectUrl) {
+      // Before revoking, not after: the viewer has to stop pointing at this
+      // blob while it is still valid, or it renders a broken image.
+      closeLightboxFor(objectUrl);
       URL.revokeObjectURL(objectUrl);
       objectUrl = null;
     }
@@ -185,6 +188,10 @@
     clearInterval(timer);
     if (burnOnReadCountdownTimer) clearInterval(burnOnReadCountdownTimer);
     if (objectUrl) {
+      // A destroyed bubble means the message expired, was deleted, or the
+      // conversation changed under an open viewer — all of which would
+      // otherwise leave it showing a revoked blob.
+      closeLightboxFor(objectUrl);
       URL.revokeObjectURL(objectUrl);
     }
   });
@@ -951,7 +958,14 @@
     }
     to {
       opacity: 1;
-      transform: scale(1) rotate(0deg);
+      /* `none`, not `scale(1) rotate(0deg)`. An identity transform is still a
+         transform: it makes the element a stacking context, and with the
+         `forwards` fill above that context outlived the animation forever.
+         Every delivery tick in the transcript therefore sat in its own layer
+         permanently, which is how a 14px icon ended up painting over the chat
+         menu and swallowing clicks on it. Ending at `none` means the tick is
+         an ordinary inline element the moment it finishes appearing. */
+      transform: none;
     }
   }
 </style>

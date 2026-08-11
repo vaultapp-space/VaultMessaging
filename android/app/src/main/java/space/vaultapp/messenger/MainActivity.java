@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         // the Bridge and consumes this registration list.
         registerPlugin(ExternalOpenerPlugin.class);
         registerPlugin(ScreenSecurityPlugin.class);
+        registerPlugin(AudioRoutePlugin.class);
         super.onCreate(savedInstanceState);
 
         // Applied here, from SharedPreferences, rather than left to the JS

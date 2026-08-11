@@ -22,6 +22,47 @@ export function nextPosition(initial, start, current) {
 }
 
 /**
+ * Keeps a dragged element overlapping the viewport.
+ *
+ * Without this the call window could be dragged clean off the screen and there
+ * was no way to get it back: the offset is component state, nothing resets it,
+ * and the window is the only thing carrying the end-call button. On a phone
+ * that is a call you cannot hang up without killing the app.
+ *
+ * Clamps so that at least MIN_VISIBLE px of the element stay on screen on
+ * every edge, rather than forbidding overflow entirely — being able to push a
+ * video window mostly off to peek at the conversation behind it is useful, and
+ * is the behaviour every picture-in-picture has.
+ *
+ * @param {{x: number, y: number}} pos desired offset
+ * @param {{width: number, height: number}} size element size
+ * @param {{width: number, height: number}} viewport
+ * @param {{top: number, right: number}} anchor element's untransformed offset
+ *        from the viewport's top-right (it is positioned top-4 right-4)
+ */
+export function clampToViewport(pos, size, viewport, anchor = { top: 16, right: 16 }) {
+  const MIN_VISIBLE = 56;
+
+  // The element sits at top-right by default and is moved by a transform, so
+  // its on-screen box is derived from that anchor plus the offset.
+  const left = viewport.width - anchor.right - size.width + pos.x;
+  const top = anchor.top + pos.y;
+
+  const minLeft = MIN_VISIBLE - size.width;
+  const maxLeft = viewport.width - MIN_VISIBLE;
+  const minTop = 0;
+  const maxTop = viewport.height - MIN_VISIBLE;
+
+  const clampedLeft = Math.min(Math.max(left, minLeft), maxLeft);
+  const clampedTop = Math.min(Math.max(top, minTop), maxTop);
+
+  return {
+    x: pos.x + (clampedLeft - left),
+    y: pos.y + (clampedTop - top),
+  };
+}
+
+/**
  * Svelte action. Usage:
  *
  *     <div use:draggable={{ position, onMove: (p) => (position = p) }}>
@@ -38,6 +79,19 @@ export function draggable(node, options = {}) {
 
   const isInteractive = (target) =>
     target?.closest?.('button') || target?.closest?.('video');
+
+  // Measures the node each time rather than caching: the call window changes
+  // size when the user switches normal/large, and a stale size would clamp
+  // against the wrong box.
+  function clampNode(pos) {
+    const rect = node.getBoundingClientRect();
+    if (!rect.width || !rect.height) return pos;
+    return clampToViewport(
+      pos,
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight }
+    );
+  }
 
   function begin(clientX, clientY) {
     dragging = true;
@@ -64,7 +118,7 @@ export function draggable(node, options = {}) {
 
   function onMouseMove(e) {
     if (!dragging) return;
-    position = nextPosition(initial, start, { x: e.clientX, y: e.clientY });
+    position = clampNode(nextPosition(initial, start, { x: e.clientX, y: e.clientY }));
     onMove(position);
   }
 
@@ -84,7 +138,7 @@ export function draggable(node, options = {}) {
     if (!dragging) return;
     e.preventDefault(); // stop the page scrolling under the drag
     const touch = e.touches[0];
-    position = nextPosition(initial, start, { x: touch.clientX, y: touch.clientY });
+    position = clampNode(nextPosition(initial, start, { x: touch.clientX, y: touch.clientY }));
     onMove(position);
   }
 

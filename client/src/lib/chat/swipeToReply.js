@@ -57,6 +57,14 @@ export function swipeToReply(node, options) {
 
   const AXIS_LOCK_PX = 8;
 
+  // Same guard draggable.js applies, and for a sharper reason here: a message
+  // bubble contains up to 13 buttons and, for a voice note, an <audio controls>
+  // element whose scrubber is dragged *horizontally* — precisely the gesture
+  // this action claims and calls preventDefault() on. Without this, seeking a
+  // voice note would drag the bubble instead of moving the playhead.
+  const isInteractive = (target) =>
+    target?.closest?.('button, audio, video, input, a, [role="button"]');
+
   function emit(px) {
     offset = px;
     opts.onOffset?.(px);
@@ -67,6 +75,7 @@ export function swipeToReply(node, options) {
     // Mouse drags are not how anyone replies; this is a touch affordance, and
     // claiming the mouse would break text selection in the bubble.
     if (event.pointerType === 'mouse') return;
+    if (isInteractive(event.target)) return;
     pointerId = event.pointerId;
     startX = event.clientX;
     startY = event.clientY;

@@ -4,6 +4,7 @@
   import { draggable } from '../lib/chat/draggable.js';
   import { clickOutside } from '../lib/actions/clickOutside.js';
   import { stripJpegExif, stripPngMetadata, readImageDimensions } from '../lib/chat/metadata.js';
+  import { isSpeakerToggleSupported, setSpeakerphone, setCallAudioMode } from '../lib/audioRoute.js';
   import { sendMessage as sendToChat } from '../lib/chat/send.js';
   import { markChatRead, createPoll, updateChatSettings, markStickerUsed, PUBLIC_ORIGIN } from '../lib/api/http.js';
   import StickerPicker from './StickerPicker.svelte';
@@ -186,7 +187,11 @@
     if (!remoteAudioElement) remoteAudioElement = new Audio();
     remoteAudioElement.srcObject = $remoteStreamStore;
     remoteAudioElement.play().catch(e => console.error('Failed to autoplay remote audio:', e));
-    applySinkPreference();
+    // Re-apply the chosen output whenever the element is (re)bound: on the web
+    // setSinkId is per-element, so a new Audio() starts on the default output
+    // regardless of what the user picked. Harmless on native, where routing is
+    // system-level and unaffected by which element is playing.
+    setSpeakerphone(speakerOn, remoteAudioElement);
   }
   $: if (localVideo) localVideo.srcObject = $localStreamStore;
 
@@ -277,33 +282,31 @@
     webrtcToggleCamera();
   }
 
-  // Speaker (audio output device) toggle for audio calls. setSinkId isn't
-  // universally supported (notably absent in Safari as of writing), so this
-  // degrades to a disabled button with an explanatory tooltip rather than
-  // failing silently.
-  const isSinkIdSupported = typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
+  // Speaker toggle. Routing is per-element on the web (setSinkId) and
+  // system-level on Android (AudioManager, via the AudioRoute plugin) — see
+  // lib/audioRoute.js. This used to be setSinkId only, which the Android
+  // WebView does not implement, so the button was permanently disabled there
+  // and calls were stuck on whatever output the system chose.
+  const isSinkIdSupported = isSpeakerToggleSupported();
   let speakerOn = false;
 
-  async function applySinkPreference() {
-    if (!isSinkIdSupported || !remoteAudioElement) return;
-    try {
-      if (!speakerOn) {
-        await remoteAudioElement.setSinkId('default');
-        return;
-      }
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const outputs = devices.filter(d => d.kind === 'audiooutput');
-      const speakerDevice = outputs.find(d => /speaker/i.test(d.label));
-      await remoteAudioElement.setSinkId(speakerDevice ? speakerDevice.deviceId : 'default');
-    } catch (e) {
-      console.error('Failed to switch audio output:', e);
-    }
+  async function toggleSpeaker() {
+    const wanted = !speakerOn;
+    speakerOn = await setSpeakerphone(wanted, remoteAudioElement);
   }
 
-  async function toggleSpeaker() {
-    speakerOn = !speakerOn;
-    await applySinkPreference();
-  }
+  // Android needs the device put into (and taken back out of) communication
+  // mode around the call itself, independently of which output is selected —
+  // without it the stream is treated as media: wrong volume curve, hardware
+  // volume keys adjusting the wrong stream, no echo cancellation. That is the
+  // other half of why call audio was wrong on Android, and it is not something
+  // the speaker button can express.
+  $: setCallAudioMode(Boolean(isCallActive));
+
+  onDestroy(() => {
+    // A call torn down by navigating away still has to release the audio mode.
+    setCallAudioMode(false);
+  });
 
   let localVideo;
   let remoteVideo;
@@ -1973,23 +1976,20 @@
        lib/safe-fetch.js), scales to any DPI, and rides the existing
        --color-vault-border-subtle token so it's already correct in both
        light/dark and never competes with bubble/text contrast. -->
-  <!-- z-0 below pins the whole transcript into its own stacking context,
-       underneath the header (relative z-40) and the menu it opens. Without it,
-       any descendant that establishes a stacking context of its own — the
-       delivery tick carries an `animation: … forwards`, and a transform does
-       exactly that — can paint over the chat menu and swallow clicks on it.
-       This was previously masked by accident: bubbles used to carry
-       animate-slide-* with a forwards fill, leaving a permanent transform on
-       every bubble that boxed the tick in. Replacing those classes with a
-       Svelte transition (which removes its inline styles when it ends) took
-       the accident away and exposed the real bug, which e2e caught as
-       "Unblock" being unclickable behind a message. Fixed here rather than by
-       restoring the transform, so the transcript can never overlay the header
-       again regardless of what animates inside it. -->
+  <!-- Deliberately NOT z-0, though an earlier fix put it there. The bug that
+       motivated it — the delivery tick painting over the chat menu and eating
+       clicks — is now fixed at its source, in MessageBubble's status-appear
+       keyframe, which used to end on an identity transform and so left every
+       tick as a permanent stacking context.
+       z-0 solved that symptom but caused a worse one: the call panels below
+       are children of this container, and a stacking context traps `fixed`
+       descendants inside it. In full-screen mode the call would render beneath
+       the chat header (relative z-40) and the composer, which is why the
+       end-call controls disappeared under the message bar on Android. -->
   <div
     bind:this={messagesContainer}
     on:scroll={handleScroll}
-    class="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative z-0 bg-[radial-gradient(var(--color-vault-border)_1px,transparent_1px)] [background-size:22px_22px]"
+    class="flex-1 overflow-y-auto px-4 py-4 space-y-1 relative bg-[radial-gradient(var(--color-vault-border)_1px,transparent_1px)] [background-size:22px_22px]"
   >
     {#if peerBlocked}
       <div class="mx-4 mt-3 mb-1 px-3 py-2 rounded-xl bg-vault-danger/10 border border-vault-danger/30 text-center">
@@ -2100,7 +2100,7 @@
           ? 'width: 100vw; height: 100vh; height: 100dvh; left: 0; top: 0;' 
           : `transform: translate(${position.x}px, ${position.y}px); cursor: ${isDragging ? 'grabbing' : 'grab'};`}
         class={callWindowSize === 'fullscreen'
-          ? "fixed z-40 bg-vault-black flex flex-col justify-between overflow-hidden"
+          ? "fixed z-[50] bg-vault-black flex flex-col justify-between overflow-hidden"
           : "absolute top-4 right-4 z-30 flex flex-col gap-2 p-2.5 bg-vault-surface/95 backdrop-blur-md border border-vault-border rounded-2xl shadow-xl transition-all duration-200 select-none " + (callWindowSize === 'large' ? 'w-[308px]' : 'w-48')}
       >
         <!-- Conditionally render top-bar for non-fullscreen -->
@@ -2330,7 +2330,7 @@
            video panel above rather than inventing separate state — a full
            phone screen for a video call and a small corner widget for an
            audio one would be an inconsistent rule for the user to learn. -->
-      <div class="z-30 animate-scale-up
+      <div class="animate-scale-up {callWindowSize === 'fullscreen' ? 'z-[50]' : 'z-30'}
         {callWindowSize === 'fullscreen'
           ? 'fixed inset-0 bg-vault-black flex flex-col items-center justify-between px-6 pt-[max(env(safe-area-inset-top,0px),2.5rem)] pb-[max(env(safe-area-inset-bottom,0px),2rem)]'
           : 'absolute top-4 right-4 flex items-center gap-3 p-3 bg-vault-surface border border-vault-border rounded-2xl shadow-xl'}"

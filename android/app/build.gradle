@@ -7,8 +7,8 @@ android {
         applicationId "space.vaultapp.messenger"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 23
-        versionName "1.22"
+        versionCode 24
+        versionName "1.23"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -42,7 +42,8 @@ android {
             // Capacitor app is left unminified — but @capacitor/android ships
             // consumerProguardFiles with the necessary -keep rules, so those
             // are applied to this module automatically. proguard-rules.pro
-            // adds the same protection for this app's own two plugins.
+            // adds the same protection for this app's own plugins
+            // (ExternalOpener, ScreenSecurity, AudioRoute).
             //
             // shrinkResources is deliberately left off: the web app's assets
             // live in assets/, not res/, so resource shrinking would buy

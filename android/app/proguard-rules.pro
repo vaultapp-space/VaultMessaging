@@ -16,6 +16,7 @@
 # exactly the kind of thing that gets shipped before it gets noticed.
 -keep class space.vaultapp.messenger.ExternalOpenerPlugin { *; }
 -keep class space.vaultapp.messenger.ScreenSecurityPlugin { *; }
+-keep class space.vaultapp.messenger.AudioRoutePlugin { *; }
 
 # Plugin method dispatch reads these annotations at runtime.
 -keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod
