@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, clearSession, activePeer, activeChannelId, pendingChatId, syncPts, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients, sidebarOpen, ratchetSessions } from '../lib/stores/session.js';
+  import { currentUser, clearSession, activePeer, activeChannelId, pendingChatId, syncPts, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients, sidebarOpen } from '../lib/stores/session.js';
   import { conversations, conversationsLoaded, addMessage, addMessages, setTyping, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
   import { setReactions } from '../lib/chat/reactions.js';
   import { applyEdit } from '../lib/chat/edit.js';
@@ -614,11 +614,10 @@
       // no session *can* process. Without this the two sides stay
       // permanently mismatched and every retry fails identically.
       if (data.reason === 'session_desync') {
-        ratchetSessions.update((map) => {
-          map.delete(data.senderId);
-          return new Map(map);
-        });
-        showToast('Secure session was refreshed. Try the call again.', { type: 'info' });
+        // Again, no session surgery — see acceptIncomingCall. Sending an
+        // ordinary message is what re-establishes the ratchet, and it does so
+        // through the path that already handles both halves correctly.
+        showToast('They could not set up an encrypted call. Send them a message, then try again.', { type: 'info' });
         return;
       }
 
@@ -686,28 +685,21 @@
     } catch (err) {
       console.error('Failed to accept incoming call:', err);
 
-      // A call invite is encrypted with the same Double Ratchet as messages,
-      // so it fails the same way — and until now it failed *terminally*.
+      // Deliberately does NOT touch ratchetSessions.
       //
-      // Ratchet sessions are in-memory only (stores/session.js), so this
-      // device loses them whenever Android reclaims the app or it is
-      // reinstalled. The caller, still holding a session, then encrypts the
-      // call key with a 'ratchet' header, which carries no handshake material.
-      // With nothing to rebuild from, decryption cannot succeed here no matter
-      // how many times the user retries — every future call from that peer
-      // hits the same wall.
+      // v1.24 deleted this peer's session here, trying to make a failed call
+      // self-heal. That broke messaging: a Double Ratchet session is shared
+      // state, and dropping only our half leaves the peer still encrypting
+      // with theirs. Every message they send then arrives with a 'ratchet'
+      // header we have nothing to decrypt against, so the conversation stops
+      // working in the direction that was previously fine — and the catch
+      // fired on *any* accept failure, not just a genuine desync. Trading a
+      // broken call for a broken conversation is not a repair.
       //
-      // Messaging already has a recovery for this: the sender's next message
-      // performs a fresh X3DH and both sides resync (see MessageBubble's
-      // "Session reset" note). Calls had no equivalent. This gives them one:
-      // drop whatever stale session state we hold so our side is clean, and
-      // tell the caller *why* we refused so they can drop theirs too. The next
-      // attempt then handshakes from scratch and connects.
-      ratchetSessions.update((map) => {
-        map.delete(call.peerId);
-        return new Map(map);
-      });
-
+      // A failed call now leaves the crypto state exactly as it found it. The
+      // reject reason still tells the caller what happened so the UI can
+      // explain it, but neither side rewrites session state off the back of a
+      // call.
       wsSend({ type: 'call_reject', recipientId: call.peerId, reason: 'session_desync' });
       recentCalls.update((calls) => {
         const found = calls.find((c) => c.id === call.id);
@@ -716,7 +708,7 @@
       });
       activeCall.set(null);
 
-      showToast('Secure session was out of sync. Ask them to call again — it will reconnect.');
+      showToast('Could not start an encrypted call. Send them a message first, then try again.');
     }
   }
 
