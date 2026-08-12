@@ -97,6 +97,13 @@ async function postRoutes(fastify) {
       return reply.code(400).send({ error: 'A post needs text, media, or something to repost' });
     }
 
+    // An operator restriction. Checked on the write path only — a blocked
+    // account can still read, follow and like, because the sanction is on
+    // publishing, not on existing.
+    if (await fastify.repos.posts.isPostingBlocked(request.user.id)) {
+      return reply.code(403).send({ error: 'Your account is currently blocked from posting' });
+    }
+
     const post = await fastify.repos.posts.create(
       { id: request.user.id, username: request.user.username },
       { body: body?.trim() || null, media, replyToId, repostOfId }
@@ -384,6 +391,42 @@ async function postRoutes(fastify) {
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     return reply.send({ users: await fastify.repos.posts.listMutes(request.user.id) });
+  });
+
+  // ─── REPORTING ────────────────────────────────────────────
+  // The category list *is* the content policy. Nothing is removed here for
+  // being disagreeable — only for being illegal — so offering "offensive" or
+  // "misinformation" would promise a review that will not happen and fill the
+  // queue with complaints nobody intends to action. The enum is the honest
+  // version of the promise, and it is enforced by a CHECK constraint too.
+  fastify.post('/api/posts/:postId/report', {
+    preValidation: [fastify.authenticate],
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    schema: {
+      params: { type: 'object', required: ['postId'], properties: { postId: postParam } },
+      body: {
+        type: 'object',
+        required: ['category'],
+        additionalProperties: false,
+        properties: {
+          category: {
+            type: 'string',
+            enum: ['csam', 'terrorism', 'nonconsensual_intimate',
+                   'credible_threat', 'other_illegal'],
+          },
+          note: { type: ['string', 'null'], maxLength: 1000 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const visible = await fastify.repos.posts.get(request.user.id, request.params.postId);
+    if (!visible) return reply.code(404).send({ error: 'Post not found' });
+
+    await fastify.repos.posts.report(request.params.postId, request.user.id, request.body);
+    // 204 whether or not this was a duplicate: telling a reporter "you already
+    // reported this" is noise, and confirming it would let someone probe
+    // whether an account of theirs had reported something.
+    return reply.code(204).send();
   });
 }
 

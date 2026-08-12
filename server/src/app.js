@@ -34,6 +34,7 @@ import stickerRoutes from './routes/stickers.routes.js';
 import mediaRoutes from './routes/media.routes.js';
 import phase8Routes from './routes/phase8.routes.js';
 import postRoutes from './routes/posts.routes.js';
+import moderationRoutes from './routes/moderation.routes.js';
 import { validateUrl } from './lib/safe-fetch.js';
 import chunkRoutes from './routes/chunks.routes.js';
 import pushRoutes from './routes/push.routes.js';
@@ -235,6 +236,7 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
   await fastify.register(stickerRoutes);
   await fastify.register(phase8Routes);
   await fastify.register(postRoutes);
+  await fastify.register(moderationRoutes);
   await fastify.register(chunkRoutes);
   await fastify.register(turnRoutes);
 

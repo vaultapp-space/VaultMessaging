@@ -464,9 +464,143 @@ export function createPosts({ pool, uploadsDir }) {
       return rows.map((r) => ({ id: r.id, username: r.username }));
     },
 
+    // ─── Moderation ───────────────────────────────────────
+
+    /** Whether this account is currently barred from posting. */
+    async isPostingBlocked(userId) {
+      const { rows } = await this.pool.query(
+        `SELECT 1 FROM users
+          WHERE id = $1 AND posting_blocked_until IS NOT NULL
+            AND posting_blocked_until > now()`,
+        [userId]
+      );
+      return rows.length > 0;
+    },
+
+    async isOperator(userId) {
+      const { rows } = await this.pool.query(
+        'SELECT 1 FROM users WHERE id = $1 AND is_operator', [userId]
+      );
+      return rows.length > 0;
+    },
+
+    /** Idempotent per (post, reporter) — the UNIQUE constraint does the work. */
+    async report(postId, reporterId, { category, note = null }) {
+      const { rowCount } = await this.pool.query(
+        `INSERT INTO post_reports (post_id, reporter_id, category, note)
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+        [postId, reporterId, category, note]
+      );
+      return rowCount > 0;
+    },
+
+    /**
+     * The queue. Grouped by post so ten reports on one thing is one row to
+     * read, not ten — the operator's time is the scarce resource here.
+     */
+    async reportQueue({ limit = 50 } = {}) {
+      const { rows } = await this.pool.query(
+        `SELECT r.post_id,
+                count(*)::int AS report_count,
+                array_agg(DISTINCT r.category) AS categories,
+                max(r.created_at) AS last_reported_at,
+                p.author_id, u.username, p.body, p.media,
+                p.created_at, p.expires_at, p.removed_at
+           FROM post_reports r
+           JOIN posts p ON p.id = r.post_id
+           JOIN users u ON u.id = p.author_id
+          WHERE p.removed_at IS NULL
+          GROUP BY r.post_id, p.author_id, u.username, p.body, p.media,
+                   p.created_at, p.expires_at, p.removed_at
+          ORDER BY max(r.created_at) DESC
+          LIMIT $1`,
+        [limit]
+      );
+      return rows.map((r) => ({
+        postId: r.post_id,
+        reportCount: r.report_count,
+        categories: r.categories,
+        lastReportedAt: r.last_reported_at,
+        authorId: r.author_id,
+        username: r.username,
+        body: r.body,
+        media: r.media ?? null,
+        createdAt: r.created_at,
+        expiresAt: r.expires_at,
+      }));
+    },
+
+    /**
+     * Operator takedown. A content-free tombstone rather than a delete, so the
+     * reports resolve against something and the action is auditable for the
+     * day the row has left.
+     *
+     * Order matters and is the same as the reaper's: the file goes **first**.
+     * Illegal content has to stop being served now, not at the next reaper
+     * pass, and not only if the database write succeeds.
+     */
+    async removePost(postId, operatorId, { category = null, reason = null } = {}) {
+      const { rows } = await this.pool.query(
+        'SELECT author_id, media FROM posts WHERE id = $1 AND removed_at IS NULL',
+        [postId]
+      );
+      const target = rows[0];
+      if (!target) return null;
+
+      await this.unlinkMedia(target.media);
+
+      // The text goes; the media *reference* deliberately stays.
+      //
+      // Blanking `media` too was the obvious first version and it silently
+      // broke the thing it was meant to help: canViewMediaFile denies a file
+      // by looking for a removed post that claims it, and with the fileId gone
+      // there was nothing left to match on — so the authorization backstop
+      // never fired and a file that survived the unlink was still served.
+      //
+      // A fileId on a tombstone is not content. The row is excluded from every
+      // read path by `removed_at IS NOT NULL`, so nothing renders it; the only
+      // thing that reads it is the deny rule.
+      await this.pool.query(
+        `UPDATE posts SET body = NULL, removed_at = now() WHERE id = $1`,
+        [postId]
+      );
+
+      await this.pool.query(
+        `INSERT INTO moderation_actions
+           (post_id, author_id, operator_id, action, category, reason)
+         VALUES ($1, $2, $3, 'post_removed', $4, $5)`,
+        [postId, target.author_id, operatorId, category, reason]
+      );
+
+      return { authorId: target.author_id };
+    },
+
+    /** Bars an account from posting for a period. Reversible with days = 0. */
+    async setPostingBlock(userId, operatorId, { days, reason = null }) {
+      const until = days > 0 ? `now() + ($2 || ' days')::interval` : 'NULL';
+      const params = days > 0 ? [userId, String(days)] : [userId];
+
+      const { rowCount } = await this.pool.query(
+        `UPDATE users SET posting_blocked_until = ${until} WHERE id = $1`,
+        params
+      );
+      if (rowCount === 0) return false;
+
+      await this.pool.query(
+        `INSERT INTO moderation_actions (author_id, operator_id, action, reason)
+         VALUES ($1, $2, $3, $4)`,
+        [userId, operatorId, days > 0 ? 'posting_blocked' : 'posting_unblocked', reason]
+      );
+      return true;
+    },
+
     /**
      * Followers or following, paginated by created_at.
      * `direction` is 'followers' (who follows this user) or 'following'.
+     *
+     * The column names are interpolated, which is safe only because both come
+     * from the ternary below and never from the caller's string — the route
+     * additionally constrains `direction` to an enum.
      */
     async listFollows(userId, direction, { limit = 50, offset = 0 } = {}) {
       const [self, other] = direction === 'followers'

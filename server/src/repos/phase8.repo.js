@@ -462,11 +462,27 @@ export function createPhase8({ pool }) {
                     SELECT 1 FROM contacts c
                      WHERE c.owner_id = s.user_id AND c.contact_id = $2))
             )
+         UNION ALL
+         -- A post an operator took down. Its file is unlinked at takedown, so
+         -- this is the second line of defence: it covers the window before the
+         -- unlink lands, and any file the unlink missed because the extension
+         -- probe guessed wrong.
+         --
+         -- Note the shape of this whole function: it is deny-by-exception, not
+         -- allow-by-rule. Absence of a row means allowed, so a file no row
+         -- claims is served to any authenticated user. That is correct for
+         -- ordinary post media, which is public by definition — but it also
+         -- means a new media-bearing content type is readable by default and
+         -- will never fail loudly here. Anything that needs restricting has to
+         -- add its clause explicitly.
+         SELECT 1 FROM posts p
+          WHERE p.media->>'fileId' = $1
+            AND p.removed_at IS NOT NULL
           LIMIT 1`,
         [fileId, viewerId]
       );
-      // A row here is a story this viewer may *not* see. Absence means either
-      // they may see it, or no story claims the file at all.
+      // A row here is content this viewer may *not* see. Absence means either
+      // they may see it, or nothing claims the file at all.
       return rows.length === 0;
     },
 
