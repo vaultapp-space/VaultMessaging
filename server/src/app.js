@@ -40,6 +40,7 @@ import chunkRoutes from './routes/chunks.routes.js';
 import pushRoutes from './routes/push.routes.js';
 import turnRoutes from './routes/turn.routes.js';
 
+import { buildInfo } from './build-info.js';
 import { createBus } from './realtime/bus.js';
 import { createFanout } from './realtime/fanout.js';
 
@@ -177,6 +178,7 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
     stickers: store.stickers,
     phase8: store.phase8,
     posts: store.posts,
+    media: store.media,
     attachments: store.attachments,
     push: store.push,
     config: store.config,
@@ -287,6 +289,12 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
     const body = {
       status: reaperHealthy ? 'ok' : 'degraded',
       timestamp: new Date(now).toISOString(),
+      // Which commit is actually serving. Safe to expose — the repo is public,
+      // so this reveals nothing a release page does not already state — and it
+      // is the only way a release can check it is not shipping a client
+      // against a server that predates the routes the client calls. See
+      // build-info.js for the incident that motivated it.
+      build: buildInfo,
       reaper: {
         healthy: reaperHealthy,
         lastSuccessAt: reaperState.lastSuccessAt

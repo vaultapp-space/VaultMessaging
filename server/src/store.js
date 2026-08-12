@@ -40,6 +40,7 @@ import { createAttachments } from './repos/attachments.repo.js';
 import { createPush } from './repos/push.repo.js';
 import { createConfig } from './repos/config.repo.js';
 import { createPosts } from './repos/posts.repo.js';
+import { createMedia } from './repos/media.repo.js';
 import { createMaintenance } from './repos/maintenance.repo.js';
 
 import { createSessions } from './cache/sessions.js';
@@ -89,7 +90,8 @@ export class DataStore {
     this.push = createPush({ pool });
     this.config = createConfig({ pool });
     this.posts = createPosts({ pool, uploadsDir });
-    this.maintenance = createMaintenance({ pool, uploadsDir });
+    this.media = createMedia({ pool });
+    this.maintenance = createMaintenance({ pool, uploadsDir, media: this.media });
 
     this.sessions = createSessions({ redis });
     this.sync = createSync({ redis });
@@ -113,7 +115,7 @@ export class DataStore {
   #delegate() {
     const modules = [
       this.users, this.prekeys, this.messages, this.groups,
-      this.chats, this.reactions, this.phase2, this.phase3, this.devices, this.channels, this.stickers, this.phase8, this.attachments, this.push, this.config, this.maintenance,
+      this.chats, this.reactions, this.phase2, this.phase3, this.devices, this.channels, this.stickers, this.phase8, this.media, this.attachments, this.push, this.config, this.maintenance,
       this.sessions, this.sync, this.pending, this.quota, this.calls,
     ];
 

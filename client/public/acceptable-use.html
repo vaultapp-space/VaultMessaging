@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Acceptable Use and Takedown — Vault</title>
+    <meta name="description" content="What is not allowed on Vault's public feed, and how to report illegal content." />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="canonical" href="https://vaultapp.space/acceptable-use.html" />
+    <!--
+      A plain static file rather than a route in the app, on purpose. Whoever
+      reads this page next is most likely a lawyer, a registrar or an abuse desk
+      at a hosting provider — none of whom will install an app, sign in, or wait
+      on a JavaScript bundle. It has to render in any browser, at a stable URL,
+      with no account.
+    -->
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0 auto; padding: 3rem 1.25rem 5rem; max-width: 46rem;
+        background: #0a0a0b; color: #e6e6e8;
+        font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -0.02em; }
+      h2 { font-size: 1.05rem; margin: 2.5rem 0 .75rem; letter-spacing: -0.01em; }
+      .sub { color: #8b8b93; font-size: .9rem; margin: 0 0 2.5rem; }
+      p, li { color: #c9c9d1; }
+      li { margin-bottom: .4rem; }
+      strong { color: #e6e6e8; }
+      a { color: #4ade80; }
+      code {
+        background: #16161a; border: 1px solid #26262c; border-radius: 5px;
+        padding: .1rem .35rem; font-size: .9em;
+      }
+      .box {
+        background: #16161a; border: 1px solid #26262c; border-radius: 12px;
+        padding: 1.1rem 1.25rem; margin: 1.25rem 0;
+      }
+      .box p:last-child { margin-bottom: 0; }
+      .box p:first-child { margin-top: 0; }
+      footer {
+        margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid #26262c;
+        color: #8b8b93; font-size: .85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Acceptable use and takedown</h1>
+    <p class="sub">For Thoughts, the public feed on vaultapp.space.</p>
+
+    <p>
+      Most of Vault is private: messages are end-to-end encrypted and the server
+      cannot read them. <strong>Thoughts is the exception.</strong> A Thought is
+      public — readable by anyone with an account — and it is stored on the
+      server in a form the operator can read and delete.
+    </p>
+    <p>
+      Every Thought, reply and image is <strong>deleted automatically 24 hours
+      after it is posted</strong>. There is no archive and no way to recover one.
+    </p>
+
+    <h2>What is not allowed</h2>
+    <p>
+      The feed is intended for open expression, and unpopular, offensive or
+      wrong opinions are not moderated. What is removed is content that is
+      illegal:
+    </p>
+    <ul>
+      <li>Sexual content involving minors, in any form.</li>
+      <li>Intimate images shared without the subject's consent.</li>
+      <li>Credible threats of violence against a person or group.</li>
+      <li>Content promoting or coordinating terrorism.</li>
+      <li>Other material that is unlawful in the jurisdiction the service is operated from.</li>
+    </ul>
+    <p>
+      Accounts that post this material can be blocked from posting, and repeat
+      accounts are removed.
+    </p>
+
+    <h2>What is not moderated</h2>
+    <p>
+      Being rude, wrong, disliked or argumentative is not a removable offence,
+      and reports on those grounds are closed without action. This is stated
+      plainly because a report queue that promises more than it delivers is
+      worse than no report button — users act on the belief that something will
+      happen.
+    </p>
+    <p>
+      If you do not want to see someone, the app gives you tools that do not
+      depend on anyone else's judgement: <strong>mute</strong> hides a user's
+      posts from your feed and tells them nothing, <strong>block</strong> hides
+      you from each other everywhere including direct messages, and
+      <strong>keyword filters</strong> hide posts containing words you choose.
+      Filters never leave your device.
+    </p>
+
+    <h2>Reporting illegal content</h2>
+    <p>
+      In the app, use <strong>Report</strong> on the post itself. That is the
+      fastest route — it attaches the post and its author automatically, and it
+      reaches the queue directly.
+    </p>
+
+    <div class="box">
+      <p>
+        <strong>For legal notices, law enforcement requests and takedown
+        demands:</strong>
+      </p>
+      <p><a href="mailto:vaultapp.space@gmail.com">vaultapp.space@gmail.com</a></p>
+      <p>
+        Please include the <strong>post URL or post ID</strong>, the
+        <strong>username</strong>, and what makes the content unlawful. Reports
+        are read by a person, not a system.
+      </p>
+    </div>
+
+    <div class="box">
+      <p>
+        <strong>Act quickly, and preserve your own evidence.</strong> Posts are
+        deleted automatically after 24 hours, so by the time a notice arrives
+        the content has very often already ceased to exist — and cannot be
+        produced later, by anyone, including us. Screenshot what you are
+        reporting before you send it.
+      </p>
+    </div>
+
+    <h2>What the operator can and cannot see</h2>
+    <p>
+      Public posts, their images, and the account that made them: visible, and
+      removable. Direct messages, group messages and calls: end-to-end
+      encrypted, and <strong>not</strong> readable by the operator or
+      producible in response to any request. Signup requires no email and no
+      phone number, so there is no identity behind an account to disclose.
+    </p>
+    <p>
+      This is a limit of the system's design, not a policy that can be waived on
+      request.
+    </p>
+
+    <footer>
+      Vault · <a href="https://vaultapp.space/">vaultapp.space</a> ·
+      <a href="https://github.com/vaultapp-space/VaultMessaging">source</a>
+    </footer>
+  </body>
+</html>

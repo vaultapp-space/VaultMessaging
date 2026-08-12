@@ -10,10 +10,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function createMaintenance({ pool, uploadsDir }) {
+export function createMaintenance({ pool, uploadsDir, media }) {
   return {
     pool,
     uploadsDir,
+    media,
 
   async reap() {
     const now = new Date().toISOString();
@@ -60,9 +61,16 @@ export function createMaintenance({ pool, uploadsDir }) {
     const expiredStories = await this.pool.query(
       `DELETE FROM stories WHERE expires_at < $1 RETURNING media`, [now]
     );
+    // Ledger rows for files whose content has now expired. Collected as we go
+    // and dropped at the end: the file is gone, so the row describes nothing.
+    // Without this the ledger would grow without bound, since a claimed row is
+    // never otherwise removed.
+    const reapedFileIds = [];
+
     for (const row of expiredStories.rows) {
       const fileId = row.media?.fileId;
       if (!fileId) continue;
+      reapedFileIds.push(fileId);
       // The extension is not recorded on the story, so every allowed one is
       // tried. Missing files are expected — a text-only story has none.
       for (const extension of ['.webp', '.png', '.gif', '.webm']) {
@@ -95,11 +103,45 @@ export function createMaintenance({ pool, uploadsDir }) {
     for (const row of expiredPosts.rows) {
       const fileId = row.media?.fileId;
       if (!fileId) continue;
+      reapedFileIds.push(fileId);
       for (const extension of ['.webp', '.png', '.gif', '.webm']) {
         await fs.promises
           .unlink(path.join(this.uploadsDir, 'media', `${fileId}${extension}`))
           .catch(() => {});
       }
+    }
+
+    // ─── Orphaned uploads ─────────────────────────────────────
+    // A file uploaded through POST /api/media/upload and never referenced by a
+    // post, story or sticker is deleted by none of the branches above — there
+    // is no content row to expire. And because canViewMediaFile is
+    // deny-by-exception, a file nothing claims is served to any authenticated
+    // user. Left alone that is a permanent, publicly readable file store
+    // attached to an app with anonymous signup.
+    //
+    // Ordering matches the rest of the reaper: the file leaves the disk before
+    // the row that points at it. Crashing between the two leaves a ledger row
+    // whose file is already gone, which the next pass unlinks harmlessly. The
+    // reverse would leave a file nothing remembers — unreachable by this sweep
+    // forever, which is the bug being fixed.
+    //
+    // Files with no ledger row are never considered. Everything uploaded
+    // before migration 0020 is in that category, as is anything a future
+    // upload path forgets to record. Sweeping by directory listing instead
+    // would catch those too — and would delete every sticker on the instance
+    // the first time a reference check was wrong.
+    if (this.media) {
+      const orphans = await this.media.listOrphans();
+      for (const orphan of orphans) {
+        await fs.promises
+          .unlink(path.join(this.uploadsDir, 'media', `${orphan.file_id}${orphan.extension}`))
+          .catch(() => {});
+      }
+      await this.media.forget(orphans.map((o) => o.file_id));
+    }
+
+    if (this.media && reapedFileIds.length) {
+      await this.media.forget(reapedFileIds);
     }
 
     // Deliberately not adding expiredPosts to this. The caller uses the return

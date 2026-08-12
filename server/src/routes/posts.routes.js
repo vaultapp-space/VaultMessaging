@@ -113,6 +113,12 @@ async function postRoutes(fastify) {
     // whether a post exists is not something to confirm to a stranger.
     if (!post) return reply.code(404).send({ error: 'That post is no longer available' });
 
+    // The file now belongs to content, so the orphan sweep must leave it alone.
+    // After the insert, not before: claiming a file for a post that then failed
+    // to create would strand it permanently, which is the exact leak the ledger
+    // exists to close.
+    if (media?.fileId) await fastify.repos.media.claim(media.fileId);
+
     return reply.code(201).send({ post });
   });
 

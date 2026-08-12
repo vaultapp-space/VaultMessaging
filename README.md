@@ -70,6 +70,25 @@ The Vite dev server proxies `/api` and `/ws` to `http://localhost:3001` by defau
 
 Server configuration lives in `server/src/config.js` and is sourced entirely from environment variables. In production, the server refuses to boot if `JWT_SECRET` or `TURN_SECRET` are left at their insecure development defaults — set real values before deploying (see `ecosystem.config.cjs` for the PM2 production setup, which reads secrets from the shell environment rather than hardcoding them).
 
+## Deploying
+
+```bash
+./deploy/preflight.sh                    # locally, before any release
+ssh ubuntu@vaultapp.space 'bash /home/ubuntu/VaultMessaging/deploy/deploy.sh'
+```
+
+`deploy.sh` pulls, installs, migrates, restarts PM2 and rebuilds the client — in
+that order, so a freshly loaded page never calls routes the running server does
+not have yet. It verifies afterwards that `/health` reports the commit it just
+checked out, and fails if not.
+
+**Publishing an APK is not a deploy.** v1.26 shipped a client whose entire feed
+called `/api/posts/*` while the server on the VPS still predated those routes,
+so every request 404'd for every user. `/health` now reports the running commit
+and `preflight.sh` compares it against the release, which turns that from
+something a user reports into something the release refuses to do. Run it before
+building an APK, updating the F-Droid index or cutting a GitHub release.
+
 ## Security model
 
 - The server never sees plaintext messages, attachments, or private keys — only encrypted blobs and routing metadata.

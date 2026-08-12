@@ -363,6 +363,12 @@ async function phase8Routes(fastify) {
     },
   }, async (request, reply) => {
     const story = await fastify.repos.phase8.createStory(request.user.id, request.body);
+    // Claim the file so the orphan sweep leaves it alone — see media.repo.js.
+    // The story reaper still deletes it when the story expires; the ledger only
+    // governs files nothing ever referenced.
+    if (request.body?.media?.fileId) {
+      await fastify.repos.media.claim(request.body.media.fileId);
+    }
     return reply.code(201).send(story);
   });
 

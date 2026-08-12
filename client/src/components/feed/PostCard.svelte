@@ -19,6 +19,13 @@
   import { showConfirm } from '../../lib/stores/confirm.js';
   import { clickOutside } from '../../lib/actions/clickOutside.js';
   import { openLightbox } from '../../lib/stores/lightbox.js';
+  import { openExternal } from '../../lib/openExternal.js';
+
+  // The published acceptable-use and takedown page. Absolute rather than a
+  // relative path: the Android build is served from a spoofed local origin
+  // (app.vaultapp.space via WebViewLocalServer), where a relative link would
+  // resolve inside the bundle and 404.
+  const ACCEPTABLE_USE_URL = 'https://vaultapp.space/acceptable-use.html';
 
   export let post;
   // A thread view already shows the root in full; a timeline card is tappable
@@ -289,6 +296,22 @@
                   class="w-full text-left px-3 py-1.5 text-[11px] text-vault-text hover:bg-vault-elevated focus:outline-none"
                 >{label}</button>
               {/each}
+
+              <!-- The published policy, one tap from the thing it governs.
+                   Someone deciding whether to report is exactly who needs to
+                   know what will and will not be actioned, and a page nobody
+                   can find does not discharge the obligation to publish one. -->
+              <div class="my-1 border-t border-vault-border-subtle"></div>
+              <!-- openExternal, not a bare target="_blank": in the Capacitor
+                   WebView there is no second tab to open into, so a plain
+                   external anchor silently does nothing. -->
+              <a
+                href={ACCEPTABLE_USE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                on:click|stopPropagation={(e) => openExternal(e, ACCEPTABLE_USE_URL)}
+                class="block px-3 py-1.5 text-[10px] text-vault-text-dim hover:bg-vault-elevated hover:text-vault-text focus:outline-none"
+              >What gets removed →</a>
             </div>
           {/if}
         </div>

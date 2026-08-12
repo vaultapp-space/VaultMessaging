@@ -94,6 +94,10 @@ async function stickerRoutes(fastify) {
     }
 
     const sticker = await fastify.repos.stickers.addSticker(set.id, request.body);
+    // A sticker file is permanent by design — a set is a library the user
+    // installed — so claiming it is what keeps the orphan sweep away from it
+    // for good. See media.repo.js.
+    await fastify.repos.media.claim(request.body.fileId);
     return reply.code(201).send(sticker);
   });
 

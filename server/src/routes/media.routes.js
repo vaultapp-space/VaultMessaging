@@ -78,6 +78,16 @@ async function mediaRoutes(fastify) {
     // to traverse with.
     await fs.promises.writeFile(path.join(mediaDir, `${fileId}${extension}`), bytes);
 
+    // Ledger the upload so the reaper can find it again if nothing ever
+    // references it. Without this row the file is permanent and — because
+    // canViewMediaFile serves anything no content row claims — public. See
+    // migration 0020.
+    //
+    // Written after the file, matching the files-before-rows ordering the
+    // reaper uses in the other direction: a ledger row with no file reaps
+    // harmlessly, whereas a file with no ledger row is the leak this closes.
+    await fastify.repos.media.record(fileId, request.user.id, extension);
+
     return reply.code(201).send({ fileId, mimeType });
   });
 

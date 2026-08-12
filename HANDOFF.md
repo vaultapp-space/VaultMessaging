@@ -949,3 +949,70 @@ messages.
 
 `TopicBar.svelte` only appears on groups that are actually forums — a topic bar
 on an ordinary group would imply a structure that does not exist.
+
+---
+
+## The v1.26 stale-server incident (2026-08-12)
+
+v1.26 was published — signed APK, F-Droid index, GitHub release, all verified —
+against a server that had never been redeployed. The whole Thoughts client was
+live on users' phones calling `/api/posts/*`, and every one of those routes
+returned 404 because the process on the VPS predated them.
+
+Nothing in the release path was wrong, individually. There simply was no step
+that compared what was being shipped against what was running, and deploying was
+a sequence of remembered commands rather than a file. Verifying the APK
+thoroughly — versionCode, signature, R8 keeps, byte-for-byte asset match — gave
+a strong and entirely misleading impression of a checked release.
+
+Three things came out of it:
+
+- **`/health` reports `build.commit`** (`server/src/build-info.js`), read from
+  `.git` at boot with no subprocess. A server that cannot say what it is running
+  cannot be checked.
+- **`deploy/deploy.sh`** is the deploy, and it verifies itself: after the
+  restart it re-reads `/health` and fails if the commit does not match the
+  checkout. Note the ordering — migrate, restart, *then* build the client — so
+  a newly loaded page never calls routes the running server lacks.
+- **`deploy/preflight.sh`** runs locally and exits non-zero when the server is
+  behind the commit being released. Run it before an APK, an index update or a
+  release.
+
+The generalisable lesson: an artifact can be perfect and still be broken by what
+it talks to. Verify the *system*, not the deliverable.
+
+## The media ledger (migration 0020)
+
+`POST /api/media/upload` writes a file and returns a fileId. If nothing ever
+references that fileId, no reaper branch deletes it — the reaper walks content
+rows, and there is no content row — and `phase8.repo.canViewMediaFile` is
+deny-by-exception, so a file no row claims is served to any authenticated user.
+An unreferenced upload was therefore a permanent, publicly readable file. That
+was tolerable when signup implied someone you had chosen to talk to; a public
+feed with anonymous signup turns it into free file hosting on your disk, served
+from your domain.
+
+`media_files` records every upload and whether anything claimed it. The reaper
+deletes unclaimed rows past an hour's grace, files before rows.
+
+Three properties are load-bearing, and all three have tests:
+
+- **The grace period.** Upload and reference are separate requests — the
+  composer uploads when the image is picked and references it when Post is
+  tapped, possibly minutes later. Reaping instantly deletes the image out from
+  under an open composer.
+- **`listOrphans` re-checks the content tables** with `NOT EXISTS`, even though
+  `claim()` is what normally clears a row. It means a future content type that
+  forgets to claim loses nothing, rather than losing its images an hour after
+  upload. A missed claim must be a no-op, not data loss.
+- **Files with no ledger row are never touched.** Everything uploaded before
+  0020 is in that state. Sweeping by directory listing would catch those too —
+  and would delete every sticker on the instance the first time a reference
+  check was wrong.
+
+One sharp edge worth remembering: the story media schema is
+`additionalProperties: true` with no format check on `fileId`, so a client can
+put any string there, and `media_files.file_id` is a `uuid` column. Both
+`claim()` and `forget()` filter non-UUIDs. `forget()` matters more — it runs
+inside the reaper pass, and an exception there aborts the whole pass, which is a
+503 on `/health` after fifteen minutes of them.

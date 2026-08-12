@@ -499,6 +499,12 @@
     <div class="wrap row">
       <span>© 2026 Vault</span>
       <div class="footer-links">
+        <!-- Reachable without an account and without JavaScript routing. The
+             people who need it most — an abuse desk, a registrar, a lawyer —
+             arrive at the marketing page and look for a footer, and if they
+             cannot find a contact here the complaint goes to the hosting
+             provider instead, who resolves it by suspending the server. -->
+        <a href="/acceptable-use.html">Acceptable use &amp; takedown</a>
         <a href="https://github.com/vaultapp-space/VaultMessaging" target="_blank" rel="noopener noreferrer">Source code</a>
       </div>
     </div>
