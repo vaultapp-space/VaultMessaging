@@ -645,8 +645,9 @@ export async function fetchUserProfile(username) {
   return request('GET', `/users/${encodeURIComponent(username)}/profile`);
 }
 
-export async function fetchUserPosts(username, { cursor = null, limit = 20 } = {}) {
-  const params = new URLSearchParams({ limit: String(limit) });
+/** `kind` is 'posts' (top-level) or 'replies' (what they wrote under others). */
+export async function fetchUserPosts(username, { cursor = null, limit = 20, kind = 'posts' } = {}) {
+  const params = new URLSearchParams({ limit: String(limit), kind });
   if (cursor) params.set('cursor', cursor);
   return request('GET', `/users/${encodeURIComponent(username)}/posts?${params}`);
 }
@@ -657,6 +658,30 @@ export async function followUser(userId) {
 
 export async function unfollowUser(userId) {
   return request('DELETE', `/users/${userId}/follow`);
+}
+
+/**
+ * Who follows this user, or who they follow. `direction` is 'followers' or
+ * 'following' — the server constrains it to those two in the route pattern
+ * *and* the schema, so anything else is a 404 rather than a query.
+ *
+ * Paginated by offset rather than keyset: a follow list is small, and unlike a
+ * timeline it does not have new rows arriving at the top while you read.
+ */
+export async function fetchFollowList(userId, direction, { limit = 50, offset = 0 } = {}) {
+  return request('GET', `/users/${userId}/${direction}?limit=${limit}&offset=${offset}`);
+}
+
+// ─── Notifications ──────────────────────────────────────────
+// Always the caller's own — there is no id parameter, and no route that could
+// be pointed at another account.
+
+export async function fetchNotifications({ limit = 30 } = {}) {
+  return request('GET', `/notifications?limit=${limit}`);
+}
+
+export async function markNotificationsRead() {
+  return request('POST', '/notifications/read');
 }
 
 export async function muteUser(userId) {

@@ -1117,3 +1117,65 @@ Also confirmed incidentally: v1.27 installed *over* v1.26 without an uninstall,
 which is the signing-key continuity check that actually matters; and the feed
 loaded from production, which would have been an error state before the server
 was redeployed.
+
+## Notifications (migration 0022)
+
+Likes, replies, reposts and follows were invisible. The only way to learn
+someone had answered you was to reopen the thread and notice a counter had
+moved — so on a feed where everything is deleted after 24 hours, most
+interactions were never seen by the person they were addressed to.
+
+**One row, one recipient, on the actor's own request.** Every event here has
+exactly one interested party, so notifying is O(1) and belongs inline. The
+moment something needs to tell many people it becomes a worker — the same line
+`realtime/feed-ticker.js` draws.
+
+Three things carry the design:
+
+- **The push is a bare `notification_tick`.** The list and count queries filter
+  blocked actors in SQL; a push naming the actor would route around that and
+  tell you a blocked user had just interacted with you. The client refetches,
+  exactly as it does for `feed_tick`.
+- **Undone actions are withdrawn.** Unliking deletes the row. Otherwise the
+  bell asserts something no longer true, *and* the unique index would
+  permanently swallow a genuine re-like.
+- **Duplicates are impossible by index.** Without that, like/unlike/like is a
+  free way to fill someone's list. Two partial unique indexes rather than one
+  `UNIQUE ... NULLS NOT DISTINCT` — see below.
+
+### Production is Postgres 14, local is 16
+
+The unique constraint was first written as `UNIQUE NULLS NOT DISTINCT`, which
+is Postgres 15+. It applied cleanly locally and **would have failed the
+deploy**. The follow rows are the reason the constraint is subtle at all: their
+`post_id` is NULL, and a plain unique index treats every NULL as distinct, so
+follow/unfollow/follow would notify three times. Two partial indexes (one
+`WHERE post_id IS NOT NULL`, one `WHERE post_id IS NULL`) give the same
+semantics on 14.
+
+**Check `SHOW server_version` on the VPS before using any syntax newer than
+14.** Nothing in the local toolchain will warn you.
+
+### The backtick trap, for the third time
+
+`migrations/*.js` and every repo query are template literals. A backtick inside
+one — even in a comment, even inside a SQL comment — terminates the string. It
+has now cost time in 0019, in 0022, and in `posts.repo.js`'s like CTE. The
+symptom is a `ParseError` or a truncated query, never something that points at
+the backtick. Do not use them for emphasis in these files.
+
+## Profile: replies, and the follower lists
+
+`byAuthor` grew a `kind` of 'posts' or 'replies'. A reply used to be
+unreachable from anywhere in the app once it left its thread: the timeline
+holds only top-level posts and the profile filtered replies out. They are
+separate views rather than one merged list, because a reply shown outside its
+thread reads as a non-sequitur.
+
+The follower and following counts are now tappable. The endpoint had existed
+since the social phase and **nothing had ever called it** — the one question a
+follower count raises had no answer anywhere in the product.
+
+Related bug found in the same pass: `Thoughts.svelte` never handled
+`on:profile` from `ProfilePane`, so tapping an author inside a profile
+dispatched into nothing.

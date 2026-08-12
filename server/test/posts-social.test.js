@@ -290,6 +290,26 @@ describe('profiles', () => {
     assert.deepEqual(bodies, ['alice top level']);
   });
 
+  test('kind=replies returns the replies the posts view hides', async () => {
+    // A reply used to be unreachable from anywhere once it left its thread:
+    // the timeline holds only top-level posts and the profile filtered
+    // replies out, so a comment you made could not be found again at all.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const root = await post(bob, { body: 'bob asks something' });
+    await post(alice, { body: 'alice top level' });
+    await post(alice, { body: 'alice answers', replyToId: root.id });
+
+    const res = await send(bob, 'GET', `/api/users/${alice.username}/posts?kind=replies`);
+    const bodies = JSON.parse(res.body).posts.map((p) => p.body);
+    assert.deepEqual(bodies, ['alice answers'], 'only replies, and only hers');
+
+    // And the default is unchanged — the two views stay disjoint, so nothing
+    // appears in both.
+    const other = await send(bob, 'GET', `/api/users/${alice.username}/posts`);
+    assert.deepEqual(JSON.parse(other.body).posts.map((p) => p.body), ['alice top level']);
+  });
+
   test('a blocked user\'s profile is a 404', async () => {
     const alice = await registerUser(app);
     const bob = await registerUser(app);

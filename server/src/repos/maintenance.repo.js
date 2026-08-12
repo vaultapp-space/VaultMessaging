@@ -111,6 +111,15 @@ export function createMaintenance({ pool, uploadsDir, media }) {
       }
     }
 
+    // Notifications. Most are collected by the cascade when their post is
+    // deleted above, but a follow has no post and would otherwise live
+    // forever. Batched like the posts branch, and for the same reason.
+    await this.pool.query(
+      `DELETE FROM notifications
+        WHERE id IN (SELECT id FROM notifications WHERE expires_at < $1 LIMIT 5000)`,
+      [now]
+    );
+
     // ─── Orphaned uploads ─────────────────────────────────────
     // A file uploaded through POST /api/media/upload and never referenced by a
     // post, story or sticker is deleted by none of the branches above — there

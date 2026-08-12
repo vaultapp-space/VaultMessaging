@@ -198,6 +198,41 @@ test.describe('thoughts', () => {
     }
   });
 
+  test('a like raises a notification on the author, and the bell shows who', async ({ browser }) => {
+    const aCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+    const bCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+    const alice = await aCtx.newPage();
+    const bob = await bCtx.newPage();
+
+    try {
+      const aliceName = uniqueUsername('tna');
+      const bobName = uniqueUsername('tnb');
+      await register(alice, aliceName);
+      await register(bob, bobName);
+
+      await openFeed(alice);
+      const text = `notify me ${Date.now()}`;
+      await writeThought(alice, text);
+
+      await openFeed(bob);
+      await expect(postCard(bob, text)).toBeVisible({ timeout: 30_000 });
+      await postCard(bob, text).getByRole('button', { name: 'Like, 0 likes' }).click();
+
+      // The badge arrives over the socket without a reload — the push carries
+      // no content, so this also proves the client refetches rather than
+      // rendering something it was handed.
+      const bell = alice.getByRole('button', { name: /notifications/i });
+      await expect(bell).toHaveAttribute('aria-label', /1 unread/, { timeout: 30_000 });
+
+      await bell.click();
+      await expect(alice.getByText(`@${bobName}`).first()).toBeVisible({ timeout: 20_000 });
+      await expect(alice.getByText('liked your post').first()).toBeVisible();
+    } finally {
+      await aCtx.close();
+      await bCtx.close();
+    }
+  });
+
   test('the Profile tab opens your own profile and keeps the tab bar', async ({ browser }) => {
     // The tab bar hides itself whenever a profile is open, because a profile
     // is normally something you navigated *into* from a post. Your own

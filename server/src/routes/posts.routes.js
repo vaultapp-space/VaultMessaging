@@ -65,6 +65,38 @@ function decodeCursor(raw) {
   return { createdAt, id };
 }
 
+/**
+ * Records a notification and pushes it to the one person it concerns.
+ *
+ * One helper rather than four call sites so the two halves cannot drift: a
+ * stored row nobody is told about, or a push with nothing behind it when the
+ * recipient opens the bell.
+ *
+ * **Never throws.** These are all secondary effects of a request that has
+ * already succeeded — the like landed, the reply was created — and failing the
+ * request because the notification could not be written would be strictly
+ * worse than the missing notification.
+ */
+async function notify(fastify, { userId, actorId, kind, postId = null }) {
+  try {
+    const row = await fastify.repos.notifications.record({ userId, actorId, kind, postId });
+    // Null means self-action or duplicate; both are ordinary, and neither is
+    // something to push.
+    if (!row) return;
+
+    // A bare nudge, carrying no actor and no content — the same reasoning as
+    // feed_tick. The list and count queries filter blocked actors in SQL; a
+    // push that named the actor would route around that filter and tell you
+    // someone you blocked had just interacted with you.
+    //
+    // O(1): exactly one recipient, which is what keeps this on the request
+    // path at all. Anything needing many recipients belongs in a worker.
+    await fastify.fanout.deliverToUser(userId, { type: 'notification_tick' });
+  } catch (err) {
+    fastify.log?.warn?.({ err, kind }, 'notification failed');
+  }
+}
+
 async function postRoutes(fastify) {
 
   // ─── CREATE ───────────────────────────────────────────────
@@ -126,6 +158,22 @@ async function postRoutes(fastify) {
     // Not awaited, and it cannot throw — notePost only sets a flag and arms a
     // timer. The fanout happens on that timer, off this request.
     if (!replyToId) fastify.feedTicker.notePost();
+
+    // Tell whoever is being answered or reposted. The parent's author is
+    // fetched rather than assumed — the post row here belongs to the caller,
+    // not to the person being notified.
+    const parentId = replyToId ?? repostOfId;
+    if (parentId) {
+      const parent = await fastify.repos.posts.get(request.user.id, parentId);
+      if (parent) {
+        await notify(fastify, {
+          userId: parent.authorId,
+          actorId: request.user.id,
+          kind: replyToId ? 'reply' : 'repost',
+          postId: parentId,
+        });
+      }
+    }
 
     return reply.code(201).send({ post });
   });
@@ -246,9 +294,22 @@ async function postRoutes(fastify) {
     const visible = await fastify.repos.posts.get(request.user.id, request.params.postId);
     if (!visible) return reply.code(404).send({ error: 'Post not found' });
 
-    const likesCount = await fastify.repos.posts.like(request.params.postId, request.user.id);
-    if (likesCount === null) return reply.code(404).send({ error: 'Post not found' });
-    return reply.send({ likesCount, likedByMe: true });
+    const result = await fastify.repos.posts.like(request.params.postId, request.user.id);
+    if (result === null) return reply.code(404).send({ error: 'Post not found' });
+
+    // Only on a like that actually happened — a repeated tap on an already
+    // liked post is not a new event. record() also refuses to notify you about
+    // your own post, so there is nothing to check here.
+    if (result.changed) {
+      await notify(fastify, {
+        userId: result.authorId,
+        actorId: request.user.id,
+        kind: 'like',
+        postId: request.params.postId,
+      });
+    }
+
+    return reply.send({ likesCount: result.likesCount, likedByMe: true });
   });
 
   fastify.delete('/api/posts/:postId/like', {
@@ -258,9 +319,22 @@ async function postRoutes(fastify) {
       params: { type: 'object', required: ['postId'], properties: { postId: postParam } },
     },
   }, async (request, reply) => {
-    const likesCount = await fastify.repos.posts.unlike(request.params.postId, request.user.id);
-    if (likesCount === null) return reply.code(404).send({ error: 'Post not found' });
-    return reply.send({ likesCount, likedByMe: false });
+    const result = await fastify.repos.posts.unlike(request.params.postId, request.user.id);
+    if (result === null) return reply.code(404).send({ error: 'Post not found' });
+
+    // Withdraw the notification. Leaving it would have the bell assert
+    // something that is no longer true, and would permanently block a genuine
+    // re-like from ever notifying, since the unique index would swallow it.
+    if (result.changed) {
+      await fastify.repos.notifications.withdraw({
+        userId: result.authorId,
+        actorId: request.user.id,
+        kind: 'like',
+        postId: request.params.postId,
+      });
+    }
+
+    return reply.send({ likesCount: result.likesCount, likedByMe: false });
   });
 
   // ─── PROFILES ─────────────────────────────────────────────
@@ -296,6 +370,10 @@ async function postRoutes(fastify) {
         properties: {
           cursor: { type: 'string', maxLength: 128 },
           limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+          // 'replies' returns what this user wrote under other people's posts.
+          // An enum rather than a boolean so a third view (media, say) does
+          // not need a second flag that can disagree with the first.
+          kind: { type: 'string', enum: ['posts', 'replies'], default: 'posts' },
         },
       },
     },
@@ -303,7 +381,11 @@ async function postRoutes(fastify) {
     const { posts, hasMore } = await fastify.repos.posts.byAuthor(
       request.user.id,
       request.params.username,
-      { cursor: decodeCursor(request.query.cursor), limit: request.query.limit }
+      {
+        cursor: decodeCursor(request.query.cursor),
+        limit: request.query.limit,
+        kind: request.query.kind,
+      }
     );
 
     return reply.send({
@@ -327,6 +409,14 @@ async function postRoutes(fastify) {
     }
     const ok = await fastify.repos.posts.follow(request.user.id, request.params.userId);
     if (!ok) return reply.code(404).send({ error: 'User not found' });
+
+    // After the existence check, so a follow that was refused cannot notify.
+    await notify(fastify, {
+      userId: request.params.userId,
+      actorId: request.user.id,
+      kind: 'follow',
+    });
+
     return reply.code(204).send();
   });
 
@@ -338,6 +428,14 @@ async function postRoutes(fastify) {
     },
   }, async (request, reply) => {
     await fastify.repos.posts.unfollow(request.user.id, request.params.userId);
+    // Withdrawn, for the same reason an unlike is: otherwise the bell keeps
+    // claiming a follow that no longer exists, and a genuine re-follow could
+    // never notify again.
+    await fastify.repos.notifications.withdraw({
+      userId: request.params.userId,
+      actorId: request.user.id,
+      kind: 'follow',
+    });
     return reply.code(204).send();
   });
 
@@ -368,6 +466,34 @@ async function postRoutes(fastify) {
       { limit: request.query.limit, offset: request.query.offset }
     );
     return reply.send({ users });
+  });
+
+  // ─── NOTIFICATIONS ────────────────────────────────────────
+  // Always the caller's own. There is no route to read anyone else's, and no
+  // id parameter that could be pointed at another account.
+  fastify.get('/api/notifications', {
+    preValidation: [fastify.authenticate],
+    config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { limit: { type: 'integer', minimum: 1, maximum: 50, default: 30 } },
+      },
+    },
+  }, async (request, reply) => {
+    const [notifications, unreadCount] = await Promise.all([
+      fastify.repos.notifications.list(request.user.id, { limit: request.query.limit }),
+      fastify.repos.notifications.unreadCount(request.user.id),
+    ]);
+    return reply.send({ notifications, unreadCount });
+  });
+
+  fastify.post('/api/notifications/read', {
+    preValidation: [fastify.authenticate],
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    await fastify.repos.notifications.markAllRead(request.user.id);
+    return reply.code(204).send();
   });
 
   // ─── MUTES ────────────────────────────────────────────────

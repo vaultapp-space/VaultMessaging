@@ -12,7 +12,7 @@
 
   import {
     fetchUserProfile, fetchUserPosts, followUser, unfollowUser, muteUser, unmuteUser,
-    likePost, unlikePost,
+    likePost, unlikePost, fetchFollowList,
   } from '../../lib/api/http.js';
   import { showToast } from '../../lib/stores/toast.js';
   import { currentUser } from '../../lib/stores/session.js';
@@ -36,18 +36,42 @@
     return () => popBack?.();
   });
 
+  // 'posts' or 'replies'. Separate views rather than one merged list: a reply
+  // shown outside its thread reads as a non-sequitur, with the half that gave
+  // it meaning missing.
+  let kind = 'posts';
+
   async function load() {
     loading = true;
     error = null;
     try {
       const [{ profile: p }, listed] = await Promise.all([
         fetchUserProfile(username),
-        fetchUserPosts(username),
+        fetchUserPosts(username, { kind }),
       ]);
       profile = p;
       posts = listed.posts;
     } catch (err) {
       error = err.message || 'This profile is not available';
+    } finally {
+      loading = false;
+    }
+  }
+
+  async function switchKind(next) {
+    if (kind === next) return;
+    kind = next;
+    posts = [];
+    // Leaves the follower list if it was open — otherwise switching to
+    // Replies appears to do nothing, because the list is rendered in place of
+    // the posts.
+    listDirection = null;
+    loading = true;
+    try {
+      const listed = await fetchUserPosts(username, { kind });
+      posts = listed.posts;
+    } catch (err) {
+      showToast(err?.message || 'Could not load those');
     } finally {
       loading = false;
     }
@@ -59,6 +83,38 @@
   $: isSelf = profile && $currentUser && profile.id === $currentUser.id;
 
   let busy = false;
+
+  // ─── Follower / following list ──────────────────────────
+  // The counts used to be plain text, so there was no way to find out *who* —
+  // the server has always had the endpoint, and nothing called it.
+  let listDirection = null;   // 'followers' | 'following' | null
+  let listUsers = [];
+  let listLoading = false;
+  let listError = null;
+
+  async function openList(direction) {
+    listDirection = direction;
+    listLoading = true;
+    listError = null;
+    listUsers = [];
+    try {
+      const res = await fetchFollowList(profile.id, direction);
+      listUsers = res.users;
+    } catch (err) {
+      listError = err?.message || 'Could not load that list';
+    } finally {
+      listLoading = false;
+    }
+  }
+
+  // Opening someone from the list replaces this pane rather than stacking
+  // another one: the parent owns which profile is shown, so a second
+  // ProfilePane inside this one would be a component rendering itself with no
+  // way back out.
+  function openFromList(username) {
+    listDirection = null;
+    dispatch('profile', username);
+  }
 
   // Handled here rather than forwarded: this component owns `posts`, and an
   // event bubbled to Thoughts would have nothing to update — its own timeline
@@ -173,10 +229,23 @@
           >{initial}</div>
           <div class="min-w-0">
             <div class="text-sm font-semibold text-vault-text truncate">@{profile.username}</div>
+            <!-- Tappable. These were plain text, so the one question a
+                 follower count raises — who? — had no answer anywhere in the
+                 app, despite the server having served it all along. -->
             <div class="text-[11px] text-vault-text-dim mt-0.5">
-              <strong class="text-vault-text">{profile.followersCount}</strong> followers
+              <button
+                on:click={() => openList('followers')}
+                class="hover:text-vault-text transition-colors focus:outline-none"
+              >
+                <strong class="text-vault-text">{profile.followersCount}</strong> followers
+              </button>
               <span class="mx-1">·</span>
-              <strong class="text-vault-text">{profile.followingCount}</strong> following
+              <button
+                on:click={() => openList('following')}
+                class="hover:text-vault-text transition-colors focus:outline-none"
+              >
+                <strong class="text-vault-text">{profile.followingCount}</strong> following
+              </button>
             </div>
           </div>
         </div>
@@ -205,11 +274,79 @@
         {/if}
       </div>
 
-      {#if posts.length === 0}
+      <!-- Posts / Replies. Shown for everyone, not just yourself: a reply you
+           made was previously unreachable from anywhere in the app once it
+           left the thread. -->
+      <div class="flex items-center gap-1 px-4 py-2 border-b border-vault-border-subtle">
+        {#each [['posts', 'Posts'], ['replies', 'Replies']] as [value, label] (value)}
+          <button
+            on:click={() => switchKind(value)}
+            class="px-3 py-1 rounded-lg text-xs transition-colors focus:outline-none
+              {kind === value && !listDirection
+                ? 'bg-vault-accent/15 text-vault-accent'
+                : 'text-vault-text-dim hover:text-vault-text'}"
+            aria-current={kind === value && !listDirection}
+          >{label}</button>
+        {/each}
+      </div>
+
+      {#if listDirection}
+        <!-- Rendered in place of the posts rather than as a modal: it is a
+             different view of the same person, and a dialog over a pane that
+             is itself a detail view stacks two dismiss gestures on one
+             screen. -->
+        <div class="border-b border-vault-border-subtle">
+          <div class="px-4 py-2 flex items-center justify-between">
+            <span class="text-[10px] uppercase tracking-wider text-vault-text-dim">
+              {listDirection === 'followers' ? 'Followers' : 'Following'}
+            </span>
+            <button
+              on:click={() => (listDirection = null)}
+              class="text-[10px] text-vault-accent hover:underline focus:outline-none"
+            >Back to posts</button>
+          </div>
+
+          {#if listLoading}
+            <div class="px-4 pb-3 space-y-2" aria-busy="true">
+              {#each Array(3) as _, i (i)}
+                <div class="flex items-center gap-3" aria-hidden="true">
+                  <div class="skeleton w-8 h-8 rounded-full"></div>
+                  <div class="skeleton h-3 rounded" style="width: {35 + i * 10}%"></div>
+                </div>
+              {/each}
+            </div>
+          {:else if listError}
+            <p class="px-4 pb-4 text-xs text-vault-text-dim">{listError}</p>
+          {:else if listUsers.length === 0}
+            <p class="px-4 pb-4 text-xs text-vault-text-dim">
+              {listDirection === 'followers'
+                ? 'Nobody yet.'
+                : 'Not following anyone yet.'}
+            </p>
+          {:else}
+            {#each listUsers as user (user.id)}
+              <button
+                on:click={() => openFromList(user.username)}
+                class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-vault-elevated transition-colors text-left focus:outline-none"
+              >
+                <div
+                  class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0"
+                  style="background: {getAvatarGradient(user.username)}"
+                >{user.username.charAt(0).toUpperCase()}</div>
+                <span class="text-sm text-vault-text truncate">@{user.username}</span>
+              </button>
+            {/each}
+          {/if}
+        </div>
+      {:else if posts.length === 0}
         <div class="text-center py-14 px-6">
-          <p class="text-xs text-vault-text-dim">Nothing in the last 24 hours</p>
+          <p class="text-xs text-vault-text-dim">
+            {kind === 'replies' ? 'No replies in the last 24 hours' : 'Nothing in the last 24 hours'}
+          </p>
           <p class="text-[10px] text-vault-text-dim mt-1">
-            Posts expire, so a profile only ever shows the last day.
+            {kind === 'replies'
+              ? 'A reply expires with the post it answers, so it can vanish sooner.'
+              : 'Posts expire, so a profile only ever shows the last day.'}
           </p>
         </div>
       {:else}

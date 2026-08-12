@@ -29,6 +29,7 @@
   import PostComposer from './PostComposer.svelte';
   import ThreadView from './ThreadView.svelte';
   import ProfilePane from './ProfilePane.svelte';
+  import NotificationsBell from './NotificationsBell.svelte';
 
   let tab = 'global';
   let posts = [];
@@ -238,18 +239,28 @@
     on:deleted={onDeleted}
   />
 {:else if $activeProfile}
+  <!-- on:profile was missing, so tapping an author inside a profile — or a
+       name in its follower list — dispatched into nothing. -->
   <ProfilePane
     username={$activeProfile}
     on:close={() => activeProfile.set(null)}
     on:open={openThread}
+    on:profile={openProfile}
   />
 {:else}
   <div class="flex-1 flex flex-col bg-vault-black min-w-0">
     <div class="px-4 py-3 border-b border-vault-border glass-strong relative z-10">
-      <h1 class="text-sm font-semibold text-vault-text">Thoughts</h1>
-      <p class="text-[10px] text-vault-text-dim mt-0.5">
-        Public — anyone can read this. Deleted within 24 hours, like everything else.
-      </p>
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h1 class="text-sm font-semibold text-vault-text">Thoughts</h1>
+          <p class="text-[10px] text-vault-text-dim mt-0.5">
+            Public — anyone can read this. Deleted within 24 hours, like everything else.
+          </p>
+        </div>
+        <!-- Top right, beside the title rather than in the tab row: it is not
+             a view of the feed, it is a view of what happened to you. -->
+        <NotificationsBell on:open={openThread} on:profile={openProfile} />
+      </div>
 
       <div class="flex items-center gap-1 mt-2.5">
         {#each [['global', 'Global'], ['following', 'Following']] as [value, label] (value)}

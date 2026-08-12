@@ -180,6 +180,7 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
     phase8: store.phase8,
     posts: store.posts,
     media: store.media,
+    notifications: store.notifications,
     attachments: store.attachments,
     push: store.push,
     config: store.config,

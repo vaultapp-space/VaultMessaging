@@ -308,12 +308,28 @@ export function createPosts({ pool, uploadsDir }) {
     },
 
     /** A user's own top-level posts, newest first. */
-    async byAuthor(viewerId, username, { cursor = null, limit = 20 } = {}) {
+    /**
+     * A user's own posts. `kind` is 'posts' (top-level only, the default) or
+     * 'replies' (only what they wrote under someone else's post).
+     *
+     * Replies were invisible everywhere before this: the profile filtered them
+     * out and the timeline never contained them, so a comment you made could
+     * not be found again from anywhere in the app.
+     *
+     * They are a separate view rather than mixed into one list because a reply
+     * out of its thread reads as a non-sequitur — half a conversation with the
+     * half that gives it meaning missing.
+     */
+    async byAuthor(viewerId, username, { cursor = null, limit = 20, kind = 'posts' } = {}) {
+      const replyPredicate = kind === 'replies'
+        ? 'p.reply_to_id IS NOT NULL'
+        : 'p.reply_to_id IS NULL';
+
       const { rows } = await this.pool.query(
         `SELECT ${SELECT_COLUMNS}
            FROM posts p ${SELECT_JOINS}
           WHERE u.username = $2
-            AND p.reply_to_id IS NULL
+            AND ${replyPredicate}
             AND p.removed_at IS NULL
             AND p.expires_at > now()
             AND ($3::timestamptz IS NULL OR (p.created_at, p.id) < ($3::timestamptz, $4::uuid))
@@ -385,10 +401,19 @@ export function createPosts({ pool, uploadsDir }) {
          UPDATE posts
             SET likes_count = likes_count + (SELECT count(*) FROM ins)
           WHERE id = $1 AND removed_at IS NULL AND expires_at > now()
-          RETURNING likes_count`,
+          -- author_id so the caller can notify without a second query, and the
+          -- changed flag so it only notifies on a like that actually happened.
+          -- (No backticks inside these SQL strings: they are template literals
+          -- and a stray one truncates the query.)
+          RETURNING likes_count, author_id, (SELECT count(*) FROM ins) > 0 AS changed`,
         [postId, userId]
       );
-      return rows[0] ? Number(rows[0].likes_count) : null;
+      if (!rows[0]) return null;
+      return {
+        likesCount: Number(rows[0].likes_count),
+        authorId: rows[0].author_id,
+        changed: rows[0].changed,
+      };
     },
 
     async unlike(postId, userId) {
@@ -400,10 +425,15 @@ export function createPosts({ pool, uploadsDir }) {
          UPDATE posts
             SET likes_count = GREATEST(0, likes_count - (SELECT count(*) FROM del))
           WHERE id = $1 AND removed_at IS NULL AND expires_at > now()
-          RETURNING likes_count`,
+          RETURNING likes_count, author_id, (SELECT count(*) FROM del) > 0 AS changed`,
         [postId, userId]
       );
-      return rows[0] ? Number(rows[0].likes_count) : null;
+      if (!rows[0]) return null;
+      return {
+        likesCount: Number(rows[0].likes_count),
+        authorId: rows[0].author_id,
+        changed: rows[0].changed,
+      };
     },
 
     // ─── Follows and mutes ────────────────────────────────
