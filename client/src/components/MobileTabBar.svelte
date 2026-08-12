@@ -40,6 +40,13 @@
   function openThoughts() {
     showBackupModal = false;
     activeSection.set('thoughts');
+    // Closing the sidebar is what actually reveals the feed. Below md the
+    // sidebar is a full-width overlay (ChatSidebar's max-md:translate-x-0),
+    // not a column beside the pane — so setting the section while it stays
+    // open switched the pane underneath and left the screen looking
+    // completely unchanged. Opening a chat has always done this; the feed
+    // needs it for the same reason.
+    sidebarOpen.set(false);
   }
 </script>
 

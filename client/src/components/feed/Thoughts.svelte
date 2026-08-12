@@ -15,7 +15,7 @@
   import { fade } from 'svelte/transition';
 
   import {
-    activeSection, activeThreadId, activeProfile,
+    activeSection, activeThreadId, activeProfile, sidebarOpen,
   } from '../../lib/stores/session.js';
   import { fetchTimeline, likePost, unlikePost } from '../../lib/api/http.js';
   import {
@@ -50,7 +50,16 @@
   // Android back leaves the feed rather than the app, matching how a chat
   // behaves. Registered while this pane is mounted and popped on destroy.
   onMount(() => {
-    popBack = pushBackHandler(() => activeSection.set('chats'));
+    popBack = pushBackHandler(() => {
+      activeSection.set('chats');
+      // Reopen the list on the way out. The tab bar closes the sidebar to
+      // reveal this pane, so leaving without reopening it drops the user on
+      // the empty "select a conversation" state with their chats nowhere in
+      // sight — recoverable only by finding the Chats tab, which is not what
+      // back should mean. Narrow viewports only: on desktop the sidebar is a
+      // permanent column and this store does not govern it.
+      if (window.innerWidth < 768) sidebarOpen.set(true);
+    });
     filters = loadFilters();
     load();
   });
