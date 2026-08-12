@@ -39,6 +39,7 @@ import { createPhase8 } from './repos/phase8.repo.js';
 import { createAttachments } from './repos/attachments.repo.js';
 import { createPush } from './repos/push.repo.js';
 import { createConfig } from './repos/config.repo.js';
+import { createPosts } from './repos/posts.repo.js';
 import { createMaintenance } from './repos/maintenance.repo.js';
 
 import { createSessions } from './cache/sessions.js';
@@ -87,6 +88,7 @@ export class DataStore {
     this.attachments = createAttachments({ pool, uploadsDir });
     this.push = createPush({ pool });
     this.config = createConfig({ pool });
+    this.posts = createPosts({ pool, uploadsDir });
     this.maintenance = createMaintenance({ pool, uploadsDir });
 
     this.sessions = createSessions({ redis });

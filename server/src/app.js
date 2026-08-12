@@ -33,6 +33,7 @@ import channelRoutes from './routes/channels.routes.js';
 import stickerRoutes from './routes/stickers.routes.js';
 import mediaRoutes from './routes/media.routes.js';
 import phase8Routes from './routes/phase8.routes.js';
+import postRoutes from './routes/posts.routes.js';
 import { validateUrl } from './lib/safe-fetch.js';
 import chunkRoutes from './routes/chunks.routes.js';
 import pushRoutes from './routes/push.routes.js';
@@ -174,6 +175,7 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
     channels: store.channels,
     stickers: store.stickers,
     phase8: store.phase8,
+    posts: store.posts,
     attachments: store.attachments,
     push: store.push,
     config: store.config,
@@ -232,6 +234,7 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
   await fastify.register(mediaRoutes);
   await fastify.register(stickerRoutes);
   await fastify.register(phase8Routes);
+  await fastify.register(postRoutes);
   await fastify.register(chunkRoutes);
   await fastify.register(turnRoutes);
 

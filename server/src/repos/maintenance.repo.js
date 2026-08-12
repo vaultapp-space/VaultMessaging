@@ -72,6 +72,40 @@ export function createMaintenance({ pool, uploadsDir }) {
       }
     }
 
+    // Posts go the same way as stories, and for the same reason: their image
+    // is uploaded through the public media path, so nothing else would ever
+    // delete it.
+    //
+    // Batched. /health returns 503 if no reaper pass succeeds for 15 minutes,
+    // and a public feed can accumulate a lot of rows during an outage. An
+    // unbounded delete could turn one catch-up pass into a long transaction
+    // and take the instance out of the load balancer for something that is
+    // not an outage. The 60s cadence catches up over a few passes instead.
+    //
+    // Replies and reposts are clamped at insert to expire no later than what
+    // they answer (posts.repo.create), so they are collected by this same
+    // statement rather than cascading — which matters, because a cascaded
+    // delete is never seen by RETURNING and its media would be left on disk.
+    const expiredPosts = await this.pool.query(
+      `DELETE FROM posts
+        WHERE id IN (SELECT id FROM posts WHERE expires_at < $1 LIMIT 5000)
+        RETURNING media`,
+      [now]
+    );
+    for (const row of expiredPosts.rows) {
+      const fileId = row.media?.fileId;
+      if (!fileId) continue;
+      for (const extension of ['.webp', '.png', '.gif', '.webm']) {
+        await fs.promises
+          .unlink(path.join(this.uploadsDir, 'media', `${fileId}${extension}`))
+          .catch(() => {});
+      }
+    }
+
+    // Deliberately not adding expiredPosts to this. The caller uses the return
+    // value to decide whether to run chats.reconcileUnread(), and posts have
+    // no bearing on chat unread counters — folding them in would trigger a
+    // full recalculation every 60s for as long as the feed is active.
     return expiredMsgs.rowCount;
   },
   };
