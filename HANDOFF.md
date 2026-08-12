@@ -1016,3 +1016,58 @@ put any string there, and `media_files.file_id` is a `uuid` column. Both
 `claim()` and `forget()` filter non-UUIDs. `forget()` matters more — it runs
 inside the reaper pass, and an exception there aborts the whole pass, which is a
 503 on `/health` after fifteen minutes of them.
+
+## Thoughts phases 6 and 7
+
+### The tick is a nudge, and that is a security property
+
+`watch_feed` reuses `registry.watchChannel` — it keys on an arbitrary string,
+so `feed:global` is one more key and the cross-process bus comes along for
+free. It has **no authorization check**, unlike `watch_channel` beside it,
+because the global feed is public to any authenticated user by definition;
+there is no permission to check and a `canRead()` there would be inventing one.
+The asymmetry is deliberate and has a comment saying so, because it looks like
+an oversight.
+
+What makes it safe is that the socket receives **only a nudge**. The server
+cannot filter per viewer at publish time without O(viewers) work, so a pushed
+post body would arrive at people who blocked its author — and "the client
+received it and hid it" is not blocking. `feed-realtime.test.js` enumerates the
+keys `feed_tick` must never grow (`body`, `post`, `authorId`, …), because the
+pressure to add one arrives the first time someone finds the refetch wasteful.
+
+The tick is coalesced over 5s. One per post is a thousand socket messages a
+minute per viewer at a thousand posts a minute, each carrying what the first
+already said.
+
+**Your own post ticks too.** The client suppresses ticks for 6s after posting
+rather than the server naming the author in the tick — naming one would tell
+every watcher, including people that author has blocked, that they just posted.
+The cost is that a genuine tick inside that window is lost, which is a few
+seconds of freshness against a banner that points at a post already on screen.
+
+### The mobile tab bug, and why the obvious test would have missed it
+
+v1.26 shipped with the Thoughts tab doing nothing on a phone. Below `md` the
+sidebar is a **full-width overlay**, not a column beside the pane, so setting
+`activeSection` without closing it swapped the pane underneath a screen that
+looked identical. Every server test passed; the feature was entirely
+unreachable on the platform it shipped to.
+
+The trap in testing it: during the bug the feed was mounted and **`toBeVisible`
+would have passed**. The sidebar covering it is `translate-x-full`, and a
+transform does not make an element invisible to Playwright — only `display`,
+`visibility` and `opacity` do. So `e2e/thoughts.spec.js` **clicks** the
+composer and asserts focus. Playwright refuses to click through an obscuring
+element, which is the actual condition that was broken.
+
+Two more things that spec learned the hard way, both worth keeping:
+
+- **Do not `reload()` in a Vault e2e test.** Key material is in volatile memory
+  by design, so a reload logs the account out and the assertions end up
+  measuring the login screen. Force a refetch through the UI instead —
+  switching feed tabs clears the list and calls `load()`.
+- **Registration is IP rate limited**, and this spec needs two strangers per
+  test. Every worker shares one IP, so the limit is hit on merits. `register()`
+  waits it out rather than failing, and the describe block carries a longer
+  timeout to fit that.
