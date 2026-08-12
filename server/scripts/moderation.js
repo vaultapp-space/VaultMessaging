@@ -44,7 +44,7 @@ function usage() {
   remove <postId> [--category=] [--reason=]  take a post down
   block-author <userId> --days=N [--reason=]  bar an account from posting
   unblock-author <userId>                  lift a posting block
-  grant-operator <userId>                  grant the HTTP moderation surface`);
+  grant-operator <userId|username>         grant the HTTP moderation surface`);
   process.exit(1);
 }
 
@@ -127,11 +127,27 @@ try {
 
     case 'grant-operator': {
       if (!target) usage();
-      const { rowCount } = await pool.query(
-        'UPDATE users SET is_operator = true WHERE id = $1', [target]
+      // Accepts a username as well as an id. This is the one command a human
+      // runs about themselves, from an ssh session, and nobody knows their own
+      // uuid — requiring one meant looking it up by hand first, against the
+      // users table, which is a worse thing to be in the habit of opening.
+      // Which column to match is decided here rather than in SQL: a casted
+      // `id = $1::uuid` is evaluated eagerly by Postgres and raises a type
+      // error on any username, so the OR form cannot work.
+      const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+        .test(target);
+      const { rows } = await pool.query(
+        `UPDATE users SET is_operator = true
+          WHERE ${isUuid ? 'id = $1::uuid' : 'lower(username) = lower($1)'}
+          RETURNING id, username`,
+        [target]
       );
-      console.log(rowCount ? `Granted operator to ${target}.` : 'No such user.');
-      if (!rowCount) process.exitCode = 1;
+      if (!rows.length) {
+        console.log('No such user.');
+        process.exitCode = 1;
+        break;
+      }
+      for (const row of rows) console.log(`Granted operator to @${row.username} (${row.id}).`);
       break;
     }
 
