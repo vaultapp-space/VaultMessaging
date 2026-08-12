@@ -119,6 +119,14 @@ async function postRoutes(fastify) {
     // exists to close.
     if (media?.fileId) await fastify.repos.media.claim(media.fileId);
 
+    // Nudge whoever is watching the feed. Only top-level posts: a reply is not
+    // a timeline event, and ticking for one would refresh every open feed for
+    // something that will not appear in it.
+    //
+    // Not awaited, and it cannot throw — notePost only sets a flag and arms a
+    // timer. The fanout happens on that timer, off this request.
+    if (!replyToId) fastify.feedTicker.notePost();
+
     return reply.code(201).send({ post });
   });
 

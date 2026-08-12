@@ -24,6 +24,7 @@
   import { clickOutside } from '../../lib/actions/clickOutside.js';
   import { showToast } from '../../lib/stores/toast.js';
   import { pushBackHandler } from '../../lib/backHandler.js';
+  import { onWsEvent, wsSend } from '../../lib/api/ws.js';
   import PostCard from './PostCard.svelte';
   import PostComposer from './PostComposer.svelte';
   import ThreadView from './ThreadView.svelte';
@@ -38,6 +39,12 @@
   let error = null;
   let scroller;
   let popBack = null;
+  let hasNew = false;
+  let lastSelfPostAt = 0;
+  // The server's tick window is 5s (realtime/feed-ticker.js); this covers it
+  // with enough slack for the round trip.
+  const SELF_POST_QUIET_MS = 6000;
+  const unsubscribers = [];
   let filters = [];
   let filtersOpen = false;
   let newFilter = '';
@@ -62,13 +69,46 @@
     });
     filters = loadFilters();
     load();
+
+    // The server sends a bare nudge, never a post — it cannot filter per
+    // viewer at publish time, so pushing bodies would deliver a blocked user's
+    // content to the person who blocked them. Refreshing pulls the timeline,
+    // which applies blocks and mutes in SQL.
+    wsSend({ type: 'watch_feed' });
+    unsubscribers.push(
+      onWsEvent('feed_tick', () => {
+        // Your own post ticks too. The server coalesces per window and the
+        // nudge carries no author — deliberately, since naming one would tell
+        // every watcher, including people that author has blocked, that they
+        // posted. So the client suppresses ticks just after posting instead.
+        // A tick genuinely from someone else inside that window is lost, and
+        // that is the right trade: a banner that fails to appear costs a few
+        // seconds of freshness, while one pointing at a post already on screen
+        // reads as broken.
+        if (Date.now() - lastSelfPostAt < SELF_POST_QUIET_MS) return;
+        // Only a banner, never an automatic prepend. Content appearing above
+        // what someone is reading moves it under their thumb mid-sentence.
+        // They refresh when they are ready.
+        if (!$activeThreadId && !$activeProfile) hasNew = true;
+      }),
+    );
   });
 
   onDestroy(() => {
     popBack?.();
+    // A socket left in the viewer set means every future tick writes to a pane
+    // nobody is looking at.
+    wsSend({ type: 'unwatch_feed' });
+    for (const unsub of unsubscribers) unsub();
     activeThreadId.set(null);
     activeProfile.set(null);
   });
+
+  async function refreshForNew() {
+    hasNew = false;
+    scroller?.scrollTo({ top: 0, behavior: 'smooth' });
+    await load();
+  }
 
   async function load() {
     loading = true;
@@ -149,6 +189,7 @@
   // immediately, and a refetch could drop it behind the per-author page cap.
   function onPosted(event) {
     posts = [event.detail, ...posts];
+    lastSelfPostAt = Date.now();
   }
 
   function openThread(event) {
@@ -279,6 +320,19 @@
         </div>
       </div>
     </div>
+
+    <!-- Floating rather than in flow: inserting a bar above the scroller would
+         shift everything below it down by its height the moment it appears,
+         which is the same reading-position problem the banner exists to
+         avoid. -->
+    {#if hasNew}
+      <div class="relative z-20 flex justify-center" transition:fade={{ duration: 150 }}>
+        <button
+          on:click={refreshForNew}
+          class="absolute top-2 px-3.5 py-1.5 rounded-full bg-vault-accent text-vault-black text-[11px] font-semibold shadow-lg focus:outline-none"
+        >New posts ↑</button>
+      </div>
+    {/if}
 
     <div bind:this={scroller} on:scroll={onScroll} class="flex-1 overflow-y-auto">
       <PostComposer on:posted={onPosted} />

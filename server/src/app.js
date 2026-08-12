@@ -43,6 +43,7 @@ import turnRoutes from './routes/turn.routes.js';
 import { buildInfo } from './build-info.js';
 import { createBus } from './realtime/bus.js';
 import { createFanout } from './realtime/fanout.js';
+import { createFeedTicker } from './realtime/feed-ticker.js';
 
 export async function buildApp({ store, config = defaultConfig, logger, serverOptions = {} } = {}) {
   if (!store) throw new Error('buildApp requires a store');
@@ -196,6 +197,13 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
   const fanout = createFanout({ registry: store.registry, bus, logger: fastify.log });
 
   fastify.decorate('fanout', fanout);
+
+  // Coalesces "something was posted" into at most one nudge per window, for
+  // whoever is watching the public feed. See realtime/feed-ticker.js for why
+  // the nudge carries no post body.
+  const feedTicker = createFeedTicker({ fanout });
+  fastify.decorate('feedTicker', feedTicker);
+  fastify.addHook('onClose', async () => { await feedTicker.stop(); });
 
   // The same SSRF guard link previews use, exposed so the bot webhook route
   // can apply it. A webhook URL is attacker-chosen by definition — anyone can

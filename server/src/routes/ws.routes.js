@@ -8,6 +8,7 @@ import { WS_EVENTS, WS_HEARTBEAT_INTERVAL_MS, UUID_PATTERN } from '../utils/cons
 
 const UUID_RE = new RegExp(UUID_PATTERN);
 import config from '../config.js';
+import { FEED_KEY } from '../realtime/feed-ticker.js';
 
 /**
  * Flush pending messages to a WebSocket.
@@ -233,6 +234,29 @@ async function wsRoutes(fastify) {
       if (data.type === 'unwatch_channel' && data.chatId) {
         if (!UUID_RE.test(data.chatId)) return;
         fastify.store.registry.unwatchChannel(data.chatId, socket);
+        return;
+      }
+
+      // ─── Public feed ───────────────────────────────────────────
+      // The same viewer-set primitive as a channel — it keys on an arbitrary
+      // string, so the global feed is simply one more key.
+      //
+      // **There is deliberately no authorization check here**, unlike
+      // watch_channel directly above. The global feed is public to any
+      // authenticated user by definition, so there is nothing to check
+      // against; a canRead() call would be inventing a permission that does
+      // not exist. That asymmetry is intentional and should not be "fixed".
+      //
+      // What the socket receives is only a nudge that something was posted —
+      // never a post — so joining this set reveals nothing and grants nothing.
+      // See realtime/feed-ticker.js.
+      if (data.type === 'watch_feed') {
+        fastify.store.registry.watchChannel(FEED_KEY, socket);
+        return;
+      }
+
+      if (data.type === 'unwatch_feed') {
+        fastify.store.registry.unwatchChannel(FEED_KEY, socket);
         return;
       }
 
