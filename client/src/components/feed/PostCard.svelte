@@ -13,7 +13,10 @@
 
   import { tokenize } from '../../lib/posts/richtext.js';
   import { getAvatarGradient } from '../../lib/avatar.js';
-  import { publicMediaUrl } from '../../lib/api/http.js';
+  import { publicMediaUrl, reportPost, repostPost } from '../../lib/api/http.js';
+  import { showToast } from '../../lib/stores/toast.js';
+  import { showConfirm } from '../../lib/stores/confirm.js';
+  import { clickOutside } from '../../lib/actions/clickOutside.js';
   import { openLightbox } from '../../lib/stores/lightbox.js';
 
   export let post;
@@ -22,6 +25,52 @@
   export let interactive = true;
 
   const dispatch = createEventDispatcher();
+
+  let menuOpen = false;
+  let reposting = false;
+
+  // The category list *is* the content policy: nothing is removed for being
+  // disagreeable, only for being illegal. Offering "offensive" here would
+  // promise a review that will not happen. Kept in step with the enum the
+  // server enforces (posts.routes.js and a CHECK constraint).
+  const REPORT_CATEGORIES = [
+    ['csam', 'Child sexual abuse material'],
+    ['terrorism', 'Terrorism or violent extremism'],
+    ['nonconsensual_intimate', 'Non-consensual intimate imagery'],
+    ['credible_threat', 'A credible threat of violence'],
+    ['other_illegal', 'Something else illegal'],
+  ];
+
+  async function report(category, label) {
+    menuOpen = false;
+    const confirmed = await showConfirm(
+      `Report this post as: ${label}?\n\nReports are only actioned for illegal content — nothing is removed for being disagreeable.`,
+      { confirmLabel: 'Report', danger: true }
+    );
+    if (confirmed !== 'confirm') return;
+    try {
+      await reportPost(post.id, category);
+      showToast('Reported. Thank you.', { type: 'success' });
+    } catch (err) {
+      showToast(err?.message || 'Could not send that report');
+    }
+  }
+
+  async function repost() {
+    if (reposting) return;
+    menuOpen = false;
+    reposting = true;
+    try {
+      await repostPost(post.id);
+      // Counted locally rather than refetched; the server has accepted it.
+      post = { ...post, repostsCount: (post.repostsCount ?? 0) + 1 };
+      showToast('Reposted', { type: 'success' });
+    } catch (err) {
+      showToast(err?.message || 'Could not repost that');
+    } finally {
+      reposting = false;
+    }
+  }
 
   $: tokens = tokenize(post.body ?? '');
   $: initial = (post.username ?? '?').charAt(0).toUpperCase();
@@ -158,14 +207,46 @@
           {post.likesCount || ''}
         </button>
 
-        {#if post.repostsCount}
-          <span class="flex items-center gap-1.5 text-[11px]">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
+        <button
+          on:click|stopPropagation={repost}
+          disabled={reposting}
+          class="pointer-events-auto flex items-center gap-1.5 text-[11px] hover:text-vault-accent focus:outline-none disabled:opacity-50"
+          aria-label="Repost"
+        >
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+          {post.repostsCount || ''}
+        </button>
+
+        <div class="relative ml-auto pointer-events-auto" use:clickOutside={() => (menuOpen = false)}>
+          <button
+            on:click|stopPropagation={() => (menuOpen = !menuOpen)}
+            class="text-[11px] hover:text-vault-text focus:outline-none px-1"
+            aria-label="More options"
+            aria-expanded={menuOpen}
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />
             </svg>
-            {post.repostsCount}
-          </span>
-        {/if}
+          </button>
+
+          {#if menuOpen}
+            <div
+              class="absolute right-0 bottom-full mb-1 w-60 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg z-20"
+            >
+              <div class="px-3 py-1.5 text-[9px] uppercase tracking-wider text-vault-text-dim">
+                Report as illegal
+              </div>
+              {#each REPORT_CATEGORIES as [value, label] (value)}
+                <button
+                  on:click|stopPropagation={() => report(value, label)}
+                  class="w-full text-left px-3 py-1.5 text-[11px] text-vault-text hover:bg-vault-elevated focus:outline-none"
+                >{label}</button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
   </div>

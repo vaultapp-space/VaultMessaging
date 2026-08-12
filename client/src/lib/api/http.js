@@ -657,3 +657,15 @@ export async function unmuteUser(userId) {
 export async function reportPost(postId, category, note = null) {
   return request('POST', `/posts/${postId}/report`, { category, note });
 }
+
+export async function createPost({ body = null, media = null, replyToId = null, repostOfId = null } = {}) {
+  return request('POST', '/posts', { body, media, replyToId, repostOfId });
+}
+
+export async function deletePost(postId) {
+  return request('DELETE', `/posts/${postId}`);
+}
+
+export async function repostPost(postId) {
+  return request('POST', '/posts', { repostOfId: postId });
+}

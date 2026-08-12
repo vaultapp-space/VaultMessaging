@@ -2,17 +2,19 @@
   // ============================================================
   // A user's public profile
   // ============================================================
-  // Read-only in this phase: follow, mute and block controls arrive with the
-  // write path. What is here is the header the server already computes
-  // (follower counts and the viewer's relationship) and that user's top-level
-  // posts.
+  // The header the server already computes (follower counts and the viewer's
+  // relationship), that user's top-level posts, and follow/mute.
   //
   // A blocked user's profile 404s server-side, deliberately — a profile that
   // renders for someone you blocked is a hole in the block — so the error
   // state below is the honest rendering of that, not a special case.
   import { createEventDispatcher, onMount } from 'svelte';
 
-  import { fetchUserProfile, fetchUserPosts } from '../../lib/api/http.js';
+  import {
+    fetchUserProfile, fetchUserPosts, followUser, unfollowUser, muteUser, unmuteUser,
+  } from '../../lib/api/http.js';
+  import { showToast } from '../../lib/stores/toast.js';
+  import { currentUser } from '../../lib/stores/session.js';
   import { getAvatarGradient } from '../../lib/avatar.js';
   import { pushBackHandler } from '../../lib/backHandler.js';
   import PostCard from './PostCard.svelte';
@@ -51,6 +53,54 @@
   }
 
   $: initial = (username ?? '?').charAt(0).toUpperCase();
+  // No follow or mute button on your own profile — both would be refused by
+  // the server (409) and neither means anything.
+  $: isSelf = profile && $currentUser && profile.id === $currentUser.id;
+
+  let busy = false;
+
+  // Optimistic, with rollback, for the same reason likes are: a follow button
+  // that waits for a round trip before changing reads as an unresponsive tap.
+  async function toggleFollow() {
+    if (busy || !profile) return;
+    busy = true;
+    const was = profile.following;
+    profile = {
+      ...profile,
+      following: !was,
+      followersCount: profile.followersCount + (was ? -1 : 1),
+    };
+    try {
+      await (was ? unfollowUser(profile.id) : followUser(profile.id));
+    } catch (err) {
+      profile = { ...profile, following: was, followersCount: profile.followersCount + (was ? 1 : -1) };
+      showToast(err?.message || 'Could not save that');
+    } finally {
+      busy = false;
+    }
+  }
+
+  // Mute is one-way and silent: nothing is sent to the other person, and their
+  // own feed is unaffected. It is the softer sibling of a block, which also
+  // stops DMs and is symmetric.
+  async function toggleMute() {
+    if (busy || !profile) return;
+    busy = true;
+    const was = profile.muted;
+    profile = { ...profile, muted: !was };
+    try {
+      await (was ? unmuteUser(profile.id) : muteUser(profile.id));
+      showToast(was ? `Unmuted @${profile.username}` : `Muted @${profile.username}`, { type: 'success' });
+      // Their posts are filtered server-side from here on, so what is already
+      // rendered is stale.
+      if (!was) posts = [];
+    } catch (err) {
+      profile = { ...profile, muted: was };
+      showToast(err?.message || 'Could not save that');
+    } finally {
+      busy = false;
+    }
+  }
 </script>
 
 <div class="flex-1 flex flex-col bg-vault-black min-w-0">
@@ -94,11 +144,31 @@
               <span class="mx-1">·</span>
               <strong class="text-vault-text">{profile.followingCount}</strong> following
             </div>
-            {#if profile.following}
-              <div class="text-[10px] text-vault-accent mt-1">You follow them</div>
-            {/if}
           </div>
         </div>
+
+        {#if !isSelf}
+          <div class="flex gap-2 mt-4">
+            <button
+              on:click={toggleFollow}
+              disabled={busy}
+              class="flex-1 py-2 rounded-xl text-xs font-semibold transition-all focus:outline-none disabled:opacity-50
+                {profile.following
+                  ? 'bg-vault-elevated text-vault-text border border-vault-border'
+                  : 'bg-vault-accent text-vault-black'}"
+            >{profile.following ? 'Following' : 'Follow'}</button>
+
+            <button
+              on:click={toggleMute}
+              disabled={busy}
+              class="px-3 py-2 rounded-xl text-xs border transition-all focus:outline-none disabled:opacity-50
+                {profile.muted
+                  ? 'bg-vault-warning/15 text-vault-warning border-vault-warning/30'
+                  : 'bg-vault-elevated text-vault-text-dim border-vault-border hover:text-vault-text'}"
+              title="Muting hides their posts from your feed. They are not told."
+            >{profile.muted ? 'Muted' : 'Mute'}</button>
+          </div>
+        {/if}
       </div>
 
       {#if posts.length === 0}

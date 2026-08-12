@@ -7,9 +7,11 @@
   // downward — which is the opposite of the timeline and intentional.
   import { createEventDispatcher, onMount } from 'svelte';
 
-  import { fetchPost, fetchPostReplies } from '../../lib/api/http.js';
+  import { fetchPost, fetchPostReplies, likePost, unlikePost } from '../../lib/api/http.js';
+  import { showToast } from '../../lib/stores/toast.js';
   import { pushBackHandler } from '../../lib/backHandler.js';
   import PostCard from './PostCard.svelte';
+  import PostComposer from './PostComposer.svelte';
 
   export let postId;
 
@@ -28,6 +30,40 @@
     load();
     return () => popBack?.();
   });
+
+  // A reply lands under the root immediately and bumps the count shown on it,
+  // rather than refetching — the server has already accepted it, and a round
+  // trip here would make posting feel slower than it is.
+  function onReplied(event) {
+    replies = [...replies, event.detail];
+    if (root) root = { ...root, repliesCount: root.repliesCount + 1 };
+  }
+
+  async function toggleLike(event) {
+    const target = event.detail;
+    const wasLiked = target.likedByMe;
+    const patch = (p) => (p && p.id === target.id
+      ? { ...p, likedByMe: !wasLiked, likesCount: p.likesCount + (wasLiked ? -1 : 1) }
+      : p);
+    root = patch(root);
+    replies = replies.map(patch);
+
+    try {
+      const res = wasLiked ? await unlikePost(target.id) : await likePost(target.id);
+      const settle = (p) => (p && p.id === target.id
+        ? { ...p, likesCount: res.likesCount, likedByMe: res.likedByMe }
+        : p);
+      root = settle(root);
+      replies = replies.map(settle);
+    } catch (err) {
+      const rollback = (p) => (p && p.id === target.id
+        ? { ...p, likedByMe: wasLiked, likesCount: target.likesCount }
+        : p);
+      root = rollback(root);
+      replies = replies.map(rollback);
+      showToast(err?.message || 'Could not save that');
+    }
+  }
 
   async function load() {
     loading = true;
@@ -83,14 +119,20 @@
         </p>
       </div>
     {:else}
-      <PostCard post={root} interactive={false} on:profile />
+      <PostCard post={root} interactive={false} on:profile on:like={toggleLike} />
+
+      <PostComposer
+        replyToId={postId}
+        placeholder="Reply. It expires when this post does."
+        on:posted={onReplied}
+      />
 
       <div class="px-4 py-2 text-[10px] text-vault-text-dim uppercase tracking-wider border-b border-vault-border-subtle">
         {replies.length === 0 ? 'No replies' : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
       </div>
 
       {#each replies as reply (reply.id)}
-        <PostCard post={reply} interactive={false} on:profile />
+        <PostCard post={reply} interactive={false} on:profile on:like={toggleLike} />
       {/each}
     {/if}
   </div>

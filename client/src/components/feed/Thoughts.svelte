@@ -7,20 +7,22 @@
   // handlers; rendering the feed as a top-level view would unmount all of it
   // and calls would stop arriving while someone scrolls.
   //
-  // Read-only for now: composing, liking and following arrive with the write
-  // path. The timeline, threads and profiles are useful on their own and get
-  // the risky part — rendering stranger-authored content — in front of real
-  // use first.
+  // Global is a *sampled* view, not a complete one: the server caps how many
+  // posts one author may take on a page, and the capped ones are dropped
+  // rather than deferred. Following is the complete feed. That is why paging
+  // reads `hasMore` and never `posts.length === limit`.
   import { onMount, onDestroy } from 'svelte';
   import { fade } from 'svelte/transition';
 
   import {
     activeSection, activeThreadId, activeProfile,
   } from '../../lib/stores/session.js';
-  import { fetchTimeline } from '../../lib/api/http.js';
+  import { fetchTimeline, likePost, unlikePost } from '../../lib/api/http.js';
+  import { loadFilters, partitionFiltered } from '../../lib/posts/filters.js';
   import { showToast } from '../../lib/stores/toast.js';
   import { pushBackHandler } from '../../lib/backHandler.js';
   import PostCard from './PostCard.svelte';
+  import PostComposer from './PostComposer.svelte';
   import ThreadView from './ThreadView.svelte';
   import ProfilePane from './ProfilePane.svelte';
 
@@ -33,11 +35,18 @@
   let error = null;
   let scroller;
   let popBack = null;
+  let filters = [];
+
+  // Applied in the browser, never sent to the server — see lib/posts/filters.js.
+  // The count is surfaced rather than the posts silently vanishing: a feed that
+  // quietly gets shorter reads as content failing to load.
+  $: ({ visible, hiddenCount } = partitionFiltered(posts, filters));
 
   // Android back leaves the feed rather than the app, matching how a chat
   // behaves. Registered while this pane is mounted and popped on destroy.
   onMount(() => {
     popBack = pushBackHandler(() => activeSection.set('chats'));
+    filters = loadFilters();
     load();
   });
 
@@ -99,6 +108,35 @@
     await load();
   }
 
+  // Optimistic, with rollback. A like that waits for a round trip before the
+  // heart fills feels broken on a slow connection, and the server is the
+  // authority on the resulting count either way.
+  async function toggleLike(event) {
+    const post = event.detail;
+    const wasLiked = post.likedByMe;
+    posts = posts.map((p) => (p.id === post.id
+      ? { ...p, likedByMe: !wasLiked, likesCount: p.likesCount + (wasLiked ? -1 : 1) }
+      : p));
+
+    try {
+      const res = wasLiked ? await unlikePost(post.id) : await likePost(post.id);
+      posts = posts.map((p) => (p.id === post.id
+        ? { ...p, likesCount: res.likesCount, likedByMe: res.likedByMe }
+        : p));
+    } catch (err) {
+      posts = posts.map((p) => (p.id === post.id
+        ? { ...p, likedByMe: wasLiked, likesCount: post.likesCount }
+        : p));
+      showToast(err?.message || 'Could not save that');
+    }
+  }
+
+  // Prepended rather than refetched: the author should see their own post
+  // immediately, and a refetch could drop it behind the per-author page cap.
+  function onPosted(event) {
+    posts = [event.detail, ...posts];
+  }
+
   function openThread(event) {
     activeThreadId.set(event.detail.id);
   }
@@ -143,6 +181,8 @@
     </div>
 
     <div bind:this={scroller} on:scroll={onScroll} class="flex-1 overflow-y-auto">
+      <PostComposer on:posted={onPosted} />
+
       {#if loading}
         <div class="px-4 py-3 space-y-4" aria-busy="true" aria-label="Loading posts">
           {#each Array(5) as _, i (i)}
@@ -186,9 +226,15 @@
           {/if}
         </div>
       {:else}
-        {#each posts as post (post.id)}
-          <PostCard {post} on:open={openThread} on:profile={openProfile} />
+        {#each visible as post (post.id)}
+          <PostCard {post} on:open={openThread} on:profile={openProfile} on:like={toggleLike} />
         {/each}
+
+        {#if hiddenCount > 0}
+          <div class="py-3 text-center text-[10px] text-vault-text-dim">
+            {hiddenCount} {hiddenCount === 1 ? 'post' : 'posts'} hidden by your filters
+          </div>
+        {/if}
 
         {#if loadingMore}
           <div class="py-4 text-center text-[10px] text-vault-text-dim">Loading…</div>
