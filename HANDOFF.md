@@ -648,6 +648,17 @@ foreign key reference a partial index. Anything else keying off
 - `RATE_LIMIT_DISABLED=1` exists for E2E (7 registrations from one IP would
   trip the 5/min register limit). It is **ignored when
   `NODE_ENV=production`** — verified. Keep that guard.
+- **The API server is never reused between E2E runs**
+  (`reuseExistingServer: false` in `playwright.config.js`, unlike the client
+  entry beside it). `reuseExistingServer` adopts whatever holds the port and
+  cannot tell an e2e server from a forgotten `npm run dev`. A full suite once
+  ran against a leftover dev server: no `RATE_LIMIT_DISABLED`, so 30 tests
+  failed on registration limits unrelated to what they test — and all of them
+  were reading and writing the **development** database instead of the
+  throwaway one. Both halves are silent, and the run looks like a real result,
+  so the failures get investigated as product bugs. If a run ever fails
+  broadly on "Too many requests", check what is listening on 3001 before
+  reading the failures.
 - Migration tests stage deliberately: baseline → seed old-shape data → migrate.
   When adding migration 0005, note `backfill.test.js` counts migrations at or
   above 0003 rather than hardcoding a revert count.

@@ -36,7 +36,21 @@ export default defineConfig({
       command: 'npm run e2e:server',
       cwd: 'server',
       url: 'http://127.0.0.1:3001/health',
-      reuseExistingServer: !process.env.CI,
+      // Never reused, even locally — unlike the client below.
+      //
+      // `reuseExistingServer` adopts whatever is already listening on the
+      // port, and it cannot tell an e2e server from a forgotten `npm run dev`.
+      // A whole suite once ran against a dev server left over on 3001: no
+      // RATE_LIMIT_DISABLED, so 30 tests failed on registration limits that
+      // have nothing to do with what they test, and every one of them was
+      // reading and writing the **development** database rather than the
+      // throwaway one. Both failure modes are silent — the run looks like a
+      // real result.
+      //
+      // Starting it always costs the few seconds `e2e:server` spends dropping
+      // and recreating the database, which is the isolation being paid for
+      // anyway, and it makes a local run behave like CI.
+      reuseExistingServer: false,
       timeout: 90_000,
       stdout: 'pipe',
       stderr: 'pipe',

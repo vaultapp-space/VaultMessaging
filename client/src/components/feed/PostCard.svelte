@@ -182,7 +182,10 @@
 
       {#if tokens.length}
         <p class="text-sm text-vault-text mt-1 whitespace-pre-wrap break-words">
-          {#each tokens as token}
+          <!-- Keyed by index: tokens are a positional decomposition of one
+               string, with no identity of their own, and the whole array is
+               replaced whenever the body changes. -->
+          {#each tokens as token, i (i)}
             {#if token.t === 'link'}
               <!-- href is bound, never interpolated into a string, and the
                    tokenizer has already rejected any non-http(s) scheme. -->
