@@ -12,6 +12,7 @@
 
   import {
     fetchUserProfile, fetchUserPosts, followUser, unfollowUser, muteUser, unmuteUser,
+    likePost, unlikePost,
   } from '../../lib/api/http.js';
   import { showToast } from '../../lib/stores/toast.js';
   import { currentUser } from '../../lib/stores/session.js';
@@ -58,6 +59,39 @@
   $: isSelf = profile && $currentUser && profile.id === $currentUser.id;
 
   let busy = false;
+
+  // Handled here rather than forwarded: this component owns `posts`, and an
+  // event bubbled to Thoughts would have nothing to update — its own timeline
+  // array does not contain these rows.
+  async function toggleLike(event) {
+    const target = event.detail;
+    const wasLiked = target.likedByMe;
+    posts = posts.map((p) => (p.id === target.id
+      ? { ...p, likedByMe: !wasLiked, likesCount: p.likesCount + (wasLiked ? -1 : 1) }
+      : p));
+    try {
+      const res = wasLiked ? await unlikePost(target.id) : await likePost(target.id);
+      posts = posts.map((p) => (p.id === target.id
+        ? { ...p, likesCount: res.likesCount, likedByMe: res.likedByMe }
+        : p));
+    } catch (err) {
+      posts = posts.map((p) => (p.id === target.id
+        ? { ...p, likedByMe: wasLiked, likesCount: target.likesCount }
+        : p));
+      showToast(err?.message || 'Could not save that');
+    }
+  }
+
+  function onDeleted(event) {
+    posts = posts.filter((p) => p.id !== event.detail.id);
+  }
+
+  function onReposted(event) {
+    const { original } = event.detail;
+    posts = posts.map((p) => (p.id === original.id
+      ? { ...p, repostsCount: (p.repostsCount ?? 0) + 1 }
+      : p));
+  }
 
   // Optimistic, with rollback, for the same reason likes are: a follow button
   // that waits for a round trip before changing reads as an unresponsive tap.
@@ -180,7 +214,7 @@
         </div>
       {:else}
         {#each posts as post (post.id)}
-          <PostCard {post} on:open on:profile />
+          <PostCard {post} on:open on:profile on:like={toggleLike} on:reposted={onReposted} on:deleted={onDeleted} />
         {/each}
       {/if}
     {/if}

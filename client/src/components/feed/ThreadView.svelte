@@ -34,6 +34,17 @@
   // A reply lands under the root immediately and bumps the count shown on it,
   // rather than refetching — the server has already accepted it, and a round
   // trip here would make posting feel slower than it is.
+  function onDeleted(event) {
+    // Deleting the root leaves nothing to render, so the thread closes and the
+    // timeline handles removing it. A deleted reply just leaves the list.
+    if (event.detail.id === postId) {
+      dispatch('close');
+      return;
+    }
+    replies = replies.filter((r) => r.id !== event.detail.id);
+    if (root) root = { ...root, repliesCount: Math.max(0, root.repliesCount - 1) };
+  }
+
   function onReplied(event) {
     replies = [...replies, event.detail];
     if (root) root = { ...root, repliesCount: root.repliesCount + 1 };
@@ -119,7 +130,7 @@
         </p>
       </div>
     {:else}
-      <PostCard post={root} interactive={false} on:profile on:like={toggleLike} />
+      <PostCard post={root} interactive={false} on:profile on:like={toggleLike} on:reposted on:deleted={onDeleted} />
 
       <PostComposer
         replyToId={postId}
@@ -132,7 +143,7 @@
       </div>
 
       {#each replies as reply (reply.id)}
-        <PostCard post={reply} interactive={false} on:profile on:like={toggleLike} />
+        <PostCard post={reply} interactive={false} on:profile on:like={toggleLike} on:reposted on:deleted={onDeleted} />
       {/each}
     {/if}
   </div>

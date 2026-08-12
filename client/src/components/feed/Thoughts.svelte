@@ -18,7 +18,10 @@
     activeSection, activeThreadId, activeProfile,
   } from '../../lib/stores/session.js';
   import { fetchTimeline, likePost, unlikePost } from '../../lib/api/http.js';
-  import { loadFilters, partitionFiltered } from '../../lib/posts/filters.js';
+  import {
+    loadFilters, partitionFiltered, addFilter, removeFilter,
+  } from '../../lib/posts/filters.js';
+  import { clickOutside } from '../../lib/actions/clickOutside.js';
   import { showToast } from '../../lib/stores/toast.js';
   import { pushBackHandler } from '../../lib/backHandler.js';
   import PostCard from './PostCard.svelte';
@@ -36,6 +39,8 @@
   let scroller;
   let popBack = null;
   let filters = [];
+  let filtersOpen = false;
+  let newFilter = '';
 
   // Applied in the browser, never sent to the server — see lib/posts/filters.js.
   // The count is surfaced rather than the posts silently vanishing: a feed that
@@ -142,7 +147,35 @@
   }
 
   function openProfile(event) {
+    // Clearing the thread matters: the branch below renders ThreadView
+    // whenever activeThreadId is set, so opening a profile from inside a
+    // thread previously set activeProfile and then rendered nothing new —
+    // tapping a username in a thread looked like a dead control.
+    activeThreadId.set(null);
     activeProfile.set(event.detail);
+  }
+
+  function submitFilter() {
+    const word = newFilter.trim();
+    if (!word) return;
+    filters = addFilter(word);
+    newFilter = '';
+  }
+
+  function dropFilter(word) {
+    filters = removeFilter(word);
+  }
+
+  function onDeleted(event) {
+    posts = posts.filter((p) => p.id !== event.detail.id);
+  }
+
+  // A repost from the timeline bumps the original's counter in place.
+  function onReposted(event) {
+    const { original } = event.detail;
+    posts = posts.map((p) => (p.id === original.id
+      ? { ...p, repostsCount: (p.repostsCount ?? 0) + 1 }
+      : p));
   }
 </script>
 
@@ -151,6 +184,8 @@
     postId={$activeThreadId}
     on:close={() => activeThreadId.set(null)}
     on:profile={openProfile}
+    on:reposted={onReposted}
+    on:deleted={onDeleted}
   />
 {:else if $activeProfile}
   <ProfilePane
@@ -166,7 +201,7 @@
         Public — anyone can read this. Deleted within 24 hours, like everything else.
       </p>
 
-      <div class="flex gap-1 mt-2.5">
+      <div class="flex items-center gap-1 mt-2.5">
         {#each [['global', 'Global'], ['following', 'Following']] as [value, label] (value)}
           <button
             on:click={() => switchTab(value)}
@@ -177,6 +212,62 @@
             aria-current={tab === value}
           >{label}</button>
         {/each}
+
+        <!-- Keyword filters had no entry point at all until now: the list was
+             loaded and applied, but nothing let anyone add a word to it, so
+             the feature was unreachable. -->
+        <div class="relative ml-auto" use:clickOutside={() => (filtersOpen = false)}>
+          <button
+            on:click={() => (filtersOpen = !filtersOpen)}
+            class="px-2 py-1 rounded-lg text-xs transition-colors focus:outline-none
+              {filters.length
+                ? 'text-vault-accent'
+                : 'text-vault-text-dim hover:text-vault-text'}"
+            aria-expanded={filtersOpen}
+            title="Hide posts containing certain words"
+          >
+            <svg class="w-3.5 h-3.5 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            {filters.length || ''}
+          </button>
+
+          {#if filtersOpen}
+            <div class="absolute right-0 top-full mt-1 w-64 p-3 rounded-xl bg-vault-surface border border-vault-border shadow-lg z-20">
+              <p class="text-[10px] text-vault-text-dim leading-relaxed">
+                Hide posts containing a word. Kept on this device only — the
+                server is never told what you filter.
+              </p>
+
+              <form on:submit|preventDefault={submitFilter} class="flex gap-1.5 mt-2">
+                <input
+                  bind:value={newFilter}
+                  placeholder="word or phrase"
+                  maxlength="40"
+                  class="flex-1 px-2 py-1 rounded-lg bg-vault-black border border-vault-border text-xs text-vault-text placeholder:text-vault-text-dim outline-none focus:border-vault-accent"
+                />
+                <button
+                  type="submit"
+                  class="px-2.5 py-1 rounded-lg bg-vault-elevated text-xs text-vault-text focus:outline-none"
+                >Add</button>
+              </form>
+
+              {#if filters.length}
+                <div class="flex flex-wrap gap-1 mt-2">
+                  {#each filters as word (word)}
+                    <button
+                      on:click={() => dropFilter(word)}
+                      class="px-2 py-0.5 rounded-full bg-vault-elevated text-[10px] text-vault-text-dim hover:text-vault-danger focus:outline-none"
+                      title="Remove this filter"
+                    >{word} ×</button>
+                  {/each}
+                </div>
+              {:else}
+                <p class="text-[10px] text-vault-text-dim mt-2">No filters yet.</p>
+              {/if}
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
 
@@ -227,7 +318,14 @@
         </div>
       {:else}
         {#each visible as post (post.id)}
-          <PostCard {post} on:open={openThread} on:profile={openProfile} on:like={toggleLike} />
+          <PostCard
+            {post}
+            on:open={openThread}
+            on:profile={openProfile}
+            on:like={toggleLike}
+            on:reposted={onReposted}
+            on:deleted={onDeleted}
+          />
         {/each}
 
         {#if hiddenCount > 0}

@@ -13,7 +13,8 @@
 
   import { tokenize } from '../../lib/posts/richtext.js';
   import { getAvatarGradient } from '../../lib/avatar.js';
-  import { publicMediaUrl, reportPost, repostPost } from '../../lib/api/http.js';
+  import { publicMediaUrl, reportPost, repostPost, deletePost } from '../../lib/api/http.js';
+  import { currentUser } from '../../lib/stores/session.js';
   import { showToast } from '../../lib/stores/toast.js';
   import { showConfirm } from '../../lib/stores/confirm.js';
   import { clickOutside } from '../../lib/actions/clickOutside.js';
@@ -28,6 +29,36 @@
 
   let menuOpen = false;
   let reposting = false;
+  // Which way the menu opens. It lives inside an overflow-y-auto scroller, so
+  // a menu that always opened upward was clipped for the first card in the
+  // feed — the report options simply could not be reached. Same approach
+  // MessageBubble takes for its reaction picker: measure at open time.
+  let menuAbove = false;
+
+  $: isMine = $currentUser && post.authorId === $currentUser.id;
+
+  function toggleMenu(event) {
+    if (!menuOpen) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      menuAbove = window.innerHeight - rect.bottom < 260;
+    }
+    menuOpen = !menuOpen;
+  }
+
+  async function remove() {
+    menuOpen = false;
+    if (!(await showConfirm(
+      'Delete this post? It disappears for everyone immediately.',
+      { confirmLabel: 'Delete', danger: true }
+    ))) return;
+    try {
+      await deletePost(post.id);
+      dispatch('deleted', post);
+      showToast('Deleted', { type: 'success' });
+    } catch (err) {
+      showToast(err?.message || 'Could not delete that');
+    }
+  }
 
   // The category list *is* the content policy: nothing is removed for being
   // disagreeable, only for being illegal. Offering "offensive" here would
@@ -43,11 +74,14 @@
 
   async function report(category, label) {
     menuOpen = false;
-    const confirmed = await showConfirm(
+    // showConfirm resolves a *boolean* in two-button mode and only resolves
+    // 'confirm'|'neutral'|'cancel' when a neutralLabel is passed (see
+    // stores/confirm.js). Comparing against the string here meant the guard
+    // was always true and no report was ever sent.
+    if (!(await showConfirm(
       `Report this post as: ${label}?\n\nReports are only actioned for illegal content — nothing is removed for being disagreeable.`,
       { confirmLabel: 'Report', danger: true }
-    );
-    if (confirmed !== 'confirm') return;
+    ))) return;
     try {
       await reportPost(post.id, category);
       showToast('Reported. Thank you.', { type: 'success' });
@@ -61,9 +95,11 @@
     menuOpen = false;
     reposting = true;
     try {
-      await repostPost(post.id);
-      // Counted locally rather than refetched; the server has accepted it.
-      post = { ...post, repostsCount: (post.repostsCount ?? 0) + 1 };
+      const { post: created } = await repostPost(post.id);
+      // Dispatched rather than mutating `post` in place: the prop is owned by
+      // whichever list rendered this card, so a local write is reverted the
+      // next time that list re-renders and the count silently snaps back.
+      dispatch('reposted', { original: post, repost: created });
       showToast('Reposted', { type: 'success' });
     } catch (err) {
       showToast(err?.message || 'Could not repost that');
@@ -221,7 +257,7 @@
 
         <div class="relative ml-auto pointer-events-auto" use:clickOutside={() => (menuOpen = false)}>
           <button
-            on:click|stopPropagation={() => (menuOpen = !menuOpen)}
+            on:click|stopPropagation={toggleMenu}
             class="text-[11px] hover:text-vault-text focus:outline-none px-1"
             aria-label="More options"
             aria-expanded={menuOpen}
@@ -233,8 +269,17 @@
 
           {#if menuOpen}
             <div
-              class="absolute right-0 bottom-full mb-1 w-60 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg z-20"
+              class="absolute right-0 w-60 py-1 rounded-xl bg-vault-surface border border-vault-border shadow-lg z-20
+                {menuAbove ? 'bottom-full mb-1' : 'top-full mt-1'}"
             >
+              {#if isMine}
+                <button
+                  on:click|stopPropagation={remove}
+                  class="w-full text-left px-3 py-1.5 text-[11px] text-vault-danger hover:bg-vault-elevated focus:outline-none"
+                >Delete this post</button>
+                <div class="my-1 border-t border-vault-border-subtle"></div>
+              {/if}
+
               <div class="px-3 py-1.5 text-[9px] uppercase tracking-wider text-vault-text-dim">
                 Report as illegal
               </div>
