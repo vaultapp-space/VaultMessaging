@@ -261,7 +261,10 @@ export function createMessages({ pool }) {
   // `topicId` narrows a forum group to one topic. Undefined means "the whole
   // chat"; passing it explicitly is what makes a forum's topics separate
   // conversations rather than one interleaved stream.
-  async getChatMessages(chatId, { limit = 50, before = null, topicId = null } = {}) {
+  async getChatMessages(
+    chatId,
+    { limit = 50, before = null, topicId = null, clearedAt = null } = {}
+  ) {
     const params = [chatId, limit];
     let cursor = '';
     if (before) {
@@ -271,6 +274,14 @@ export function createMessages({ pool }) {
     if (topicId !== null && topicId !== undefined) {
       params.push(topicId);
       cursor += ` AND m.topic_id = $${params.length}`;
+    }
+    // The caller's own clear point (chat_settings.cleared_at). Applied here
+    // rather than after the fact so it cannot be forgotten by one of the
+    // history callers, and so a cleared page is not returned short — the
+    // LIMIT is applied to rows this viewer may actually see.
+    if (clearedAt) {
+      params.push(clearedAt);
+      cursor += ` AND m.sent_at > $${params.length}`;
     }
 
     const res = await this.pool.query(

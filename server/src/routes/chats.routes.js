@@ -131,6 +131,49 @@ async function chatRoutes(fastify) {
       unreadCount: Number(state.unread_count),
     });
   });
+
+  // ─── DELETE a chat, for yourself ──────────────────────────
+  // Removes the conversation from your list and its history from your view.
+  // **It does not touch the other participant's copy**, and there is
+  // deliberately no flag to make it do so: see migration 0021. The name is
+  // "delete" because that is what it does to everything the caller can see,
+  // and the client copy says plainly that it is one-sided.
+  //
+  // Not a DELETE of the chat row or of chat_members — dropping membership
+  // would stop the other person delivering into the conversation, turning
+  // this into a block they were never told about.
+  fastify.delete('/api/chats/:chatId', {
+    preValidation: [fastify.authenticate],
+    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+    schema: {
+      params: {
+        type: 'object',
+        required: ['chatId'],
+        properties: { chatId: { type: 'string', pattern: UUID_PATTERN } },
+      },
+    },
+  }, async (request, reply) => {
+    const { chatId } = request.params;
+
+    // 404 rather than 403, matching every other route here: whether a chat
+    // exists is not something to confirm to someone who is not in it.
+    if (!(await fastify.repos.chats.isMember(chatId, request.user.id))) {
+      return reply.code(404).send({ error: 'Chat not found' });
+    }
+
+    await fastify.repos.chats.clearFor(chatId, request.user.id);
+
+    // The caller's *other* devices, and nobody else's. Sending this to every
+    // member would tell the other participant that you deleted the
+    // conversation, which they have no business knowing and which the
+    // one-sided semantics promise they will not learn.
+    await fastify.fanout.deliverToUser(request.user.id, {
+      type: 'chat_deleted',
+      chatId,
+    });
+
+    return reply.code(204).send();
+  });
 }
 
 export default chatRoutes;

@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { fade, scale } from 'svelte/transition';
   import { flip } from 'svelte/animate';
-  import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, activeSection, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, activeSection, activeProfile, activeThreadId, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { conversations, conversationsLoaded, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { openPrivateChat, fetchFolders, createFolder, setFolderChats, deleteFolder,
     fetchChannels, createChannel, searchChannels, subscribeChannel } from '../lib/api/http.js';
@@ -12,8 +12,10 @@
     runSearch, hydrateDrafts, refreshPresence, presence, describePresence,
   } from '../lib/chat/chatSettings.js';
   import { clickOutside } from '../lib/actions/clickOutside.js';
-  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, API_BASE, PUBLIC_ORIGIN } from '../lib/api/http.js';
-  import { wsConnected } from '../lib/api/ws.js';
+  import { longpress } from '../lib/actions/longpress.js';
+  import { hapticLight } from '../lib/haptics.js';
+  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, deleteChat, API_BASE, PUBLIC_ORIGIN } from '../lib/api/http.js';
+  import { wsConnected, onWsEvent } from '../lib/api/ws.js';
   import { getAvatarGradient } from '../lib/avatar.js';
   import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault } from '../lib/crypto/keys.js';
   import { isPrfSupported, authenticateBiometric } from '../lib/crypto/webauthn.js';
@@ -63,7 +65,19 @@
     isNarrowViewport = mq.matches;
     const handler = (e) => { isNarrowViewport = e.matches; };
     mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
+
+    // Deleting a chat on one device removes it here too. The server sends
+    // this only to the person who deleted — the other participant is never
+    // told, which is what makes the one-sided semantics honest.
+    const offDeleted = onWsEvent('chat_deleted', (data) => {
+      conversations.update((list) => list.filter((c) => c.chatId !== data.chatId));
+      if (get(activePeer)?.chatId === data.chatId) activePeer.set(null);
+    });
+
+    return () => {
+      mq.removeEventListener('change', handler);
+      offDeleted();
+    };
   });
 
   // Must match App.svelte's own applyTheme(localStorage.getItem('vault_theme')
@@ -398,6 +412,61 @@
     openMenuFor = null;
     try { await setPinnedToTop(conv, !conv.pinnedOrder); }
     catch (err) { console.error('Failed to pin chat:', err); }
+  }
+
+  async function doDelete(conv) {
+    openMenuFor = null;
+    // A chat without a chatId has never been opened server-side, so there is
+    // nothing to delete — it is a local placeholder for someone you searched
+    // for and have not written to.
+    if (!conv.chatId) return;
+
+    // Spelled out because the word "delete" invites the wrong assumption in
+    // both directions: people expect it to reach the other person, and are
+    // surprised when a resumed conversation reappears. Saying so here is
+    // cheaper than a support conversation later.
+    const ok = await showConfirm(
+      `Delete your copy of this chat with ${conv.peerUsername}?\n\n`
+      + 'It disappears from your list along with the messages you can see. '
+      + `${conv.peerUsername} keeps their copy, and is not told. `
+      + 'If they write again, the chat comes back with only the new messages.',
+      { confirmLabel: 'Delete', danger: true }
+    );
+    if (!ok) return;
+
+    try {
+      await deleteChat(conv.chatId);
+      // Close it if it is the chat currently on screen, or the pane would go
+      // on showing a conversation that is no longer in the list.
+      if ($activePeer?.peerId === conv.peerId || $activePeer?.id === conv.peerId) {
+        activePeer.set(null);
+      }
+      conversations.update((list) => list.filter((c) => c.peerId !== conv.peerId));
+      showToast('Chat deleted', { type: 'success' });
+    } catch (err) {
+      showToast(err?.message || 'Could not delete that chat');
+    }
+  }
+
+  // Opens a user's public profile in the Thoughts pane. Order matters: the
+  // profile has to be set before the section switches, or Thoughts mounts,
+  // renders its timeline, and only then swaps to the profile — a visible
+  // flash of the wrong pane.
+  function openProfileFor(username) {
+    activeProfile.set(username);
+    activeThreadId.set(null);
+    activeSection.set('thoughts');
+    // Same reason the tab bar does this: below md the sidebar is a full-width
+    // overlay, so leaving it open would hide the profile behind it.
+    if (isNarrowViewport) sidebarOpen.set(false);
+  }
+
+  // Long-press opens the same menu the hover ⋯ does. Without this the menu is
+  // unreachable on a phone: it is revealed by group-hover, and a touch screen
+  // has no hover — so pin, mute and archive have been desktop-only.
+  function onRowLongPress(conv) {
+    hapticLight();
+    openMenuFor = conv.peerId;
   }
 
   // Presence for the people actually on screen — polling every contact would
@@ -1099,6 +1168,22 @@
                 <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
               </svg>
             </button>
+            <!-- The only way to reach someone's profile, and therefore the
+                 only way to follow them, used to be tapping their name on a
+                 post they had already made. So nobody could be followed until
+                 they posted, and the Following tab could never be filled —
+                 discovery ran backwards. Search is where you look a person up
+                 by name, so it is where this belongs. -->
+            <button
+              on:click={() => openProfileFor(user.username)}
+              class="flex-shrink-0 p-2.5 rounded-xl text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated transition-all focus:outline-none"
+              title="View {user.username}'s public profile — follow them, see their Thoughts"
+              aria-label="View {user.username}'s profile"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
           </div>
         {/each}
         {/if}
@@ -1319,6 +1404,8 @@
           <div
             class="relative group/row"
             animate:flip={{ duration: (d) => Math.min(400, 120 + Math.sqrt(d) * 12) }}
+            use:longpress
+            on:longpress={() => onRowLongPress(conv)}
           >
           <button
             on:click={() => selectPeer({ id: conv.peerId, username: conv.peerUsername, isGroup: conv.isGroup, members: conv.members, createdBy: conv.createdBy, chatId: conv.chatId, mode: conv.mode, isEmpty: conv.isEmpty, lastMessageAt: conv.lastMessageAt, isForum: conv.isForum })}
@@ -1444,6 +1531,15 @@
               >
                 {conv.archived ? 'Unarchive' : 'Archive'}
               </button>
+              {#if conv.chatId}
+                <div class="my-1 border-t border-vault-border-subtle"></div>
+                <button
+                  on:click={() => doDelete(conv)}
+                  class="w-full text-left px-3 py-1.5 text-xs text-vault-danger hover:bg-vault-elevated transition-colors focus:outline-none"
+                >
+                  Delete chat
+                </button>
+              {/if}
             </div>
           {/if}
           </div>

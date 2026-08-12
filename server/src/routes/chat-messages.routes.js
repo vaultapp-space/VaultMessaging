@@ -338,8 +338,13 @@ async function chatMessageRoutes(fastify) {
 
     // topicId narrows a forum group to one topic. Omitted, it returns the
     // whole chat, which is what every non-forum caller wants.
+    // A chat this viewer deleted still exists and can still receive messages;
+    // what they deleted is everything up to that moment. Fetched per request
+    // rather than cached because it changes the instant they delete again.
+    const clearedAt = await fastify.repos.chats.clearedAtFor(chatId, request.user.id);
+
     const messages = await fastify.repos.messages.getChatMessages(chatId, {
-      limit, before, topicId,
+      limit, before, topicId, clearedAt,
     });
 
     // Poll results are per-viewer (which option is *mine*) and live, so they

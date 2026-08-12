@@ -6,7 +6,7 @@
   import { stripJpegExif, stripPngMetadata, readImageDimensions } from '../lib/chat/metadata.js';
   import { isSpeakerToggleSupported, setSpeakerphone, setCallAudioMode } from '../lib/audioRoute.js';
   import { sendMessage as sendToChat } from '../lib/chat/send.js';
-  import { markChatRead, createPoll, updateChatSettings, markStickerUsed, PUBLIC_ORIGIN } from '../lib/api/http.js';
+  import { markChatRead, createPoll, updateChatSettings, markStickerUsed, deleteChat, PUBLIC_ORIGIN } from '../lib/api/http.js';
   import StickerPicker from './StickerPicker.svelte';
   import VoiceWaveform from './VoiceWaveform.svelte';
   import VoiceChatBar from './VoiceChatBar.svelte';
@@ -702,6 +702,37 @@
     } catch (err) {
       console.error('Failed to change block state:', err);
       showToast(err?.message ? `Could not update block settings: ${err.message}` : 'Could not update block settings');
+    }
+  }
+
+  async function handleDeleteChat() {
+    showChatMenu = false;
+    if (!$activePeer?.chatId) return;
+
+    const who = $activePeer.isGroup ? 'this group' : $activePeer.username;
+    // The wording is the feature. "Delete" reads as destroying the
+    // conversation for everyone in it, and the server deliberately cannot do
+    // that, so the copy has to close the gap rather than leaving the user to
+    // discover it when the chat reappears.
+    const ok = await showConfirm(
+      `Delete your copy of this chat with ${who}?\n\n`
+      + 'It disappears from your list along with the messages you can see. '
+      + `${$activePeer.isGroup ? 'The others keep theirs' : `${who} keeps their copy`}, and is not told. `
+      + 'If they write again, the chat comes back with only the new messages.',
+      { confirmLabel: 'Delete', danger: true }
+    );
+    if (!ok) return;
+
+    try {
+      await deleteChat($activePeer.chatId);
+      const peerId = $activePeer.id;
+      // Leave the conversation before dropping it from the list, or the pane
+      // is left rendering a chat that no longer exists anywhere.
+      activePeer.set(null);
+      conversations.update((list) => list.filter((c) => c.peerId !== peerId));
+      showToast('Chat deleted', { type: 'success' });
+    } catch (err) {
+      showToast(err?.message || 'Could not delete that chat');
     }
   }
 
@@ -1816,6 +1847,16 @@
                 class="w-full text-left px-3 py-2 text-xs {peerBlocked ? 'text-vault-text' : 'text-vault-danger'} hover:bg-vault-elevated transition-colors focus:outline-none"
               >
                 {peerBlocked ? `Unblock ${$activePeer.username}` : `Block ${$activePeer.username}`}
+              </button>
+            {/if}
+
+            {#if $activePeer.chatId}
+              <div class="border-t border-vault-border my-1"></div>
+              <button
+                on:click={handleDeleteChat}
+                class="w-full text-left px-3 py-2 text-xs text-vault-danger hover:bg-vault-elevated transition-colors focus:outline-none"
+              >
+                Delete chat
               </button>
             {/if}
           </div>

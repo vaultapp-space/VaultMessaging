@@ -457,6 +457,19 @@ export async function markChatRead(chatId, maxSeq) {
   return request('POST', `/chats/${chatId}/read`, { maxSeq });
 }
 
+/**
+ * Deletes a chat **for the caller only** — it disappears from their list and
+ * their history, and the other participant keeps everything. The server has no
+ * option to delete for both, deliberately (see migration 0021), so the UI must
+ * not offer one or promise it.
+ *
+ * The conversation returns if the other person writes again, carrying only
+ * what arrived after the delete.
+ */
+export async function deleteChat(chatId) {
+  return request('DELETE', `/chats/${chatId}`);
+}
+
 // ─── Reactions (cloud mode) ─────────────────────────────────
 // Secret chats never call these: their reactions travel as encrypted t:'op'
 // envelopes through the ordinary message path.

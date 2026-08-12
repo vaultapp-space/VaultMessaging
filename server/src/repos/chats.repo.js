@@ -194,6 +194,19 @@ export function createChats({ pool }) {
            ) last_msg ON true
           WHERE me.user_id = $1
             AND ($2::boolean OR COALESCE(s.archived, false) = false)
+            -- A chat this user cleared stays hidden only until something
+            -- newer than the clear arrives. Permanent hiding would turn
+            -- "delete this chat" into a silent one-way block: the other
+            -- person keeps messaging into a conversation that never comes
+            -- back, and is never told. See migration 0021.
+            -- Note the shape: a chat with no messages at all
+            -- (last_message_at IS NULL) is hidden once cleared, rather than
+            -- surviving because there is nothing to compare against. Clearing
+            -- an empty conversation is exactly the case where the user most
+            -- expects it to go away.
+            AND (s.cleared_at IS NULL
+                 OR (c.last_message_at IS NOT NULL
+                     AND c.last_message_at > s.cleared_at))
           ORDER BY s.pinned_order NULLS LAST, c.last_message_at DESC NULLS LAST`,
         [userId, includeArchived]
       );
@@ -221,6 +234,55 @@ export function createChats({ pool }) {
         // this as "messages expired", not as a brand-new chat.
         isEmpty: row.last_seq_present === null,
       }));
+    },
+
+    /**
+     * Clears a chat for one user: hides it from their list and hides every
+     * message already in it from their history. The other participant is
+     * untouched — see migration 0021 for why that is the only semantics
+     * offered.
+     *
+     * The read state is reset alongside, because an unread count that
+     * outlived the messages it counted would put a badge on a conversation
+     * with nothing in it the moment the chat reappeared.
+     */
+    async clearFor(chatId, userId) {
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(
+          `INSERT INTO chat_settings (chat_id, user_id, cleared_at)
+           VALUES ($1, $2, now())
+           ON CONFLICT (chat_id, user_id) DO UPDATE SET cleared_at = now()
+           RETURNING cleared_at`,
+          [chatId, userId]
+        );
+        await client.query(
+          `UPDATE chat_read_state
+              SET unread_count = 0,
+                  read_inbox_max_seq = GREATEST(read_inbox_max_seq, (
+                    SELECT COALESCE(last_seq, 0) FROM chats WHERE id = $1
+                  ))
+            WHERE chat_id = $1 AND user_id = $2`,
+          [chatId, userId]
+        );
+        await client.query('COMMIT');
+        return rows[0].cleared_at;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    /** The viewer's clear point, or null. Used to filter their history. */
+    async clearedAtFor(chatId, userId) {
+      const { rows } = await this.pool.query(
+        `SELECT cleared_at FROM chat_settings WHERE chat_id = $1 AND user_id = $2`,
+        [chatId, userId]
+      );
+      return rows[0]?.cleared_at ?? null;
     },
 
     // Allocates the next per-chat sequence number. Must run inside the send
