@@ -14,18 +14,32 @@
   // the sidebar's <aside>, so it isn't affected by the sidebar being
   // hidden on mobile — `showBackupModal` just needed lifting up so this
   // bar can set it too.
-  import { activePeer, activeChannelId, sidebarOpen } from '../lib/stores/session.js';
+  import { activePeer, activeChannelId, sidebarOpen, activeSection, activeThreadId, activeProfile } from '../lib/stores/session.js';
 
   export let showBackupModal = false;
 
   // Hidden while a specific conversation is open, matching the iOS app's
   // `.toolbar(.hidden, for: .tabBar)` — full immersion in a chat, with the
   // existing back arrow (which sets sidebarOpen) the way out.
-  $: hidden = ($activePeer || $activeChannelId) && !$sidebarOpen;
+  //
+  // The feed keeps the bar: a timeline is a top-level destination, not
+  // something you are "inside". A single thread or profile *is*, so those
+  // hide it the same way a conversation does.
+  $: onFeed = $activeSection === 'thoughts';
+  $: inFeedDetail = onFeed && ($activeThreadId || $activeProfile);
+  $: hidden = inFeedDetail || (!onFeed && ($activePeer || $activeChannelId) && !$sidebarOpen);
+
+  $: chatsActive = !onFeed && !showBackupModal;
 
   function openChats() {
     showBackupModal = false;
+    activeSection.set('chats');
     sidebarOpen.set(true);
+  }
+
+  function openThoughts() {
+    showBackupModal = false;
+    activeSection.set('thoughts');
   }
 </script>
 
@@ -37,13 +51,25 @@
     <button
       on:click={openChats}
       class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 focus:outline-none
-        {!showBackupModal ? 'text-vault-accent' : 'text-vault-text-dim'}"
-      aria-current={!showBackupModal}
+        {chatsActive ? 'text-vault-accent' : 'text-vault-text-dim'}"
+      aria-current={chatsActive}
     >
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
       </svg>
       <span class="text-[10px] font-medium">Chats</span>
+    </button>
+
+    <button
+      on:click={openThoughts}
+      class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 focus:outline-none
+        {onFeed ? 'text-vault-accent' : 'text-vault-text-dim'}"
+      aria-current={onFeed}
+    >
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <span class="text-[10px] font-medium">Thoughts</span>
     </button>
 
     <button

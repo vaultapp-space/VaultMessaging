@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { fade, scale } from 'svelte/transition';
   import { flip } from 'svelte/animate';
-  import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
+  import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, activeSection, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
   import { conversations, conversationsLoaded, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
   import { openPrivateChat, fetchFolders, createFolder, setFolderChats, deleteFolder,
     fetchChannels, createChannel, searchChannels, subscribeChannel } from '../lib/api/http.js';
@@ -951,6 +951,24 @@
           </div>
         {/if}
       </div>
+
+      <!-- Desktop entry point to the public feed. Mobile reaches it from the
+           bottom tab bar instead. It sits here rather than becoming a third
+           `activeTab` beside Chats/Calls because Thoughts is a full pane, not
+           another list to show inside the sidebar. -->
+      <button
+        on:click={() => activeSection.set('thoughts')}
+        class="max-md:hidden p-2 rounded-lg transition-all focus:outline-none
+          {$activeSection === 'thoughts'
+            ? 'text-vault-accent bg-vault-accent/10'
+            : 'text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated'}"
+        title="Thoughts — the public feed"
+        aria-current={$activeSection === 'thoughts'}
+      >
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
 
       <!-- Hidden on mobile: the bottom tab bar's Settings tab (MobileTabBar,
            bound to the same showBackupModal) does this job there, and a

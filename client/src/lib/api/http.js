@@ -80,6 +80,11 @@ async function request(method, path, body = null, extraHeaders = {}) {
     throw new Error(error.error || error.message || `HTTP ${res.status}`);
   }
 
+  // 204 carries no body and res.json() throws on it. Every route predating
+  // Thoughts answered with JSON, so this case never arose; follow, mute and
+  // report have nothing meaningful to return and say so with a status code
+  // rather than an empty object.
+  if (res.status === 204) return null;
   return res.json();
 }
 
@@ -591,4 +596,64 @@ export async function setFolderChats(folderId, chatIds) {
 
 export async function deleteFolder(folderId) {
   return request('DELETE', `/folders/${folderId}`);
+}
+
+// ─── Thoughts ───────────────────────────────────────────────
+// Public posts. Note `hasMore`/`nextCursor` rather than a page number: the
+// timeline is keyset-paginated, and on the global tab a page may come back
+// shorter than `limit` because of the per-author cap — so callers must page on
+// `hasMore` and never on `posts.length === limit`.
+
+export async function fetchTimeline({ tab = 'global', cursor = null, limit = 20 } = {}) {
+  const params = new URLSearchParams({ tab, limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+  return request('GET', `/posts/timeline?${params}`);
+}
+
+export async function fetchPost(postId) {
+  return request('GET', `/posts/${postId}`);
+}
+
+export async function fetchPostReplies(postId, { cursor = null, limit = 50 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+  return request('GET', `/posts/${postId}/replies?${params}`);
+}
+
+export async function likePost(postId) {
+  return request('POST', `/posts/${postId}/like`);
+}
+
+export async function unlikePost(postId) {
+  return request('DELETE', `/posts/${postId}/like`);
+}
+
+export async function fetchUserProfile(username) {
+  return request('GET', `/users/${encodeURIComponent(username)}/profile`);
+}
+
+export async function fetchUserPosts(username, { cursor = null, limit = 20 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+  return request('GET', `/users/${encodeURIComponent(username)}/posts?${params}`);
+}
+
+export async function followUser(userId) {
+  return request('POST', `/users/${userId}/follow`);
+}
+
+export async function unfollowUser(userId) {
+  return request('DELETE', `/users/${userId}/follow`);
+}
+
+export async function muteUser(userId) {
+  return request('POST', `/users/${userId}/mute`);
+}
+
+export async function unmuteUser(userId) {
+  return request('DELETE', `/users/${userId}/mute`);
+}
+
+export async function reportPost(postId, category, note = null) {
+  return request('POST', `/posts/${postId}/report`, { category, note });
 }

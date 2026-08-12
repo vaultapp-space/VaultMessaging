@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import { currentUser, clearSession, activePeer, activeChannelId, pendingChatId, syncPts, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients, sidebarOpen } from '../lib/stores/session.js';
+  import { currentUser, clearSession, activePeer, activeChannelId, pendingChatId, syncPts, oneTimePrekeyPairs, activeCall, recentCalls, groupSenderKeys, groupKeyRecipients, sidebarOpen, activeSection } from '../lib/stores/session.js';
   import { conversations, conversationsLoaded, addMessage, addMessages, setTyping, updateMessageDeliveryStatus } from '../lib/stores/messages.js';
   import { setReactions } from '../lib/chat/reactions.js';
   import { applyEdit } from '../lib/chat/edit.js';
@@ -18,6 +18,7 @@
   import ChannelView from './ChannelView.svelte';
   import MiniCallBar from './MiniCallBar.svelte';
   import MobileTabBar from './MobileTabBar.svelte';
+  import Thoughts from './feed/Thoughts.svelte';
   import { showToast } from '../lib/stores/toast.js';
   import { hapticMedium, hapticLight } from '../lib/haptics.js';
   import { requestNotificationPermission, notifyNewMessage } from '../lib/notifications.js';
@@ -802,8 +803,12 @@
     bind:showBackupModal
   />
 
-  <!-- Main Chat Area -->
-  {#if $activeChannelId}
+  <!-- Main Area. Thoughts is a sibling pane here rather than a top-level
+       view: this component owns the websocket, the sync loop and the call
+       handlers, so unmounting it to show a feed would stop calls arriving. -->
+  {#if $activeSection === 'thoughts'}
+    <Thoughts />
+  {:else if $activeChannelId}
     <ChannelView chatId={$activeChannelId} onClose={() => activeChannelId.set(null)} />
   {:else if $activePeer}
     <ChatView />

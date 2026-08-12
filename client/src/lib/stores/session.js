@@ -37,6 +37,23 @@ export const activeView = writable('landing');        // 'landing' | 'auth' | 'c
 export const activePeer = writable(null);          // { id, username } — currently open chat
 export const sidebarOpen = writable(true);
 
+// Which top-level pane the app is showing: the conversation list and its chat,
+// or the public feed.
+//
+// Deliberately NOT a new value in `activeView`. That store switches between
+// pre-auth screens and the app, and Chat.svelte — which owns the websocket
+// connection, the sync loop and every call handler — lives under its 'chat'
+// branch. Adding a sibling branch for the feed would unmount all of that, so
+// you would stop receiving calls and messages while scrolling. Thoughts is a
+// third pane *inside* Chat.svelte, the same way a channel is.
+export const activeSection = writable('chats'); // 'chats' | 'thoughts'
+
+// The post whose thread is open, if any. Null shows the timeline.
+export const activeThreadId = writable(null);
+
+// The profile being viewed, by username. Null shows the timeline.
+export const activeProfile = writable(null);
+
 // Set when the app is opened via an invite link, so the chat list can open
 // the conversation the user just joined rather than dropping them into an
 // unexplained list.
