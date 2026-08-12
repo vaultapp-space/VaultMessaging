@@ -176,6 +176,72 @@ describe('deleting a chat', () => {
     assert.equal((await listChats(alice)).length, 0);
   });
 
+  test('sets a read watermark even with no prior read state', async () => {
+    // Alice has only ever sent, so nothing has created a chat_read_state row
+    // for her. Without an upsert in clearFor she keeps no watermark, and
+    // reconcileUnread — which recomputes from `seq > read_inbox_max_seq`,
+    // defaulting to 0 — then counts every cleared message as unread as soon
+    // as one new message lands. Right in the common case, wrong in the one
+    // nobody checks by hand.
+    const { alice, bob, bobId } = await pair();
+    const chat = await openChat(alice, bobId);
+    await send(alice, chat.id, 'one');
+    await send(alice, chat.id, 'two');
+    await send(alice, chat.id, 'three');
+
+    await del(alice, chat.id);
+    await send(bob, chat.id, 'just this one');
+
+    // Force the reconciliation the reaper performs on its own schedule, so
+    // the assertion covers the recomputed value rather than the incremented
+    // one.
+    await harness.store.reconcileUnread([chat.id]);
+
+    const [row] = await listChats(alice);
+    assert.equal(row.unreadCount, 1);
+  });
+
+  test('hides history on the secret path too, not just the cloud one', async () => {
+    // Secret is the default mode for a one-to-one chat, and it reads its
+    // history from GET /api/messages/:peerId — a different query, keyed by the
+    // user pair rather than by chat_id. Filtering only the cloud path would
+    // mean the chat most people actually have disappears from the list and
+    // then hands its whole history back the moment they reopen it.
+    const { alice, bob, aliceId, bobId } = await pair();
+
+    const created = await app.inject({
+      method: 'POST', url: '/api/chats/private',
+      headers: { cookie: alice.cookie },
+      payload: { peerId: bobId },   // no mode → secret
+    });
+    assert.equal(created.statusCode, 201, created.body);
+    const chat = JSON.parse(created.body);
+    assert.equal(chat.mode, 'secret', 'precondition: the default is secret');
+
+    // Seeded directly: a real secret message is an encrypted envelope built by
+    // the client, and none of that is what this test is about.
+    await harness.store.pool.query(
+      `INSERT INTO messages (chat_id, seq, sender_id, recipient_id, ciphertext, iv, expires_at, sent_at)
+       VALUES ($1, 1, $2, $3, 'x', 'y', now() + interval '1 hour', now())`,
+      [chat.id, bobId, aliceId]
+    );
+
+    const url = `/api/messages/${bobId}`;
+    const before = await app.inject({ method: 'GET', url, headers: { cookie: alice.cookie } });
+    assert.equal(JSON.parse(before.body).messages.length, 1, 'precondition');
+
+    await del(alice, chat.id);
+
+    const after = await app.inject({ method: 'GET', url, headers: { cookie: alice.cookie } });
+    assert.equal(JSON.parse(after.body).messages.length, 0, 'cleared on the secret path');
+
+    // And bob still has it.
+    const bobsView = await app.inject({
+      method: 'GET', url: `/api/messages/${aliceId}`, headers: { cookie: bob.cookie },
+    });
+    assert.equal(JSON.parse(bobsView.body).messages.length, 1);
+  });
+
   test('a stranger gets 404, not a clue', async () => {
     const { alice, bobId } = await pair();
     const chat = await openChat(alice, bobId);

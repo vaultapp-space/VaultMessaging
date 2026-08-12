@@ -709,16 +709,21 @@
     showChatMenu = false;
     if (!$activePeer?.chatId) return;
 
-    const who = $activePeer.isGroup ? 'this group' : $activePeer.username;
     // The wording is the feature. "Delete" reads as destroying the
     // conversation for everyone in it, and the server deliberately cannot do
     // that, so the copy has to close the gap rather than leaving the user to
     // discover it when the chat reappears.
     const ok = await showConfirm(
-      `Delete your copy of this chat with ${who}?\n\n`
-      + 'It disappears from your list along with the messages you can see. '
-      + `${$activePeer.isGroup ? 'The others keep theirs' : `${who} keeps their copy`}, and is not told. `
-      + 'If they write again, the chat comes back with only the new messages.',
+      $activePeer.isGroup
+        ? `Delete your copy of "${$activePeer.username}"?\n\n`
+          + 'It disappears from your list along with the messages you can see. '
+          + 'The other members keep theirs, and are not told. '
+          + 'You are still in the group, so it comes back when someone posts — '
+          + 'to leave for good, use Leave group.'
+        : `Delete your copy of this chat with ${$activePeer.username}?\n\n`
+          + 'It disappears from your list along with the messages you can see. '
+          + `${$activePeer.username} keeps their copy, and is not told. `
+          + 'If they write again, the chat comes back with only the new messages.',
       { confirmLabel: 'Delete', danger: true }
     );
     if (!ok) return;

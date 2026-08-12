@@ -216,8 +216,15 @@ async function messageRoutes(fastify) {
   }, async (request) => {
     const { peerId } = request.params;
     const { limit, before } = request.query;
+
+    // A private chat's id is derived from the pair, so the clear point can be
+    // looked up without the client knowing a chatId — which it does not have
+    // on this path.
+    const chatId = await fastify.repos.chats.privateChatId(request.user.id, peerId);
+    const clearedAt = await fastify.repos.chats.clearedAtFor(chatId, request.user.id);
+
     const messages = await fastify.store.getConversationMessages(
-      request.user.id, peerId, limit || 50, before
+      request.user.id, peerId, limit || 50, before, clearedAt
     );
     return { messages, hasMore: messages.length === (limit || 50) };
   });

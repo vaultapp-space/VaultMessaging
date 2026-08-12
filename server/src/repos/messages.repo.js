@@ -115,7 +115,14 @@ export function createMessages({ pool }) {
     }));
   },
 
-  async getConversationMessages(userId1, userId2, limit = 50, before = null) {
+  // `clearedAt` is the viewer's own clear point for this conversation. It has
+  // to be applied here as well as in getChatMessages: this is the *secret*
+  // chat history path, keyed by the user pair rather than by chat_id, and
+  // secret is the default mode for a one-to-one chat. Filtering only the
+  // cloud path would mean deleting the chat people actually have removes it
+  // from the list and then hands the whole history back the moment they
+  // reopen the conversation.
+  async getConversationMessages(userId1, userId2, limit = 50, before = null, clearedAt = null) {
     let query = `
       SELECT m.*, u.username as sender_username FROM messages m
       JOIN users u ON m.sender_id = u.id
@@ -128,6 +135,10 @@ export function createMessages({ pool }) {
     if (before) {
       query += ` AND m.sent_at < $4`;
       params.push(before);
+    }
+    if (clearedAt) {
+      params.push(clearedAt);
+      query += ` AND m.sent_at > $${params.length}`;
     }
     query += ` ORDER BY m.sent_at DESC LIMIT $3`;
     const res = await this.pool.query(query, params);

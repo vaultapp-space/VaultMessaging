@@ -426,10 +426,16 @@
     // surprised when a resumed conversation reappears. Saying so here is
     // cheaper than a support conversation later.
     const ok = await showConfirm(
-      `Delete your copy of this chat with ${conv.peerUsername}?\n\n`
-      + 'It disappears from your list along with the messages you can see. '
-      + `${conv.peerUsername} keeps their copy, and is not told. `
-      + 'If they write again, the chat comes back with only the new messages.',
+      conv.isGroup
+        ? `Delete your copy of "${conv.peerUsername}"?\n\n`
+          + 'It disappears from your list along with the messages you can see. '
+          + 'The other members keep theirs, and are not told. '
+          + 'You are still in the group, so it comes back when someone posts — '
+          + 'to leave for good, use Leave group inside it.'
+        : `Delete your copy of this chat with ${conv.peerUsername}?\n\n`
+          + 'It disappears from your list along with the messages you can see. '
+          + `${conv.peerUsername} keeps their copy, and is not told. `
+          + 'If they write again, the chat comes back with only the new messages.',
       { confirmLabel: 'Delete', danger: true }
     );
     if (!ok) return;
@@ -459,6 +465,21 @@
     // Same reason the tab bar does this: below md the sidebar is a full-width
     // overlay, so leaving it open would hide the profile behind it.
     if (isNarrowViewport) sidebarOpen.set(false);
+  }
+
+  // Your own profile — the same pane a stranger sees, so what you are showing
+  // the world is never a guess. ProfilePane already drops Follow and Mute on
+  // your own profile (both would be refused by the server and neither means
+  // anything), so there is nothing special-cased here.
+  //
+  // Reached by tapping your name rather than living inside Settings: your
+  // posts are content, not configuration, and burying them under the same
+  // panel as key backup and biometrics implies they are something you
+  // administer rather than something you have.
+  function openOwnProfile() {
+    if (!$currentUser?.username) return;
+    showBackupModal = false;
+    openProfileFor($currentUser.username);
   }
 
   // Long-press opens the same menu the hover ⋯ does. Without this the menu is
@@ -1620,6 +1641,11 @@
        screen. Moved into the Settings panel below instead. -->
   <div class="max-md:hidden px-4 py-3 border-t border-vault-border">
     <div class="flex items-center gap-2">
+      <button
+        on:click={openOwnProfile}
+        class="flex items-center gap-2 flex-1 min-w-0 text-left rounded-lg -m-1 p-1 hover:bg-vault-elevated transition-colors focus:outline-none"
+        title="View your profile and posts"
+      >
       <div
         class="w-7 h-7 rounded-lg flex items-center justify-center text-vault-white text-xs font-semibold flex-shrink-0 shadow-inner"
         style="background: {getAvatarGradient($currentUser?.username)}"
@@ -1628,8 +1654,9 @@
       </div>
       <div class="flex-1 min-w-0">
         <div class="text-xs font-medium text-vault-text truncate">{$currentUser?.username || 'Unknown'}</div>
-        <div class="text-[10px] text-vault-text-dim">Session active</div>
+        <div class="text-[10px] text-vault-accent">View your profile →</div>
       </div>
+      </button>
       <div class="shield-badge text-[9px] py-0.5 px-2">
         <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
@@ -1685,16 +1712,24 @@
              sidebar's own footer, which stays visible there, so repeating
              it in the modal would just be the same information twice. -->
         <div class="md:hidden flex items-center gap-2.5 border-b border-vault-border pb-4">
-          <div
-            class="w-9 h-9 rounded-xl flex items-center justify-center text-vault-white text-sm font-semibold flex-shrink-0 shadow-inner"
-            style="background: {getAvatarGradient($currentUser?.username)}"
+          <!-- Tappable: this is the entry point to your own public profile.
+               Everything else in this panel is a setting; your posts are not,
+               so they get a way out of here rather than a row inside it. -->
+          <button
+            on:click={openOwnProfile}
+            class="flex items-center gap-2.5 flex-1 min-w-0 text-left rounded-xl -m-1 p-1 hover:bg-vault-elevated transition-colors focus:outline-none"
           >
-            {$currentUser?.username?.[0]?.toUpperCase() || '?'}
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-vault-text truncate">{$currentUser?.username || 'Unknown'}</div>
-            <div class="text-[10px] text-vault-text-dim">Session active</div>
-          </div>
+            <div
+              class="w-9 h-9 rounded-xl flex items-center justify-center text-vault-white text-sm font-semibold flex-shrink-0 shadow-inner"
+              style="background: {getAvatarGradient($currentUser?.username)}"
+            >
+              {$currentUser?.username?.[0]?.toUpperCase() || '?'}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-vault-text truncate">{$currentUser?.username || 'Unknown'}</div>
+              <div class="text-[10px] text-vault-accent">View your profile and posts →</div>
+            </div>
+          </button>
           <div class="shield-badge text-[9px] py-0.5 px-2">
             <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>

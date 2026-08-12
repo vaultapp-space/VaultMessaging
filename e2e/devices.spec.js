@@ -48,7 +48,11 @@ async function openSettings(page) {
   // rendering a session. Waiting on the expanded body rather than the button
   // flipping to "Hide" keeps that honest.
   await expect(page.getByText('Sessions', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'View' }).click();
+  // `exact` matters: name matching is a substring by default, and the account
+  // row in this same panel is now a button reading "View your profile and
+  // posts". Without it this resolves to two elements and fails in strict mode
+  // — for a reason that has nothing to do with sessions.
+  await page.getByRole('button', { name: 'View', exact: true }).click();
   await expect(page.getByText(/Signing one out takes effect at once/))
     .toBeVisible({ timeout: 15_000 });
 }

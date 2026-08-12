@@ -257,13 +257,22 @@ export function createChats({ pool }) {
            RETURNING cleared_at`,
           [chatId, userId]
         );
+        // Upsert, not a plain UPDATE. A user who has never had a read-state
+        // row here — nobody has written to them in this chat yet — would
+        // otherwise keep no watermark at all, and reconcileUnread (which
+        // recomputes from `seq > read_inbox_max_seq`, defaulting to 0) would
+        // later count every cleared message as unread the moment one new
+        // message arrived. The badge would be right in the common case and
+        // wrong in exactly the case nobody tests by hand.
         await client.query(
-          `UPDATE chat_read_state
+          `INSERT INTO chat_read_state (chat_id, user_id, read_inbox_max_seq, unread_count)
+           VALUES ($1, $2, (SELECT COALESCE(last_seq, 0) FROM chats WHERE id = $1), 0)
+           ON CONFLICT (chat_id, user_id) DO UPDATE
               SET unread_count = 0,
-                  read_inbox_max_seq = GREATEST(read_inbox_max_seq, (
-                    SELECT COALESCE(last_seq, 0) FROM chats WHERE id = $1
-                  ))
-            WHERE chat_id = $1 AND user_id = $2`,
+                  read_inbox_max_seq = GREATEST(
+                    chat_read_state.read_inbox_max_seq,
+                    (SELECT COALESCE(last_seq, 0) FROM chats WHERE id = $1)
+                  )`,
           [chatId, userId]
         );
         await client.query('COMMIT');
