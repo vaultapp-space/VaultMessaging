@@ -4,7 +4,7 @@
   import { fade, scale } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, activeSection, activeProfile, activeThreadId, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
-  import { conversations, conversationsLoaded, typingUsers, clearBackup, restoreBackup } from '../lib/stores/messages.js';
+  import { conversations, conversationsLoaded, typingUsers, clearBackup, restoreBackup, forgetPeerMessages } from '../lib/stores/messages.js';
   import { openPrivateChat, fetchFolders, createFolder, setFolderChats, deleteFolder,
     fetchChannels, createChannel, searchChannels, subscribeChannel } from '../lib/api/http.js';
   import {
@@ -70,7 +70,12 @@
     // this only to the person who deleted — the other participant is never
     // told, which is what makes the one-sided semantics honest.
     const offDeleted = onWsEvent('chat_deleted', (data) => {
+      // Find the peer before dropping the row — the cached messages are keyed
+      // by peerId, and once the conversation is gone from the list there is
+      // nothing left to map the chatId back through.
+      const gone = get(conversations).find((c) => c.chatId === data.chatId);
       conversations.update((list) => list.filter((c) => c.chatId !== data.chatId));
+      if (gone) forgetPeerMessages(gone.peerId);
       if (get(activePeer)?.chatId === data.chatId) activePeer.set(null);
     });
 
@@ -442,6 +447,11 @@
 
     try {
       await deleteChat(conv.chatId);
+      // The server has cleared its side; this clears ours. The store merges
+      // rather than replaces, so without it the history stays in memory — and
+      // in the encrypted local backup — and the chat renders in full the next
+      // time the peer is opened.
+      forgetPeerMessages(conv.peerId);
       // Close it if it is the chat currently on screen, or the pane would go
       // on showing a conversation that is no longer in the list.
       if ($activePeer?.peerId === conv.peerId || $activePeer?.id === conv.peerId) {

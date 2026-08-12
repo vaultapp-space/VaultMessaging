@@ -19,6 +19,8 @@
   // bar can set it too.
   import { activePeer, activeChannelId, sidebarOpen, activeSection, activeThreadId, activeProfile, currentUser } from '../lib/stores/session.js';
 
+  import { unreadNotifications } from '../lib/stores/notifications.js';
+
   export let showBackupModal = false;
 
   // Hidden while a specific conversation is open, matching the iOS app's
@@ -104,10 +106,25 @@
       class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 focus:outline-none
         {thoughtsActive ? 'text-vault-accent' : 'text-vault-text-dim'}"
       aria-current={thoughtsActive}
+      aria-label={$unreadNotifications > 0 && !onFeed
+        ? `Thoughts, ${$unreadNotifications} new notifications`
+        : 'Thoughts'}
     >
-      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
+      <div class="relative">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <!-- A dot, not a number. From Chats — where people actually are — the
+             useful signal is "there is something in the feed for you"; the
+             exact count is one tap away on the bell, and a two-digit badge on
+             a 20px icon is unreadable anyway. -->
+        {#if $unreadNotifications > 0 && !onFeed}
+          <span
+            class="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-vault-accent ring-2 ring-vault-surface"
+            aria-hidden="true"
+          ></span>
+        {/if}
+      </div>
       <span class="text-[10px] font-medium">Thoughts</span>
     </button>
 

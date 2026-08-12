@@ -9,6 +9,7 @@
   import { hydrateBlocked } from '../lib/chat/chatSettings.js';
   import { fetchPoll, fetchUpdates, fetchChats, fetchPendingMessages, logout, getPrekeyCount, replenishPrekeys, API_BASE } from '../lib/api/http.js';
   import { connectWebSocket, disconnectWebSocket, onWsEvent, wsConnected, wsError, wsSend } from '../lib/api/ws.js';
+  import { refreshUnread } from '../lib/stores/notifications.js';
   import { generateOneTimePrekeys, importStaticKey } from '../lib/crypto/keys.js';
   import { decryptSignalingPayload } from '../lib/crypto/decryption.js';
   import { fromBase64 } from '../lib/crypto/utils.js';
@@ -92,6 +93,13 @@
     // want notifications from this origin gets reflexively denied, and
     // Notification.permission can't be re-prompted once it's 'denied'.
     requestNotificationPermission();
+
+    // Feed notifications are tracked here rather than in the bell, because
+    // the bell only exists inside Thoughts and Chats is the view people are
+    // actually in. Owned by the component that owns the socket, so the count
+    // stays live no matter which pane is on screen.
+    refreshUnread();
+    feedNotificationOff = onWsEvent('notification_tick', refreshUnread);
 
     // 1. Load the chat list from the chat model.
     //
@@ -185,8 +193,11 @@
     );
   });
 
+  let feedNotificationOff = null;
+
   onDestroy(() => {
     for (const unsub of unsubscribers) unsub();
+    feedNotificationOff?.();
     clearInterval(pingInterval);
     disconnectWebSocket();
     stopCallSounds();

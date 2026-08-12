@@ -28,7 +28,7 @@
   import { onMount, afterUpdate, onDestroy, tick } from 'svelte';
   import { fade, scale } from 'svelte/transition';
   import { currentUser, activePeer, sidebarOpen, ratchetSessions, identityKeyPair, signedPrekeyPair, verifiedPeers, localBackupEnabled, localBackupPassphrase, activeCall } from '../lib/stores/session.js';
-  import { messagesByPeer, addMessages, typingUsers, conversations, restoreBackup, removeMessage } from '../lib/stores/messages.js';
+  import { messagesByPeer, addMessages, typingUsers, conversations, restoreBackup, removeMessage, forgetPeerMessages } from '../lib/stores/messages.js';
   import { fetchMessages, fetchChatMessages, uploadAttachment, initChunkedUpload, uploadAttachmentChunk, updateSignedPrekey, leaveGroup, removeGroupMember } from '../lib/api/http.js';
   import { sendTyping, onWsEvent } from '../lib/api/ws.js';
   // `encryptFile`, not `encrypt` aliased to that name. The alias meant
@@ -731,6 +731,8 @@
     try {
       await deleteChat($activePeer.chatId);
       const peerId = $activePeer.id;
+      // Ours as well as the server's — see forgetPeerMessages.
+      forgetPeerMessages(peerId);
       // Leave the conversation before dropping it from the list, or the pane
       // is left rendering a chat that no longer exists anywhere.
       activePeer.set(null);

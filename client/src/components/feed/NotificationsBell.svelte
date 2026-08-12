@@ -20,12 +20,12 @@
   import { clickOutside } from '../../lib/actions/clickOutside.js';
   import { getAvatarGradient } from '../../lib/avatar.js';
   import { showToast } from '../../lib/stores/toast.js';
+  import { unreadNotifications, clearUnreadLocally } from '../../lib/stores/notifications.js';
 
   const dispatch = createEventDispatcher();
 
   let open = false;
   let items = [];
-  let unread = 0;
   let loading = false;
   let unsubscribe = null;
 
@@ -41,7 +41,9 @@
     try {
       const res = await fetchNotifications();
       items = res.notifications;
-      unread = res.unreadCount;
+      // Shared with the tab bar's dot, so the badge here and the dot there are
+      // literally the same number.
+      unreadNotifications.set(res.unreadCount);
     } catch {
       // A bell that cannot load is not worth a toast on every poll — the
       // badge simply stays where it was.
@@ -69,14 +71,14 @@
 
     // Marked read on open, not on tap. The badge answers "is there anything
     // new", and looking is the thing that makes it no longer new.
-    if (unread > 0) {
-      const previous = unread;
-      unread = 0;
+    if ($unreadNotifications > 0) {
+      const previous = $unreadNotifications;
+      clearUnreadLocally();
       try {
         await markNotificationsRead();
         items = items.map((n) => ({ ...n, read: true }));
       } catch (err) {
-        unread = previous;
+        unreadNotifications.set(previous);
         showToast(err?.message || 'Could not mark those read');
       }
     }
@@ -102,7 +104,7 @@
     on:click={toggle}
     class="p-1.5 rounded-lg transition-colors focus:outline-none relative
       {open ? 'text-vault-accent bg-vault-elevated' : 'text-vault-text-dim hover:text-vault-text'}"
-    aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+    aria-label={$unreadNotifications > 0 ? `Notifications, ${$unreadNotifications} unread` : 'Notifications'}
     aria-expanded={open}
   >
     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -110,12 +112,12 @@
       <path d="M13.7 21a2 2 0 01-3.4 0" stroke-linecap="round" />
     </svg>
 
-    {#if unread > 0}
+    {#if $unreadNotifications > 0}
       <span
         class="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-vault-accent
                text-vault-black text-[9px] font-bold flex items-center justify-center leading-none"
         aria-hidden="true"
-      >{unread > 99 ? '99+' : unread}</span>
+      >{$unreadNotifications > 99 ? '99+' : $unreadNotifications}</span>
     {/if}
   </button>
 

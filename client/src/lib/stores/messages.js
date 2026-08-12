@@ -392,6 +392,33 @@ export function updateMessageDeliveryStatus(peerId, messageId, delivered) {
 /**
  * Clear all messages (on logout).
  */
+/**
+ * Drops every cached message for one peer, after that chat has been deleted.
+ *
+ * **Without this, "delete chat" only deleted it on the server.** The store
+ * merges rather than replaces — addMessages exists to fold new pages into what
+ * is already there — so the history stayed in memory and the conversation
+ * still rendered in full when the peer was reopened. Worse with local backup
+ * on: the debounced writer persists this map to IndexedDB, so the deleted
+ * messages survived a reload too.
+ *
+ * That same writer is what cleans the backup up here: removing the entry makes
+ * the next auto-save serialise a map without it, so nothing extra is needed
+ * for the encrypted copy on disk.
+ *
+ * knownMessageIds is pruned as well, or a redelivery of one of these messages
+ * would be treated as a duplicate and silently dropped.
+ */
+export function forgetPeerMessages(peerId) {
+  const existing = get(messagesByPeer).get(peerId) || [];
+  for (const message of existing) knownMessageIds.delete(message.id);
+
+  messagesByPeer.update((map) => {
+    map.delete(peerId);
+    return new Map(map);
+  });
+}
+
 export function clearMessages() {
   messagesByPeer.set(new Map());
   conversations.set([]);
