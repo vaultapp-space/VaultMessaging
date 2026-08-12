@@ -191,15 +191,20 @@ describe('visibility', () => {
     // The filter is a SQL predicate, not a post-fetch array filter. If it were
     // the latter, a page containing a blocked author would come back short and
     // pagination would stutter.
+    //
+    // Three unblocked authors rather than one, so the per-author page cap
+    // (posts.repo) is not what fills the page — otherwise this would be
+    // measuring the cap instead of the block filter.
     const alice = await registerUser(app);
     const bob = await registerUser(app);
+    const carol = await registerUser(app);
+    const dave = await registerUser(app);
 
-    // Interleaved on purpose. Posting all of alice's first would put bob's
-    // three newest at the top, and the assertion below would pass even with no
-    // filtering at all — the test would be green and prove nothing.
-    for (let i = 0; i < 3; i += 1) {
-      await post(alice, { body: `alice ${i}` });
-      await post(bob, { body: `bob ${i}` });
+    // Interleaved on purpose. Posting all of alice's first would push them off
+    // the top of the page, and the assertion below would pass even with no
+    // filtering at all — green, and proving nothing.
+    for (const author of [alice, bob, carol, dave, alice, bob, carol, dave]) {
+      await post(author, { body: `from ${author.username}` });
     }
 
     await app.inject({
@@ -211,7 +216,10 @@ describe('visibility', () => {
 
     const { body } = await timeline(bob, '?limit=3');
     assert.equal(body.posts.length, 3, 'page came back short');
-    assert.ok(body.posts.every((p) => p.username === bob.username));
+    assert.ok(
+      body.posts.every((p) => p.username !== alice.username),
+      'a blocked author appeared'
+    );
   });
 
   test('fetching a blocked author\'s post by id is a 404', async () => {
@@ -238,15 +246,23 @@ describe('visibility', () => {
 
 describe('pagination', () => {
   test('walks every post exactly once with no duplicates or gaps', async () => {
-    const alice = await registerUser(app);
-    const total = 7;
-    for (let i = 0; i < total; i += 1) await post(alice, { body: `post ${i}` });
+    // Spread across three authors at two posts each, so the per-author page
+    // cap never binds and every post is genuinely reachable. The cap
+    // deliberately *drops* posts on the global tab (see posts.repo), so a
+    // completeness assertion has to be written where it does not apply —
+    // otherwise it would be asserting the opposite of the intended behaviour.
+    const authors = [await registerUser(app), await registerUser(app), await registerUser(app)];
+    const total = 6;
+    for (let i = 0; i < total; i += 1) {
+      await post(authors[i % authors.length], { body: `post ${i}` });
+    }
 
+    const viewer = authors[0];
     const seen = [];
     let cursor = null;
     for (let page = 0; page < 10; page += 1) {
-      const q = `?limit=3${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-      const { body } = await timeline(alice, q);
+      const q = `?limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const { body } = await timeline(viewer, q);
       seen.push(...body.posts.map((p) => p.id));
       if (!body.hasMore) break;
       cursor = body.nextCursor;

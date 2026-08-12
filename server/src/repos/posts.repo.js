@@ -20,6 +20,11 @@ import path from 'node:path';
 const POST_TTL_SECONDS = 86400;
 const MAX_BODY_LENGTH = 500;
 
+// How many posts by one author may appear in a single page of the global
+// timeline, and how far the query looks to fill that page around them.
+const MAX_PER_AUTHOR_PER_PAGE = 2;
+const WINDOW_MULTIPLIER = 5;
+
 // The extension is not recorded on the post, so every allowed one is tried —
 // the same approach maintenance.repo takes for stories. Missing files are
 // expected, since a text-only post has none.
@@ -165,22 +170,72 @@ export function createPosts({ pool, uploadsDir }) {
      * every 60s, so without this up to a minute of expired content is visible.
      */
     async timeline(viewerId, { tab = 'global', cursor = null, limit = 20 } = {}) {
-      const followingClause = tab === 'following'
+      const following = tab === 'following';
+      const followingClause = following
         ? `AND (p.author_id = $1
                OR EXISTS (SELECT 1 FROM follows f
                            WHERE f.follower_id = $1 AND f.followee_id = p.author_id))`
         : '';
 
+      const base = `
+            FROM posts p ${SELECT_JOINS}
+           WHERE p.reply_to_id IS NULL
+             AND p.removed_at IS NULL
+             AND p.expires_at > now()
+             AND ($2::timestamptz IS NULL OR (p.created_at, p.id) < ($2::timestamptz, $3::uuid))
+             ${followingClause}
+             ${VISIBILITY_PREDICATE}`;
+
+      // The Following tab is self-curated — if you follow someone who posts a
+      // lot, seeing all of it is the point — so it pages straight through.
+      //
+      // The global tab caps each author to MAX_PER_AUTHOR_PER_PAGE within the
+      // window it scans. It is the cheapest effective spam control available:
+      // without it one account posting in a loop owns the whole feed, and no
+      // rate limit low enough to prevent that is high enough for real use.
+      //
+      // Be clear about the cost, because it is not only cosmetic: the capped
+      // posts are not deferred to a later page, they are **dropped**. Paging
+      // to the end of the global tab will not show everything a prolific
+      // author wrote. That makes Global a *sampled* view — a discovery
+      // surface — and Following the complete one. If that trade ever stops
+      // being worth it, raising MAX_PER_AUTHOR_PER_PAGE is the dial; removing
+      // the cap hands the feed to whoever posts most.
+      //
+      // A capped page is also allowed to come back shorter than `limit`; the
+      // client must page on `hasMore`, never on `posts.length === limit`.
+      if (!following) {
+        const windowSize = limit * WINDOW_MULTIPLIER;
+        const { rows } = await this.pool.query(
+          `WITH candidates AS (
+             SELECT ${SELECT_COLUMNS},
+                    row_number() OVER (PARTITION BY p.author_id
+                                       ORDER BY p.created_at DESC, p.id DESC) AS rn
+             ${base}
+             ORDER BY p.created_at DESC, p.id DESC
+             LIMIT $4
+           )
+           SELECT *, (SELECT count(*) FROM candidates) AS window_count
+             FROM candidates
+            WHERE rn <= ${MAX_PER_AUTHOR_PER_PAGE}
+            ORDER BY created_at DESC, id DESC
+            LIMIT $5`,
+          [viewerId, cursor?.createdAt ?? null, cursor?.id ?? null, windowSize, limit + 1]
+        );
+
+        // Two separate reasons there may be more: the capped set overflowed
+        // this page, or the window itself was full so candidates exist beyond
+        // it. Missing the second would end pagination early and silently hide
+        // the rest of the feed.
+        const windowFull = rows.length > 0 && Number(rows[0].window_count) === windowSize;
+        const hasMore = rows.length > limit || windowFull;
+        const page = rows.slice(0, limit);
+        return { posts: page.map((r) => this.shape(r)), hasMore };
+      }
+
       // limit + 1 so hasMore is known without a second count query.
       const { rows } = await this.pool.query(
-        `SELECT ${SELECT_COLUMNS}
-           FROM posts p ${SELECT_JOINS}
-          WHERE p.reply_to_id IS NULL
-            AND p.removed_at IS NULL
-            AND p.expires_at > now()
-            AND ($2::timestamptz IS NULL OR (p.created_at, p.id) < ($2::timestamptz, $3::uuid))
-            ${followingClause}
-            ${VISIBILITY_PREDICATE}
+        `SELECT ${SELECT_COLUMNS} ${base}
           ORDER BY p.created_at DESC, p.id DESC
           LIMIT $4`,
         [viewerId, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1]
@@ -222,6 +277,211 @@ export function createPosts({ pool, uploadsDir }) {
       if (!rows[0]) return false;
       await this.unlinkMedia(rows[0].media);
       return true;
+    },
+
+    // ─── Threads and profiles ─────────────────────────────
+
+    /**
+     * The replies under a top-level post, oldest first — a conversation reads
+     * downward, unlike the timeline.
+     *
+     * Blocks and mutes apply here too. Without that, blocking is defeated by
+     * anyone replying to a post the blocked user can already see.
+     */
+    async replies(viewerId, rootId, { cursor = null, limit = 50 } = {}) {
+      const { rows } = await this.pool.query(
+        `SELECT ${SELECT_COLUMNS}
+           FROM posts p ${SELECT_JOINS}
+          WHERE p.root_id = $2
+            AND p.removed_at IS NULL
+            AND p.expires_at > now()
+            AND ($3::timestamptz IS NULL OR (p.created_at, p.id) > ($3::timestamptz, $4::uuid))
+            ${VISIBILITY_PREDICATE}
+          ORDER BY p.created_at ASC, p.id ASC
+          LIMIT $5`,
+        [viewerId, rootId, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1]
+      );
+
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      return { posts: page.map((r) => this.shape(r)), hasMore };
+    },
+
+    /** A user's own top-level posts, newest first. */
+    async byAuthor(viewerId, username, { cursor = null, limit = 20 } = {}) {
+      const { rows } = await this.pool.query(
+        `SELECT ${SELECT_COLUMNS}
+           FROM posts p ${SELECT_JOINS}
+          WHERE u.username = $2
+            AND p.reply_to_id IS NULL
+            AND p.removed_at IS NULL
+            AND p.expires_at > now()
+            AND ($3::timestamptz IS NULL OR (p.created_at, p.id) < ($3::timestamptz, $4::uuid))
+            ${VISIBILITY_PREDICATE}
+          ORDER BY p.created_at DESC, p.id DESC
+          LIMIT $5`,
+        [viewerId, username, cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1]
+      );
+
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      return { posts: page.map((r) => this.shape(r)), hasMore };
+    },
+
+    /**
+     * The header of a profile. Returns null for an unknown username, and for
+     * one the viewer is blocked by or has blocked — a profile that renders for
+     * someone you blocked is a hole in the block.
+     */
+    async profile(viewerId, username) {
+      const { rows } = await this.pool.query(
+        `SELECT u.id, u.username,
+                (SELECT count(*) FROM follows f WHERE f.followee_id = u.id) AS followers_count,
+                (SELECT count(*) FROM follows f WHERE f.follower_id = u.id) AS following_count,
+                EXISTS (SELECT 1 FROM follows f
+                         WHERE f.follower_id = $1 AND f.followee_id = u.id) AS following,
+                EXISTS (SELECT 1 FROM user_mutes m
+                         WHERE m.muter_id = $1 AND m.muted_id = u.id) AS muted
+           FROM users u
+          WHERE u.username = $2
+            AND NOT EXISTS (
+                  SELECT 1 FROM blocks b
+                   WHERE (b.blocker_id = u.id AND b.blocked_id = $1)
+                      OR (b.blocker_id = $1 AND b.blocked_id = u.id))`,
+        [viewerId, username]
+      );
+      const row = rows[0];
+      if (!row) return null;
+      return {
+        id: row.id,
+        username: row.username,
+        followersCount: Number(row.followers_count),
+        followingCount: Number(row.following_count),
+        following: row.following,
+        muted: row.muted,
+      };
+    },
+
+    // ─── Likes ────────────────────────────────────────────
+
+    /**
+     * Like and unlike, each as a single statement.
+     *
+     * The membership row and the denormalised counter must agree — a filled
+     * heart next to a count that disagrees is the bug users notice first. Doing
+     * it in one statement with a CTE means there is no window between the two
+     * writes and a double-tap cannot double-count: ON CONFLICT DO NOTHING makes
+     * the second insert return no rows, so the counter moves by zero.
+     *
+     * Returns null when the post is gone, which the route turns into a 404.
+     */
+    async like(postId, userId) {
+      const { rows } = await this.pool.query(
+        `WITH ins AS (
+           INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2)
+           ON CONFLICT DO NOTHING
+           RETURNING 1
+         )
+         UPDATE posts
+            SET likes_count = likes_count + (SELECT count(*) FROM ins)
+          WHERE id = $1 AND removed_at IS NULL AND expires_at > now()
+          RETURNING likes_count`,
+        [postId, userId]
+      );
+      return rows[0] ? Number(rows[0].likes_count) : null;
+    },
+
+    async unlike(postId, userId) {
+      const { rows } = await this.pool.query(
+        `WITH del AS (
+           DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2
+           RETURNING 1
+         )
+         UPDATE posts
+            SET likes_count = GREATEST(0, likes_count - (SELECT count(*) FROM del))
+          WHERE id = $1 AND removed_at IS NULL AND expires_at > now()
+          RETURNING likes_count`,
+        [postId, userId]
+      );
+      return rows[0] ? Number(rows[0].likes_count) : null;
+    },
+
+    // ─── Follows and mutes ────────────────────────────────
+
+    /** Idempotent. Returns false if the target does not exist. */
+    async follow(followerId, followeeId) {
+      const { rowCount } = await this.pool.query(
+        `INSERT INTO follows (follower_id, followee_id)
+         SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM users WHERE id = $2)
+         ON CONFLICT DO NOTHING`,
+        [followerId, followeeId]
+      );
+      // rowCount 0 means either already following or no such user; the caller
+      // cannot tell them apart and does not need to.
+      if (rowCount === 0) {
+        const { rows } = await this.pool.query('SELECT 1 FROM users WHERE id = $1', [followeeId]);
+        return rows.length > 0;
+      }
+      return true;
+    },
+
+    async unfollow(followerId, followeeId) {
+      await this.pool.query(
+        'DELETE FROM follows WHERE follower_id = $1 AND followee_id = $2',
+        [followerId, followeeId]
+      );
+    },
+
+    async mute(muterId, mutedId) {
+      const { rowCount } = await this.pool.query(
+        `INSERT INTO user_mutes (muter_id, muted_id)
+         SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM users WHERE id = $2)
+         ON CONFLICT DO NOTHING`,
+        [muterId, mutedId]
+      );
+      if (rowCount === 0) {
+        const { rows } = await this.pool.query('SELECT 1 FROM users WHERE id = $1', [mutedId]);
+        return rows.length > 0;
+      }
+      return true;
+    },
+
+    async unmute(muterId, mutedId) {
+      await this.pool.query(
+        'DELETE FROM user_mutes WHERE muter_id = $1 AND muted_id = $2',
+        [muterId, mutedId]
+      );
+    },
+
+    async listMutes(muterId) {
+      const { rows } = await this.pool.query(
+        `SELECT u.id, u.username FROM user_mutes m
+           JOIN users u ON u.id = m.muted_id
+          WHERE m.muter_id = $1
+          ORDER BY m.created_at DESC`,
+        [muterId]
+      );
+      return rows.map((r) => ({ id: r.id, username: r.username }));
+    },
+
+    /**
+     * Followers or following, paginated by created_at.
+     * `direction` is 'followers' (who follows this user) or 'following'.
+     */
+    async listFollows(userId, direction, { limit = 50, offset = 0 } = {}) {
+      const [self, other] = direction === 'followers'
+        ? ['followee_id', 'follower_id']
+        : ['follower_id', 'followee_id'];
+
+      const { rows } = await this.pool.query(
+        `SELECT u.id, u.username FROM follows f
+           JOIN users u ON u.id = f.${other}
+          WHERE f.${self} = $1
+          ORDER BY f.created_at DESC
+          LIMIT $2 OFFSET $3`,
+        [userId, limit, offset]
+      );
+      return rows.map((r) => ({ id: r.id, username: r.username }));
     },
   };
 }
