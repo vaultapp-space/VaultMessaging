@@ -56,7 +56,12 @@ AFTER=$(git rev-parse HEAD)
 echo "==> ${BEFORE:0:12} -> ${AFTER:0:12}"
 
 echo "==> Installing server dependencies"
-npm ci --prefix server --omit=dev
+# Not --omit=dev: node-pg-migrate is a devDependency and the migration step
+# below runs its binary out of node_modules/.bin. Omitting dev deps removes it,
+# and scripts/migrate.js then exits 1 without printing anything, because
+# spawnSync on a missing binary reports no status. That combination cost a
+# deploy — the server was left running old code while npm reported success.
+npm ci --prefix server
 
 echo "==> Running migrations"
 # Before the restart: the new code may require the new schema. Migrations here
