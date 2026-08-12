@@ -1082,3 +1082,38 @@ Two more things that spec learned the hard way, both worth keeping:
   test. Every worker shares one IP, so the limit is hit on merits. `register()`
   waits it out rather than failing, and the describe block carries a longer
   timeout to fit that.
+
+## The R8 smoke test, finally run (v1.27, Pixel Fold, Android 17)
+
+Outstanding since v1.20 turned on `minifyEnabled`. R8 resolves nothing by
+string, and Capacitor resolves *everything* by string — plugin class paths in
+`assets/capacitor.plugins.json` and the `@CapacitorPlugin` annotation — so a
+missing keep rule deletes or renames a class that only reflection references.
+The build succeeds, the APK signs and installs, and a feature silently does
+nothing. No automated test covers it: the e2e suite drives a browser against
+the unminified web build, so the minified APK had zero coverage.
+
+Run over `adb` with screenshots at each step. **All four native plugins
+resolved and worked:**
+
+| Plugin | How it was proven |
+|---|---|
+| `@capacitor/haptics` | `Vibrator::on` in the system HAL at post time |
+| `@capacitor/status-bar` | status bar recoloured black→white on theme switch |
+| `@capacitor/browser` | `com.android.chrome/…CustomTabActivity` took focus |
+| `@capacitor/app` | back returned from Chrome, then feed→chat list |
+| `ScreenSecurityPlugin` | with Block Screenshots on, `screencap` returned the app area solid black while SystemUI's bar still drew |
+
+`ScreenSecurityPlugin` is the nicest of these to check, because FLAG_SECURE is
+observable from outside the app: the screenshot file drops from ~200KB to ~24KB
+and the content is black. That is a real end-to-end assertion, not a proxy.
+
+**`AudioRoutePlugin` remains unverified at runtime** — it is only exercised
+during a call, which needs a second device. Its class is present in
+`classes.dex`, so R8 did not remove it, but whether the earpiece/speaker
+routing works on hardware is still untested.
+
+Also confirmed incidentally: v1.27 installed *over* v1.26 without an uninstall,
+which is the signing-key continuity check that actually matters; and the feed
+loaded from production, which would have been an error state before the server
+was redeployed.
