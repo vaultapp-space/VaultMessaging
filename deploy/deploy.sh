@@ -22,6 +22,24 @@ BRANCH=main
 # source the box's env file if it exists.
 [ -f /home/ubuntu/.vault-env ] && . /home/ubuntu/.vault-env
 
+# Fallback: lift it from the running process. PM2 holds the environment the
+# server was started with, which necessarily includes a working PGPASSWORD —
+# the server cannot have been serving without one. This is what makes the
+# script work on a box that has no .vault-env yet, over an ssh command whose
+# non-interactive shell never sourced a profile.
+if [ -z "${PGPASSWORD:-}" ] && command -v pm2 >/dev/null 2>&1; then
+  PGPASSWORD=$(pm2 jlist 2>/dev/null | node -e '
+    let s = "";
+    process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      try {
+        const app = JSON.parse(s).find((a) => a.name === "vault-server");
+        process.stdout.write(app?.pm2_env?.PGPASSWORD ?? "");
+      } catch { /* no pm2 output to parse */ }
+    });
+  ') || true
+  [ -n "${PGPASSWORD:-}" ] && export PGPASSWORD
+fi
+
 if [ -z "${PGPASSWORD:-}" ]; then
   echo "FATAL: PGPASSWORD is not set, so migrations cannot run." >&2
   echo "Put it (and JWT_SECRET/TURN_SECRET) in /home/ubuntu/.vault-env." >&2
