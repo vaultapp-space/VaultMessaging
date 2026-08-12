@@ -1,10 +1,13 @@
 <script>
   // ============================================================
-  // Mobile bottom tab bar — Chats / Settings
+  // Mobile bottom tab bar — Chats / Thoughts / Profile / Settings
   // ============================================================
-  // The iOS app's whole navigation is two tabs at the bottom (a third,
-  // Profile, folded into Settings — there is no separate account screen
-  // worth having here since the sidebar footer already shows who you are).
+  // Profile used to be folded into Settings, on the reasoning that the
+  // sidebar footer already showed who you are and there was no account screen
+  // worth a tab. Thoughts changed that: there is now a public profile with
+  // your posts on it, which is content rather than configuration, and burying
+  // it under the same panel as key backup and biometrics both hid it and
+  // implied it was something you administer rather than something you have.
   // The desktop layout keeps its sidebar and header icons unchanged; this
   // bar exists only below the md breakpoint, where there is no sidebar
   // chrome to put a Settings entry point in once a conversation is open.
@@ -14,7 +17,7 @@
   // the sidebar's <aside>, so it isn't affected by the sidebar being
   // hidden on mobile — `showBackupModal` just needed lifting up so this
   // bar can set it too.
-  import { activePeer, activeChannelId, sidebarOpen, activeSection, activeThreadId, activeProfile } from '../lib/stores/session.js';
+  import { activePeer, activeChannelId, sidebarOpen, activeSection, activeThreadId, activeProfile, currentUser } from '../lib/stores/session.js';
 
   export let showBackupModal = false;
 
@@ -26,10 +29,22 @@
   // something you are "inside". A single thread or profile *is*, so those
   // hide it the same way a conversation does.
   $: onFeed = $activeSection === 'thoughts';
-  $: inFeedDetail = onFeed && ($activeThreadId || $activeProfile);
+
+  // **Your own profile is a tab, so it is a destination, not a detail.**
+  // Someone else's profile is something you navigated *into* from a post and
+  // still hides the bar; yours is where a tab lands you, and hiding the bar
+  // there would strand you on a screen with no visible way back.
+  $: ownProfile = onFeed
+    && Boolean($activeProfile)
+    && $activeProfile?.toLowerCase() === $currentUser?.username?.toLowerCase();
+
+  $: inFeedDetail = onFeed && ($activeThreadId || ($activeProfile && !ownProfile));
   $: hidden = inFeedDetail || (!onFeed && ($activePeer || $activeChannelId) && !$sidebarOpen);
 
   $: chatsActive = !onFeed && !showBackupModal;
+  // Thoughts and Profile share a section, so the timeline is only "current"
+  // when a profile is not on top of it — otherwise both tabs light up at once.
+  $: thoughtsActive = onFeed && !ownProfile && !showBackupModal;
 
   function openChats() {
     showBackupModal = false;
@@ -39,6 +54,11 @@
 
   function openThoughts() {
     showBackupModal = false;
+    // Clear the detail views. Without this, tapping Thoughts while a profile
+    // or thread is open leaves that on screen — the tab appears to do nothing,
+    // which is exactly the bug the feed tab shipped with in v1.26.
+    activeThreadId.set(null);
+    activeProfile.set(null);
     activeSection.set('thoughts');
     // Closing the sidebar is what actually reveals the feed. Below md the
     // sidebar is a full-width overlay (ChatSidebar's max-md:translate-x-0),
@@ -46,6 +66,18 @@
     // open switched the pane underneath and left the screen looking
     // completely unchanged. Opening a chat has always done this; the feed
     // needs it for the same reason.
+    sidebarOpen.set(false);
+  }
+
+  // Your own profile, as everyone else sees it — the same pane, so what you
+  // are showing the world is never a guess. ProfilePane already drops Follow
+  // and Mute on your own profile.
+  function openProfile() {
+    if (!$currentUser?.username) return;
+    showBackupModal = false;
+    activeThreadId.set(null);
+    activeProfile.set($currentUser.username);
+    activeSection.set('thoughts');
     sidebarOpen.set(false);
   }
 </script>
@@ -70,13 +102,27 @@
     <button
       on:click={openThoughts}
       class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 focus:outline-none
-        {onFeed ? 'text-vault-accent' : 'text-vault-text-dim'}"
-      aria-current={onFeed}
+        {thoughtsActive ? 'text-vault-accent' : 'text-vault-text-dim'}"
+      aria-current={thoughtsActive}
     >
       <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
       <span class="text-[10px] font-medium">Thoughts</span>
+    </button>
+
+    <button
+      on:click={openProfile}
+      class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 focus:outline-none
+        {ownProfile ? 'text-vault-accent' : 'text-vault-text-dim'}"
+      aria-current={ownProfile}
+      aria-label="Your profile and posts"
+    >
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1" stroke-linecap="round" />
+      </svg>
+      <span class="text-[10px] font-medium">Profile</span>
     </button>
 
     <button

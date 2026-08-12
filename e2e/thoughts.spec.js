@@ -198,6 +198,40 @@ test.describe('thoughts', () => {
     }
   });
 
+  test('the Profile tab opens your own profile and keeps the tab bar', async ({ browser }) => {
+    // The tab bar hides itself whenever a profile is open, because a profile
+    // is normally something you navigated *into* from a post. Your own
+    // profile is where a tab lands you, so the same rule would strand you on
+    // a screen with no visible way back — the trap this pins.
+    const ctx = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { width: 390, height: 844 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    const page = await ctx.newPage();
+
+    try {
+      const username = uniqueUsername('tpr');
+      await register(page, username);
+
+      await page.getByRole('button', { name: 'Your profile and posts' }).click();
+
+      await expect(page.getByText(`@${username}`).first()).toBeVisible({ timeout: 20_000 });
+      // No Follow button on your own profile — the server would refuse it and
+      // it means nothing.
+      await expect(page.getByRole('button', { name: 'Follow', exact: true })).toHaveCount(0);
+
+      // The bar is still there, and Thoughts still goes back to the timeline.
+      await expect(page.getByRole('button', { name: 'Thoughts' })).toBeVisible();
+      await page.getByRole('button', { name: 'Thoughts' }).click();
+      await expect(page.getByPlaceholder(/it disappears in 24 hours/i))
+        .toBeVisible({ timeout: 20_000 });
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('the Thoughts tab reveals the feed on a phone', async ({ browser }) => {
     // The v1.26 regression, pinned. Below md the sidebar is a full-width
     // overlay, so switching section without closing it left the screen
