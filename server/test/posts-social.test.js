@@ -379,6 +379,61 @@ describe('profiles', () => {
     assert.equal(quote.repostOfId, original.id);
   });
 
+  test('a repost carries what it points at, so it is not a blank card', async () => {
+    // PostCard has no content of its own for a plain repost. Without the join
+    // the timeline showed an author line, a timestamp, some buttons, and
+    // nothing else.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const original = await post(alice, { body: 'the original thought' });
+
+    const reposted = await post(bob, { repostOfId: original.id });
+    assert.equal(reposted.repostUsername, alice.username, 'returned by create');
+    assert.equal(reposted.repostExcerpt, 'the original thought');
+
+    // And on the way back out of the timeline, which is a different query.
+    const { posts } = await timeline(bob);
+    const seen = posts.find((p) => p.id === reposted.id);
+    assert.equal(seen.repostUsername, alice.username);
+    assert.equal(seen.repostExcerpt, 'the original thought');
+  });
+
+  test('a repost of a taken-down post says so rather than showing nothing', async () => {
+    // Note which case this is. Deleting a post *cascades* to every repost of
+    // it (repost_of_id is ON DELETE CASCADE), so a deleted original leaves no
+    // repost behind to render. The surviving case is an operator takedown,
+    // which sets removed_at and keeps the row — the join excludes it, and the
+    // client shows "no longer available" instead of an empty quote.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const original = await post(alice, { body: 'briefly here' });
+    const reposted = await post(bob, { repostOfId: original.id });
+
+    await harness.store.pool.query(
+      'UPDATE posts SET removed_at = now() WHERE id = $1', [original.id]
+    );
+
+    const { posts } = await timeline(bob);
+    const seen = posts.find((p) => p.id === reposted.id);
+    assert.ok(seen, 'the repost itself survives a takedown of its source');
+    assert.equal(seen.repostUsername, null, 'the client renders this as unavailable');
+  });
+
+  test('deleting a post takes its reposts with it', async () => {
+    // Worth pinning because it is not obvious and it is load-bearing: a repost
+    // carries no content of its own, so one left pointing at a deleted post
+    // would be an empty card nobody could remove.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const original = await post(alice, { body: 'briefly here' });
+    await post(bob, { repostOfId: original.id });
+
+    await send(alice, 'DELETE', `/api/posts/${original.id}`);
+
+    const { rows } = await harness.store.pool.query('SELECT count(*)::int AS n FROM posts');
+    assert.equal(rows[0].n, 0);
+  });
+
   test('a blocked user cannot enumerate your follower list', async () => {
     // /profile 404s for a blocked viewer on the stated grounds that a profile
     // rendering for someone you blocked is a hole in the block. The follow

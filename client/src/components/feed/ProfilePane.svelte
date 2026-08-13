@@ -289,7 +289,8 @@
             <button
               on:click={toggleFollow}
               disabled={busy}
-              class="flex-1 py-2 rounded-xl text-xs font-semibold transition-all focus:outline-none disabled:opacity-50
+              class="flex-1 py-2 rounded-xl text-xs font-semibold focus:outline-none disabled:opacity-50
+                transition-[background-color,color,border-color,transform] duration-200 active:scale-[0.97]
                 {profile.following
                   ? 'bg-vault-elevated text-vault-text border border-vault-border'
                   : 'bg-vault-accent text-vault-black'}"

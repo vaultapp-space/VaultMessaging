@@ -260,6 +260,43 @@ textarea,
 .animate-pulse-glow   { animation: pulse-glow 2s ease-in-out infinite; }
 .animate-scale-up     { animation: fadeInScale 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
+/* ─── Feed motion ────────────────────────────────────────
+   The feed is the app's home screen on Android and was, until now, the least
+   animated surface in the product — two transitions in the whole tree while
+   the sidebar animated its row reordering. These are the pieces that carry
+   meaning rather than decoration: what you just did, what just arrived, and
+   what is still loading.
+
+   All of it is collapsed to a single frame by the prefers-reduced-motion rule
+   further up this file, so none of it needs its own guard. */
+
+/* A like is the most repeated action in the app and was a colour swap. The
+   overshoot is what makes it read as a press rather than a state change. */
+@keyframes heart-pop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.35); }
+  70%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.animate-heart-pop { animation: heart-pop 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* A count that changes silently is easy to miss; it rises into place instead
+   of swapping. Short, because it fires on every like anyone else makes too. */
+@keyframes count-roll {
+  from { transform: translateY(0.45em); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.animate-count-roll { animation: count-roll 0.22s ease-out; }
+
+/* The unread badge appears without warning otherwise — which defeats a badge
+   whose entire job is to be noticed. */
+@keyframes badge-in {
+  from { transform: scale(0.2); opacity: 0; }
+  60%  { transform: scale(1.15); }
+  to   { transform: scale(1); opacity: 1; }
+}
+.animate-badge-in { animation: badge-in 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+
 /* ─── Text Glow ─────────────────────────────────────────── */
 
 .text-glow-accent {

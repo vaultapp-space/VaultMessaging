@@ -13,7 +13,7 @@
   // would route around that and tell you a blocked user had interacted with
   // you. Same reasoning as feed_tick.
   import { createEventDispatcher, onMount, onDestroy } from 'svelte';
-  import { fade } from 'svelte/transition';
+  import { fly } from 'svelte/transition';
 
   import { fetchNotifications, markNotificationsRead } from '../../lib/api/http.js';
   import { onWsEvent } from '../../lib/api/ws.js';
@@ -118,20 +118,27 @@
     </svg>
 
     {#if $unreadNotifications > 0}
+      <!-- Keyed on the count so the badge re-animates when it changes, not
+           only when it first appears. A badge whose whole job is to be noticed
+           should not arrive silently. -->
+      {#key $unreadNotifications}
       <span
-        class="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-vault-accent
+        class="animate-badge-in absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-vault-accent
                text-vault-black text-[9px] font-bold flex items-center justify-center leading-none"
         aria-hidden="true"
       >{$unreadNotifications > 99 ? '99+' : $unreadNotifications}</span>
+      {/key}
     {/if}
   </button>
 
   {#if open}
+    <!-- Drops from the icon rather than fading in place: the panel is anchored
+         to the bell, so it should look like it came from it. -->
     <div
       class="absolute right-0 top-9 z-40 w-72 max-h-96 overflow-y-auto rounded-xl
              bg-vault-surface border border-vault-border shadow-lg"
       use:clickOutside={() => (open = false)}
-      transition:fade={{ duration: 120 }}
+      transition:fly={{ y: -8, duration: 160 }}
     >
       <div class="px-3 py-2 border-b border-vault-border-subtle">
         <span class="text-[10px] uppercase tracking-wider text-vault-text-dim">Notifications</span>

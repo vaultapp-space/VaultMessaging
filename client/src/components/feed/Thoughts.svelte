@@ -14,6 +14,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { Capacitor } from '@capacitor/core';
   import { fade } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
 
   import {
     activeSection, activeThreadId, activeProfile, sidebarOpen,
@@ -292,10 +293,21 @@
 
   // A repost from the timeline bumps the original's counter in place.
   function onReposted(event) {
-    const { original } = event.detail;
+    const { original, repost } = event.detail;
     posts = posts.map((p) => (p.id === original.id
       ? { ...p, repostsCount: (p.repostsCount ?? 0) + 1 }
       : p));
+
+    // Your repost goes to the top, exactly as your own post does. Without
+    // this, reposting — and especially quoting, where you have just written
+    // something — produced a toast, a counter tick, and nothing you could
+    // see, which reads as the action having failed.
+    if (repost) {
+      posts = [repost, ...posts.filter((p) => p.id !== repost.id)];
+      // Reposting ticks the feed too, so the same self-post suppression
+      // applies or the banner points at something already on screen.
+      lastSelfPostAt = Date.now();
+    }
   }
 </script>
 
@@ -522,7 +534,20 @@
           </p>
         </div>
       {:else}
-        {#each visible as post (post.id)}
+        <!-- flip animates the positional delta when a post is prepended, so a
+             new arrival visibly pushes the list down instead of everything
+             teleporting one slot — the same treatment the chat sidebar gives a
+             conversation that jumps to the top. Needs the keyed each above it,
+             which this already had.
+
+             The staggered fade is capped at eight: past that the last row of a
+             long page would wait most of a second, which reads as slow
+             loading rather than as sequence. -->
+        {#each visible as post, i (post.id)}
+          <div
+            animate:flip={{ duration: (d) => Math.min(400, 120 + Math.sqrt(d) * 12) }}
+            in:fade={{ duration: 180, delay: Math.min(i, 8) * 30 }}
+          >
           <PostCard
             {post}
             on:open={openThread}
@@ -531,6 +556,7 @@
             on:reposted={onReposted}
             on:deleted={onDeleted}
           />
+          </div>
         {/each}
 
         {#if hiddenCount > 0}

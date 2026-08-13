@@ -10,6 +10,7 @@
   // svelte/no-at-html-tags exemption list in eslint.config.js — it does not
   // need to be there, and it should never be added.
   import { createEventDispatcher } from 'svelte';
+  import { slide } from 'svelte/transition';
 
   import { tokenize } from '../../lib/posts/richtext.js';
   import { getAvatarGradient } from '../../lib/avatar.js';
@@ -36,6 +37,20 @@
 
   let menuOpen = false;
   let reposting = false;
+
+  // Fires the heart animation on *your* tap only. Driven by a short-lived flag
+  // rather than by watching likedByMe, because that prop also changes when the
+  // server reconciles the count or when the card is re-rendered from a fresh
+  // page — and a heart that punches because someone else liked something is
+  // noise pretending to be feedback.
+  let popping = false;
+  function like() {
+    if (!post.likedByMe) {
+      popping = true;
+      setTimeout(() => { popping = false; }, 340);
+    }
+    dispatch('like', post);
+  }
   // Which way the menu opens. It lives inside an overflow-y-auto scroller, so
   // a menu that always opened upward was clipped for the first card in the
   // feed — the report options simply could not be reached. Same approach
@@ -200,6 +215,30 @@
            what it answers. Its presence is therefore the whole condition — a
            null value means the parent was removed, which is worth saying
            rather than hiding. -->
+      {#if post.repostOfId}
+        <!-- A repost has no content of its own, so without this the card is
+             blank apart from the author line — and a quote shows your words
+             with no sign of what you were quoting, which is the same
+             non-sequitur the Replies view had. -->
+        <div class="mt-1.5 rounded-xl border border-vault-border-subtle bg-vault-elevated/40 px-3 py-2">
+          {#if post.repostUsername}
+            <div class="text-[10px] text-vault-text-dim">
+              <span class="text-vault-accent">@{post.repostUsername}</span>
+            </div>
+            {#if post.repostExcerpt}
+              <p class="text-xs text-vault-text mt-0.5 whitespace-pre-wrap break-words">{post.repostExcerpt}</p>
+            {/if}
+            {#if post.repostMedia}
+              <p class="text-[10px] text-vault-text-dim mt-1">Contains an image</p>
+            {/if}
+          {:else}
+            <p class="text-[11px] text-vault-text-dim italic">
+              The original post is no longer available
+            </p>
+          {/if}
+        </div>
+      {/if}
+
       {#if 'replyingTo' in post}
         <!-- Only rendered where the server supplied it (the Replies view). A
              reply in its own thread already sits under what it answers. -->
@@ -216,7 +255,12 @@
         <!-- pointer-events-auto: the whole card body sits above a stretched
              "open thread" button and is pointer-events-none by default, so a
              field added here is untypeable without it. -->
-        <div class="pointer-events-auto mt-2 rounded-xl border border-vault-accent/30 bg-vault-elevated p-2">
+        <!-- slide rather than fade: it pushes the card open, so the content
+             below moving down is the point rather than a side effect. -->
+        <div
+          class="pointer-events-auto mt-2 rounded-xl border border-vault-accent/30 bg-vault-elevated p-2"
+          transition:slide={{ duration: 180 }}
+        >
           <!-- Focused via an action rather than the autofocus attribute.
                autofocus scrolls the element into view, and this box lives
                inside a card partway down a scrolling timeline — on a phone
@@ -304,19 +348,22 @@
         </button>
 
         <button
-          on:click|stopPropagation={() => dispatch('like', post)}
+          on:click|stopPropagation={like}
           class="pointer-events-auto flex items-center gap-1.5 text-[11px] focus:outline-none transition-colors
             {post.likedByMe ? 'text-vault-danger' : 'hover:text-vault-text'}"
           aria-pressed={post.likedByMe}
           aria-label="{post.likedByMe ? 'Unlike' : 'Like'}, {post.likesCount} likes"
         >
           <svg
-            class="w-3.5 h-3.5" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+            class="w-3.5 h-3.5 {popping ? 'animate-heart-pop' : ''}" viewBox="0 0 24 24"
+            stroke="currentColor" stroke-width="2"
             fill={post.likedByMe ? 'currentColor' : 'none'}
           >
             <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z" />
           </svg>
-          {post.likesCount || ''}
+          {#key post.likesCount}
+            <span class="animate-count-roll inline-block">{post.likesCount || ''}</span>
+          {/key}
         </button>
 
         <button

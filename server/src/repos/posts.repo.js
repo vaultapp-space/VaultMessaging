@@ -52,11 +52,22 @@ const SELECT_COLUMNS = `
     p.body, p.media, p.reply_to_id, p.root_id, p.repost_of_id,
     p.likes_count, p.replies_count, p.reposts_count,
     p.created_at, p.expires_at,
-    (l.user_id IS NOT NULL) AS liked_by_me`;
+    (l.user_id IS NOT NULL) AS liked_by_me,
+    -- What a repost or quote is pointing at. Joined into every read rather
+    -- than fetched per card: without it a plain repost has no content of its
+    -- own and renders as a blank card, and a quote shows your words with no
+    -- sign of what you were quoting.
+    ru.username AS repost_username,
+    left(rp.body, 140) AS repost_excerpt,
+    rp.media AS repost_media`;
 
 const SELECT_JOINS = `
     JOIN users u ON u.id = p.author_id
-    LEFT JOIN post_likes l ON l.post_id = p.id AND l.user_id = $1`;
+    LEFT JOIN post_likes l ON l.post_id = p.id AND l.user_id = $1
+    LEFT JOIN posts rp ON rp.id = p.repost_of_id
+                      AND rp.removed_at IS NULL
+                      AND rp.expires_at > now()
+    LEFT JOIN users ru ON ru.id = rp.author_id`;
 
 export function createPosts({ pool, uploadsDir }) {
   return {
@@ -92,6 +103,12 @@ export function createPosts({ pool, uploadsDir }) {
         likedByMe: row.liked_by_me ?? false,
         createdAt: row.created_at,
         expiresAt: row.expires_at,
+        // Null when this is not a repost, and also when the reposted post has
+        // expired or been removed — which the client renders as "the original
+        // is gone" rather than as an empty quote.
+        repostUsername: row.repost_username ?? null,
+        repostExcerpt: row.repost_excerpt ?? null,
+        repostMedia: row.repost_media ?? null,
       };
     },
 
@@ -107,9 +124,18 @@ export function createPosts({ pool, uploadsDir }) {
       let parent = null;
 
       if (parentId) {
+        // The author and an excerpt come back too, so a repost can be returned
+        // fully rendered. The INSERT below uses RETURNING *, which has no join
+        // on it — without this the card the client optimistically prepends
+        // would claim the original was unavailable, one second after
+        // successfully reposting it.
         const { rows } = await this.pool.query(
-          `SELECT id, root_id, expires_at FROM posts
-            WHERE id = $1 AND removed_at IS NULL AND expires_at > now()`,
+          `SELECT p.id, p.root_id, p.expires_at, p.media,
+                  u.username AS author_username,
+                  left(p.body, 140) AS excerpt
+             FROM posts p
+             JOIN users u ON u.id = p.author_id
+            WHERE p.id = $1 AND p.removed_at IS NULL AND p.expires_at > now()`,
           [parentId]
         );
         parent = rows[0];
@@ -155,7 +181,13 @@ export function createPosts({ pool, uploadsDir }) {
         );
       }
 
-      return this.shape(post);
+      const shaped = this.shape(post);
+      if (repostOfId && parent) {
+        shaped.repostUsername = parent.author_username;
+        shaped.repostExcerpt = parent.excerpt;
+        shaped.repostMedia = parent.media ?? null;
+      }
+      return shaped;
     },
 
     /**
