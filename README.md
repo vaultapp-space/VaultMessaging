@@ -101,6 +101,20 @@ The Vite dev server proxies `/api` and `/ws` to `http://localhost:3001` by defau
 
 Server configuration lives in `server/src/config.js` and is sourced entirely from environment variables. In production, the server refuses to boot if `JWT_SECRET` or `TURN_SECRET` are left at their insecure development defaults — set real values before deploying (see `ecosystem.config.cjs` for the PM2 production setup, which reads secrets from the shell environment rather than hardcoding them).
 
+## Layout screenshots
+
+```bash
+cd client && npx vite preview --port 4173     # or point at production
+node e2e/screenshot.mjs                       # 1280 / 800 / 480 wide
+node e2e/screenshot.mjs https://vaultapp.space features
+```
+
+Captures a page at several viewport widths into `/tmp/vault-shots/`. It is
+deliberately not a spec and never fails a build — nothing asserts that a grid
+divides evenly, which is exactly how a seventh card in a six-card grid shipped
+with an orphan in its final row. That is a thing you see, not a thing you
+assert.
+
 ## Deploying
 
 ```bash
