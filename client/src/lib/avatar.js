@@ -4,6 +4,23 @@
 
 const gradientCache = new Map();
 
+/**
+ * The primary hue for a username, 0-359.
+ *
+ * Extracted from the same hash the gradient uses, so an author's colour is
+ * identical wherever it appears — the avatar, the accent on their post, the
+ * tint on a quote of it. Two different derivations would drift and the
+ * connection would stop reading as one.
+ */
+export function getAvatarHue(username) {
+  if (!username) return 220;
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return Math.abs(hash) % 360;
+}
+
 export function getAvatarGradient(username) {
   if (!username) return 'linear-gradient(135deg, #1f1f2e, #11111b)';
   if (gradientCache.has(username)) return gradientCache.get(username);

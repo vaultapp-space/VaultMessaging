@@ -13,7 +13,7 @@
   import { slide } from 'svelte/transition';
 
   import { tokenize } from '../../lib/posts/richtext.js';
-  import { getAvatarGradient } from '../../lib/avatar.js';
+  import { getAvatarGradient, getAvatarHue } from '../../lib/avatar.js';
   import { publicMediaUrl, reportPost, repostPost, deletePost } from '../../lib/api/http.js';
   import { currentUser } from '../../lib/stores/session.js';
   import { showToast } from '../../lib/stores/toast.js';
@@ -145,6 +145,34 @@
     }
   }
 
+  // The author's own hue, reused from the avatar hash so the edge of a card,
+  // the avatar on it and any quote of it all agree. The feed was emerald on
+  // charcoal throughout, which made every post look the same at a glance —
+  // this is the cheapest way to make it sortable by eye without adding state.
+  $: hue = getAvatarHue(post.username);
+  $: quotedHue = post.repostUsername ? getAvatarHue(post.repostUsername) : hue;
+
+  // How far through its life this post is, 0 to 1. The 24-hour rule is the one
+  // genuinely distinctive thing about the product and it was rendered as grey
+  // text; this shows it. Recomputed on render rather than on a timer — a
+  // per-card interval across a long feed costs more than the effect is worth,
+  // and the bar only needs to be right when you look at it.
+  $: age = (() => {
+    const created = new Date(post.createdAt).getTime();
+    const expires = new Date(post.expiresAt).getTime();
+    const span = expires - created;
+    if (!Number.isFinite(span) || span <= 0) return 0;
+    return Math.min(1, Math.max(0, (Date.now() - created) / span));
+  })();
+
+  // Warms as it ages. Amber and red already exist as tokens for exactly this
+  // kind of escalation, so the vocabulary is consistent with the rest of the app.
+  $: ageColor = age > 0.85
+    ? 'var(--color-vault-danger)'
+    : age > 0.6
+      ? 'var(--color-vault-warning)'
+      : 'var(--color-vault-accent)';
+
   $: tokens = tokenize(post.body ?? '');
   $: initial = (post.username ?? '?').charAt(0).toUpperCase();
 
@@ -178,7 +206,20 @@
 -->
 <article
   class="relative px-4 py-3 border-b border-vault-border-subtle {interactive ? 'hover:bg-vault-surface/40 transition-colors' : ''}"
+  style="
+    border-left: 2px solid hsl({hue}, 60%, 45%);
+    {isMine ? `background: linear-gradient(90deg, hsl(${hue}, 60%, 45%, 0.055), transparent 55%);` : ''}
+  "
 >
+  <!-- Time remaining, drawn rather than described. Sits on the bottom edge so
+       it reads as the card itself draining. aria-hidden because the card
+       already carries "23h left" as text — this is the same fact, not a second
+       one. -->
+  <div
+    class="absolute bottom-0 left-0 h-px transition-[width] duration-500"
+    style="width: {(1 - age) * 100}%; background: {ageColor}; opacity: 0.5"
+    aria-hidden="true"
+  ></div>
   {#if interactive}
     <button
       on:click={() => dispatch('open', post)}
@@ -220,10 +261,16 @@
              blank apart from the author line — and a quote shows your words
              with no sign of what you were quoting, which is the same
              non-sequitur the Replies view had. -->
-        <div class="mt-1.5 rounded-xl border border-vault-border-subtle bg-vault-elevated/40 px-3 py-2">
+        <!-- Tinted with the *original* author's hue, not this post's: a quote
+             visibly belongs to two people, and the border is what says which
+             one wrote the part inside it. -->
+        <div
+          class="mt-1.5 rounded-xl border bg-vault-elevated/40 px-3 py-2"
+          style="border-color: hsl({quotedHue}, 55%, 45%, 0.35)"
+        >
           {#if post.repostUsername}
             <div class="text-[10px] text-vault-text-dim">
-              <span class="text-vault-accent">@{post.repostUsername}</span>
+              <span style="color: hsl({quotedHue}, 65%, 60%)">@{post.repostUsername}</span>
             </div>
             {#if post.repostExcerpt}
               <p class="text-xs text-vault-text mt-0.5 whitespace-pre-wrap break-words">{post.repostExcerpt}</p>
@@ -307,9 +354,13 @@
                 class="pointer-events-auto text-vault-accent hover:underline"
               >{token.v}</a>
             {:else if token.t === 'mention'}
+              <!-- In that person's own hue rather than the global accent, so a
+                   name is recognisable before you read it — the same colour
+                   their avatar and their posts carry. -->
               <button
                 on:click|stopPropagation={() => dispatch('profile', token.username)}
-                class="pointer-events-auto text-vault-accent hover:underline focus:outline-none"
+                class="pointer-events-auto hover:underline focus:outline-none"
+                style="color: hsl({getAvatarHue(token.username)}, 65%, 60%)"
               >{token.v}</button>
             {:else}{token.v}{/if}
           {/each}

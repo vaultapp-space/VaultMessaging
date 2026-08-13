@@ -494,10 +494,38 @@
         </div>
       {:else if posts.length === 0}
         <div class="text-center py-16 px-6" in:fade={{ duration: 200 }}>
-          <div class="w-12 h-12 rounded-2xl bg-vault-elevated flex items-center justify-center mx-auto mb-3">
-            <svg class="w-6 h-6 text-vault-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-            </svg>
+          <!-- One icon per tab rather than the same chat bubble for all three.
+               These are the most-seen screens on a product where the feed
+               empties every day, and a shared placeholder made the three tabs
+               indistinguishable when each is empty for a completely different
+               reason. Tinted with the accent at low alpha so the empty state
+               still looks like part of the app. -->
+          <div
+            class="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3"
+            style="background: color-mix(in srgb, var(--color-vault-accent) 8%, var(--color-vault-elevated))"
+          >
+            {#if tab === 'following'}
+              <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
+                   style="color: color-mix(in srgb, var(--color-vault-accent) 55%, var(--color-vault-muted))">
+                <circle cx="9" cy="8" r="3.2" />
+                <path d="M3 20v-1a5 5 0 015-5h2a5 5 0 015 5v1" stroke-linecap="round" />
+                <path d="M17 8h5M19.5 5.5v5" stroke-linecap="round" />
+              </svg>
+            {:else if tab === 'top'}
+              <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
+                   style="color: color-mix(in srgb, var(--color-vault-warning) 60%, var(--color-vault-muted))">
+                <path d="M12 3s4.5 4 4.5 8a4.5 4.5 0 01-9 0c0-1.6.7-3.1 1.5-4.2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M12 21a6 6 0 006-6c0-1.2-.3-2.3-.8-3.3" stroke-linecap="round" opacity="0.5" />
+              </svg>
+            {:else}
+              <!-- An hourglass, because the reason this one is empty is time. -->
+              <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"
+                   style="color: color-mix(in srgb, var(--color-vault-accent) 55%, var(--color-vault-muted))">
+                <path d="M6 3h12M6 21h12" stroke-linecap="round" />
+                <path d="M8 3v3.5a4 4 0 004 4 4 4 0 004-4V3" stroke-linejoin="round" />
+                <path d="M8 21v-3.5a4 4 0 014-4 4 4 0 014 4V21" stroke-linejoin="round" />
+              </svg>
+            {/if}
           </div>
           {#if tab === 'following'}
             <p class="text-xs text-vault-text-dim">Nothing from anyone you follow</p>

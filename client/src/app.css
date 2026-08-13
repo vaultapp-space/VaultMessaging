@@ -472,10 +472,15 @@ button:not(.btn-primary):not(.btn-ghost):not(:disabled):active {
 /* ─── Skeleton Loader ───────────────────────────────────── */
 
 .skeleton {
+  /* The sweep carries a trace of the accent rather than being a neutral grey
+     pass. Loading is the state people see most often on a feed that empties
+     every day, and a placeholder that looks like the product reads as the
+     product working rather than as a generic spinner. Kept very low — this
+     should register as warmth, not as a colour. */
   background: linear-gradient(
     90deg,
     var(--color-vault-elevated) 25%,
-    var(--color-vault-border) 50%,
+    color-mix(in srgb, var(--color-vault-accent) 12%, var(--color-vault-border)) 50%,
     var(--color-vault-elevated) 75%
   );
   background-size: 400% 100%;

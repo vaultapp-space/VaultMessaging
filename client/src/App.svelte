@@ -10,7 +10,7 @@
   import { SenderKeySession } from './lib/crypto/senderkeys.js';
   import Landing from './components/Landing.svelte';
   import NativeWelcome from './components/NativeWelcome.svelte';
-  import { applyTheme } from './lib/theme.js';
+  import { applyTheme, applyAccent, storedAccent } from './lib/theme.js';
   import { Capacitor } from '@capacitor/core';
   import ToastHost from './components/ToastHost.svelte';
   import ConfirmDialog from './components/ConfirmDialog.svelte';
@@ -34,6 +34,9 @@
 
   // Initialize theme from localStorage immediately (no flicker)
   applyTheme(localStorage.getItem('vault_theme') || 'light');
+  // Before first paint, alongside the light/dark choice — applying it later
+  // would repaint every accented element once the app was already up.
+  applyAccent(storedAccent());
 
   let mounted = false;
   let wakeLock = null;

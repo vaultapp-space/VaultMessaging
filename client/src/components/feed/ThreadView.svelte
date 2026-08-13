@@ -10,6 +10,7 @@
   import { fetchPost, fetchPostReplies, likePost, unlikePost } from '../../lib/api/http.js';
   import { showToast } from '../../lib/stores/toast.js';
   import { pushBackHandler } from '../../lib/backHandler.js';
+  import { getAvatarHue } from '../../lib/avatar.js';
   import PostCard from './PostCard.svelte';
   import PostComposer from './PostComposer.svelte';
 
@@ -142,9 +143,22 @@
         {replies.length === 0 ? 'No replies' : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
       </div>
 
-      {#each replies as reply (reply.id)}
-        <PostCard post={reply} interactive={false} on:profile on:like={toggleLike} on:reposted on:deleted={onDeleted} />
-      {/each}
+      <!-- A hairline in the root author's hue running beside the replies, so
+           a thread reads as belonging to the post above it rather than as a
+           list that happens to follow it. -->
+      <div
+        class="relative"
+        style="--thread-hue: {getAvatarHue(root?.username)}"
+      >
+        <div
+          class="absolute left-0 top-0 bottom-0 w-px"
+          style="background: linear-gradient(180deg, hsl(var(--thread-hue), 55%, 45%, 0.5), transparent)"
+          aria-hidden="true"
+        ></div>
+        {#each replies as reply (reply.id)}
+          <PostCard post={reply} interactive={false} on:profile on:like={toggleLike} on:reposted on:deleted={onDeleted} />
+        {/each}
+      </div>
     {/if}
   </div>
 </div>

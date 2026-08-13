@@ -52,3 +52,53 @@ export function applyTheme(newTheme) {
       .catch(() => {});
   }
 }
+
+
+// ─── Accent colour ──────────────────────────────────────────
+// The six palettes below already existed as *per-chat* themes (ChatView's
+// CHAT_THEMES). They were unreachable anywhere else, so the feed, profiles,
+// notifications and every button in the app were locked to emerald whatever
+// someone chose for a conversation.
+//
+// Applied by overwriting the accent custom properties on :root. Everything in
+// the product reads those variables rather than a literal, so this recolours
+// the whole app without touching a component — which is also why it must set
+// every one of them: leaving the glow variables behind would give a green halo
+// around a purple button.
+
+export const ACCENTS = [
+  { name: 'emerald', label: 'Emerald', hex: '#10b981', hover: '#34d399', dim: '#059669' },
+  { name: 'ocean',   label: 'Ocean',   hex: '#0ea5e9', hover: '#38bdf8', dim: '#0284c7' },
+  { name: 'sunset',  label: 'Sunset',  hex: '#f97316', hover: '#fb923c', dim: '#ea580c' },
+  { name: 'orchid',  label: 'Orchid',  hex: '#a855f7', hover: '#c084fc', dim: '#9333ea' },
+  { name: 'rose',    label: 'Rose',    hex: '#f43f5e', hover: '#fb7185', dim: '#e11d48' },
+  { name: 'slate',   label: 'Slate',   hex: '#64748b', hover: '#94a3b8', dim: '#475569' },
+];
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+export function applyAccent(name) {
+  const accent = ACCENTS.find((a) => a.name === name) ?? ACCENTS[0];
+  const root = document.documentElement;
+  const [r, g, b] = hexToRgb(accent.hex);
+
+  root.style.setProperty('--color-vault-accent', accent.hex);
+  root.style.setProperty('--color-vault-accent-hover', accent.hover);
+  root.style.setProperty('--color-vault-accent-dim', accent.dim);
+  // Derived rather than hardcoded per palette, so adding a seventh accent
+  // means adding one row above and nothing else.
+  root.style.setProperty('--color-vault-accent-glow', `rgba(${r}, ${g}, ${b}, 0.15)`);
+  root.style.setProperty('--color-vault-accent-glow-strong', `rgba(${r}, ${g}, ${b}, 0.25)`);
+}
+
+/** Reads the stored choice. Safe to call before the DOM exists. */
+export function storedAccent() {
+  try {
+    return localStorage.getItem('vault_accent') || 'emerald';
+  } catch {
+    return 'emerald';
+  }
+}

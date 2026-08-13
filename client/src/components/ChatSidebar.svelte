@@ -25,7 +25,7 @@
   import { syncCloudVault } from '../lib/crypto/sync.js';
   import { encryptSyncPayload } from '../lib/crypto/keys.js';
   import { toBase64 } from '../lib/crypto/utils.js';
-  import { applyTheme as applyThemeGlobal } from '../lib/theme.js';
+  import { applyTheme as applyThemeGlobal, applyAccent, storedAccent, ACCENTS } from '../lib/theme.js';
   import { showToast } from '../lib/stores/toast.js';
   import { pushBackHandler } from '../lib/backHandler.js';
   import { showConfirm } from '../lib/stores/confirm.js';
@@ -463,6 +463,14 @@
     } catch (err) {
       showToast(err?.message || 'Could not delete that chat');
     }
+  }
+
+  let accent = storedAccent();
+
+  function pickAccent(name) {
+    accent = name;
+    applyAccent(name);
+    try { localStorage.setItem('vault_accent', name); } catch { /* private mode */ }
   }
 
   let deletingAccount = false;
@@ -1832,6 +1840,30 @@
             >
               Light
             </button>
+          </div>
+        </div>
+
+        <!-- The six palettes already shipped as *per-chat* themes and were
+             unreachable anywhere else, so the feed, profiles, notifications
+             and every button stayed emerald whatever someone picked for a
+             conversation. Same list, applied to the whole app. -->
+        <div class="flex items-center justify-between border-b border-vault-border pb-4">
+          <div>
+            <span class="text-xs font-semibold text-vault-text block">Accent colour</span>
+            <span class="text-[10px] text-vault-text-dim block">Applies everywhere, on this device.</span>
+          </div>
+          <div class="flex items-center gap-1.5 flex-wrap justify-end">
+            {#each ACCENTS as option (option.name)}
+              <button
+                on:click={() => pickAccent(option.name)}
+                title={option.label}
+                aria-label={option.label}
+                aria-pressed={accent === option.name}
+                class="w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 active:scale-95 focus:outline-none
+                  {accent === option.name ? 'border-vault-text' : 'border-transparent'}"
+                style="background: {option.hex}"
+              ></button>
+            {/each}
           </div>
         </div>
 
