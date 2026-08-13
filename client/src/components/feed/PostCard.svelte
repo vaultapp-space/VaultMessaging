@@ -188,6 +188,18 @@
         </span>
       </div>
 
+      {#if post.replyingTo || (post.replyToId && post.replyingTo === null && 'replyingTo' in post)}
+        <!-- Only rendered where the server supplied it (the Replies view). A
+             reply in its own thread already sits under what it answers. -->
+        <div class="text-[10px] text-vault-text-dim mb-0.5 truncate">
+          {#if post.replyingTo}
+            Replying to <span class="text-vault-accent">@{post.replyingTo}</span>{#if post.replyingToExcerpt}<span class="text-vault-text-dim"> · {post.replyingToExcerpt}</span>{/if}
+          {:else}
+            Replying to a post that has since been removed
+          {/if}
+        </div>
+      {/if}
+
       {#if quoting}
         <!-- pointer-events-auto: the whole card body sits above a stretched
              "open thread" button and is pointer-events-none by default, so a

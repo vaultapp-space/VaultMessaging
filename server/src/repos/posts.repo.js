@@ -243,7 +243,16 @@ export function createPosts({ pool, uploadsDir }) {
 
       const hasMore = rows.length > limit;
       const page = hasMore ? rows.slice(0, limit) : rows;
-      return { posts: page.map((r) => this.shape(r)), hasMore };
+      return {
+        posts: page.map((r) => ({
+          ...this.shape(r),
+          // Null on a reply whose parent has since been removed, which the
+          // client renders as "a deleted post" rather than an empty quote.
+          replyingTo: r.parent_username ?? null,
+          replyingToExcerpt: r.parent_excerpt ?? null,
+        })),
+        hasMore,
+      };
     },
 
     /** A single post, subject to the same visibility rules as the timeline. */
@@ -325,9 +334,22 @@ export function createPosts({ pool, uploadsDir }) {
         ? 'p.reply_to_id IS NOT NULL'
         : 'p.reply_to_id IS NULL';
 
+      // Replies carry who they answer. Without it the Replies view is a list
+      // of fragments — half a conversation with the half that gave it meaning
+      // missing — which is the reason replies were hidden from profiles in the
+      // first place. Joined here rather than fetched per row: a page of twenty
+      // replies would otherwise be twenty extra round trips.
+      const parentJoin = kind === 'replies'
+        ? `LEFT JOIN posts parent ON parent.id = p.reply_to_id
+           LEFT JOIN users pu ON pu.id = parent.author_id`
+        : '';
+      const parentColumns = kind === 'replies'
+        ? `, pu.username AS parent_username, left(parent.body, 80) AS parent_excerpt`
+        : '';
+
       const { rows } = await this.pool.query(
-        `SELECT ${SELECT_COLUMNS}
-           FROM posts p ${SELECT_JOINS}
+        `SELECT ${SELECT_COLUMNS}${parentColumns}
+           FROM posts p ${SELECT_JOINS} ${parentJoin}
           WHERE u.username = $2
             AND ${replyPredicate}
             AND p.removed_at IS NULL
@@ -342,6 +364,47 @@ export function createPosts({ pool, uploadsDir }) {
       const hasMore = rows.length > limit;
       const page = hasMore ? rows.slice(0, limit) : rows;
       return { posts: page.map((r) => this.shape(r)), hasMore };
+    },
+
+    /**
+     * Text search across the public feed.
+     *
+     * `ILIKE '%term%'` rather than full-text search, and that is a considered
+     * choice rather than a shortcut: the table never holds more than 24 hours
+     * of posts, so the whole corpus is small enough that a sequential scan is
+     * genuinely cheap — and a tsvector index would have to be maintained on
+     * every insert for a table where every row is deleted within a day. If the
+     * instance ever grows past that, `pg_trgm` is the next step, not
+     * `to_tsvector`, because a feed search wants substrings and misspellings
+     * more than it wants stemming.
+     *
+     * A leading wildcard means the query cannot use a btree index. That is the
+     * cost being accepted; the LIMIT and the 24h ceiling are what keep it
+     * bounded.
+     *
+     * The same visibility predicate as every other read. A search that
+     * returned a blocked user's posts would be the easiest possible way around
+     * a block.
+     */
+    async search(viewerId, term, { limit = 30 } = {}) {
+      // Escaped so a user searching for a literal % or _ gets what they typed
+      // rather than a wildcard — and so a query of "%" does not return the
+      // entire feed.
+      const escaped = term.replace(/[%_\\]/g, '\\$&');
+
+      const { rows } = await this.pool.query(
+        `SELECT ${SELECT_COLUMNS}
+           FROM posts p ${SELECT_JOINS}
+          WHERE p.removed_at IS NULL
+            AND p.expires_at > now()
+            AND p.body ILIKE $2 ESCAPE '\\'
+            ${VISIBILITY_PREDICATE}
+          ORDER BY p.created_at DESC
+          LIMIT $3`,
+        [viewerId, `%${escaped}%`, limit]
+      );
+
+      return { posts: rows.map((r) => this.shape(r)), hasMore: false };
     },
 
     /**

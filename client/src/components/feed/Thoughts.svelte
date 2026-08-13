@@ -17,7 +17,7 @@
   import {
     activeSection, activeThreadId, activeProfile, sidebarOpen,
   } from '../../lib/stores/session.js';
-  import { fetchTimeline, likePost, unlikePost } from '../../lib/api/http.js';
+  import { fetchTimeline, likePost, unlikePost, searchPosts } from '../../lib/api/http.js';
   import {
     loadFilters, partitionFiltered, addFilter, removeFilter,
   } from '../../lib/posts/filters.js';
@@ -49,11 +49,18 @@
   let filters = [];
   let filtersOpen = false;
   let newFilter = '';
+  let searchQuery = '';
+  let searching = false;
+  // Distinct from `posts` so leaving search restores the timeline without a
+  // refetch — and so a slow search never overwrites the feed underneath it.
+  let searchResults = null;
 
   // Applied in the browser, never sent to the server — see lib/posts/filters.js.
   // The count is surfaced rather than the posts silently vanishing: a feed that
   // quietly gets shorter reads as content failing to load.
-  $: ({ visible, hiddenCount } = partitionFiltered(posts, filters));
+  // Keyword filters apply to search results too — a filtered word should not
+  // come back just because it was searched for by something else.
+  $: ({ visible, hiddenCount } = partitionFiltered(searchResults ?? posts, filters));
 
   // Android back leaves the feed rather than the app, matching how a chat
   // behaves. Registered while this pane is mounted and popped on destroy.
@@ -159,7 +166,38 @@
     if (remaining < 600) loadMore();
   }
 
+  let searchTimer = null;
+  function onSearchInput() {
+    clearTimeout(searchTimer);
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      searchResults = null;
+      return;
+    }
+    // Debounced: the query is a substring scan, so one request per keystroke
+    // is a scan per keystroke.
+    searchTimer = setTimeout(async () => {
+      searching = true;
+      try {
+        const res = await searchPosts(q);
+        searchResults = res.posts;
+      } catch (err) {
+        showToast(err?.message || 'Could not search');
+        searchResults = [];
+      } finally {
+        searching = false;
+      }
+    }, 300);
+  }
+
+  function clearSearch() {
+    clearTimeout(searchTimer);
+    searchQuery = '';
+    searchResults = null;
+  }
+
   async function switchTab(next) {
+    clearSearch();
     if (tab === next) return;
     tab = next;
     posts = [];
@@ -265,6 +303,29 @@
         <!-- Top right, beside the title rather than in the tab row: it is not
              a view of the feed, it is a view of what happened to you. -->
         <NotificationsBell on:open={openThread} on:profile={openProfile} />
+      </div>
+
+      <div class="relative mt-2">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-vault-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" stroke-linecap="round" />
+        </svg>
+        <input
+          bind:value={searchQuery}
+          on:input={onSearchInput}
+          placeholder="Search posts…"
+          class="w-full bg-vault-elevated border border-vault-border-subtle rounded-lg py-1.5 pl-7 pr-7 text-xs text-vault-text placeholder:text-vault-text-dim outline-none focus:border-vault-accent/40 transition-colors"
+        />
+        {#if searchQuery}
+          <button
+            on:click={clearSearch}
+            class="absolute right-2 top-1/2 -translate-y-1/2 text-vault-text-dim hover:text-vault-text focus:outline-none"
+            aria-label="Clear search"
+          >
+            <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        {/if}
       </div>
 
       <div class="flex items-center gap-1 mt-2.5">
@@ -394,6 +455,15 @@
               Everything here expires. Whatever was posted yesterday is already gone.
             </p>
           {/if}
+        </div>
+      {:else if searchResults !== null && visible.length === 0}
+        <div class="text-center py-14 px-6">
+          <p class="text-xs text-vault-text-dim">
+            {searching ? 'Searching…' : 'Nothing matches that'}
+          </p>
+          <p class="text-[10px] text-vault-text-dim mt-1">
+            Search only covers the last 24 hours — everything older has already been deleted.
+          </p>
         </div>
       {:else}
         {#each visible as post (post.id)}

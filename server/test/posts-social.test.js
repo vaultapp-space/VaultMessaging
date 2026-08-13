@@ -310,6 +310,32 @@ describe('profiles', () => {
     assert.deepEqual(JSON.parse(other.body).posts.map((p) => p.body), ['alice top level']);
   });
 
+  test('search finds a post and respects blocks', async () => {
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    await post(alice, { body: 'a distinctive phrase about otters' });
+    await post(alice, { body: 'something else entirely' });
+
+    const found = JSON.parse((await send(bob, 'GET', '/api/posts/search?q=otters')).body);
+    assert.deepEqual(found.posts.map((p) => p.body), ['a distinctive phrase about otters']);
+
+    // A search that returned a blocked user's posts would be the easiest
+    // possible way around a block.
+    await send(bob, 'POST', `/api/users/${alice.id}/block`, {});
+    const after = JSON.parse((await send(bob, 'GET', '/api/posts/search?q=otters')).body);
+    assert.equal(after.posts.length, 0);
+  });
+
+  test('search treats wildcards as literal text', async () => {
+    // Unescaped, a query of '%' returns the entire feed.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    await post(alice, { body: 'plain text with no wildcards' });
+
+    const res = JSON.parse((await send(bob, 'GET', '/api/posts/search?q=%25%25')).body);
+    assert.equal(res.posts.length, 0, 'a bare wildcard must match nothing');
+  });
+
   test('the Top tab ranks by likes and omits posts with none', async () => {
     const alice = await registerUser(app);
     const bob = await registerUser(app);

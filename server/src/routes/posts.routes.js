@@ -239,6 +239,31 @@ async function postRoutes(fastify) {
     });
   });
 
+  // ─── SEARCH ───────────────────────────────────────────────
+  // Public posts only. Nothing here can reach a message: those live in another
+  // table entirely and most are ciphertext the server cannot read.
+  fastify.get('/api/posts/search', {
+    preValidation: [fastify.authenticate],
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    schema: {
+      querystring: {
+        type: 'object',
+        required: ['q'],
+        properties: {
+          // A minimum length, because a one-character substring search
+          // returns most of the feed and costs a full scan to do it.
+          q: { type: 'string', minLength: 2, maxLength: 100 },
+          limit: { type: 'integer', minimum: 1, maximum: 50, default: 30 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { posts } = await fastify.repos.posts.search(
+      request.user.id, request.query.q.trim(), { limit: request.query.limit }
+    );
+    return reply.send({ posts, hasMore: false, nextCursor: null });
+  });
+
   // ─── READ ONE ─────────────────────────────────────────────
   fastify.get('/api/posts/:postId', {
     preValidation: [fastify.authenticate],

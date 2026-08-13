@@ -692,6 +692,11 @@ export async function markNotificationsRead() {
  * profile — the only place with an unmute button — became unreachable through
  * the feed. The only way back was remembering the exact username.
  */
+/** Text search across public posts. Bounded, unpaginated — see posts.repo.search. */
+export async function searchPosts(query, { limit = 30 } = {}) {
+  return request('GET', `/posts/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+}
+
 export async function fetchMutes() {
   return request('GET', '/mutes');
 }
