@@ -26,6 +26,12 @@
 
   let profile = null;
   let posts = [];
+  // The API has always returned hasMore and a cursor here; nothing read them,
+  // so a profile stopped dead at the first page with no sign there was more.
+  let cursor = null;
+  let hasMore = false;
+  let loadingMore = false;
+  let scroller;
   let loading = true;
   let error = null;
   let popBack = null;
@@ -51,6 +57,8 @@
       ]);
       profile = p;
       posts = listed.posts;
+      cursor = listed.nextCursor;
+      hasMore = listed.hasMore;
     } catch (err) {
       error = err.message || 'This profile is not available';
     } finally {
@@ -70,6 +78,8 @@
     try {
       const listed = await fetchUserPosts(username, { kind });
       posts = listed.posts;
+      cursor = listed.nextCursor;
+      hasMore = listed.hasMore;
     } catch (err) {
       showToast(err?.message || 'Could not load those');
     } finally {
@@ -136,6 +146,30 @@
         : p));
       showToast(err?.message || 'Could not save that');
     }
+  }
+
+  async function loadMore() {
+    if (!hasMore || loadingMore || listDirection) return;
+    loadingMore = true;
+    try {
+      const listed = await fetchUserPosts(username, { kind, cursor });
+      // De-duplicated for the same reason the timeline is: a post arriving
+      // between two fetches shifts the window and can return on both sides.
+      const seen = new Set(posts.map((p) => p.id));
+      posts = [...posts, ...listed.posts.filter((p) => !seen.has(p.id))];
+      cursor = listed.nextCursor;
+      hasMore = listed.hasMore;
+    } catch (err) {
+      showToast(err?.message || 'Could not load more');
+    } finally {
+      loadingMore = false;
+    }
+  }
+
+  function onScroll() {
+    if (!scroller) return;
+    const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+    if (remaining < 600) loadMore();
   }
 
   function onDeleted(event) {
@@ -207,7 +241,7 @@
     <h1 class="text-sm font-semibold text-vault-text truncate">@{username}</h1>
   </div>
 
-  <div class="flex-1 overflow-y-auto">
+  <div bind:this={scroller} on:scroll={onScroll} class="flex-1 overflow-y-auto">
     {#if loading}
       <div class="px-4 py-5 flex items-center gap-3" aria-busy="true" aria-label="Loading profile">
         <div class="skeleton w-14 h-14 rounded-full" aria-hidden="true"></div>

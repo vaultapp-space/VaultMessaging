@@ -310,6 +310,107 @@ describe('profiles', () => {
     assert.deepEqual(JSON.parse(other.body).posts.map((p) => p.body), ['alice top level']);
   });
 
+  test('the Top tab ranks by likes and omits posts with none', async () => {
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const quiet = await post(alice, { body: 'nobody liked this' });
+    const popular = await post(alice, { body: 'the popular one' });
+    await send(bob, 'POST', `/api/posts/${popular.id}/like`, {});
+
+    const res = await send(bob, 'GET', '/api/posts/timeline?tab=top');
+    const bodies = JSON.parse(res.body).posts.map((p) => p.body);
+
+    // Zero-like posts are excluded — including them makes Top identical to
+    // Global with the order shuffled.
+    assert.deepEqual(bodies, ['the popular one']);
+    assert.ok(quiet.id);
+  });
+
+  test('Top reports no more pages, because it cannot be paged soundly', async () => {
+    // Ordering by a value that changes while you read makes keyset pagination
+    // unsound: a post gaining likes between pages is served twice, one losing
+    // them is skipped. The client must not try.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const p = await post(alice, { body: 'liked' });
+    await send(bob, 'POST', `/api/posts/${p.id}/like`, {});
+
+    const res = JSON.parse((await send(bob, 'GET', '/api/posts/timeline?tab=top')).body);
+    assert.equal(res.hasMore, false);
+    assert.equal(res.nextCursor, null);
+  });
+
+  test('a quote post carries both the comment and the reference', async () => {
+    // The server has accepted these together since the feature shipped; only
+    // the client never sent a body, so quoting was impossible for no reason.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const original = await post(alice, { body: 'the original' });
+
+    const quote = await post(bob, { body: 'my take on this', repostOfId: original.id });
+
+    assert.equal(quote.body, 'my take on this');
+    assert.equal(quote.repostOfId, original.id);
+  });
+
+  test('a blocked user cannot enumerate your follower list', async () => {
+    // /profile 404s for a blocked viewer on the stated grounds that a profile
+    // rendering for someone you blocked is a hole in the block. The follow
+    // lists are the more sensitive half of a profile, not the less, and had no
+    // check at all — the endpoint shipped with follows and nothing called it
+    // until the client grew a way in.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const carol = await registerUser(app);
+
+    await send(carol, 'POST', `/api/users/${alice.id}/follow`, {});
+    assert.equal(
+      JSON.parse((await send(bob, 'GET', `/api/users/${alice.id}/followers`)).body).users.length,
+      1, 'precondition: visible before the block'
+    );
+
+    await send(alice, 'POST', `/api/users/${bob.id}/block`, {});
+
+    for (const direction of ['followers', 'following']) {
+      const res = await send(bob, 'GET', `/api/users/${alice.id}/${direction}`);
+      assert.equal(res.statusCode, 404, `${direction} must 404 for a blocked viewer`);
+    }
+  });
+
+  test('a blocked account does not appear inside someone else\'s follower list', async () => {
+    // Otherwise the block is avoidable by looking at any mutual connection.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const carol = await registerUser(app);
+
+    await send(bob, 'POST', `/api/users/${carol.id}/follow`, {});
+    await send(alice, 'POST', `/api/users/${carol.id}/follow`, {});
+
+    const before = JSON.parse((await send(alice, 'GET', `/api/users/${carol.id}/followers`)).body);
+    assert.equal(before.users.length, 2, 'precondition');
+
+    await send(alice, 'POST', `/api/users/${bob.id}/block`, {});
+
+    const after = JSON.parse((await send(alice, 'GET', `/api/users/${carol.id}/followers`)).body);
+    assert.deepEqual(after.users.map((u) => u.username), [alice.username]);
+  });
+
+  test('blocking prevents a follow, and says so as a 404', async () => {
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+
+    await send(alice, 'POST', `/api/users/${bob.id}/block`, {});
+
+    // 404 rather than 403: a distinguishable answer would confirm the block.
+    const res = await send(bob, 'POST', `/api/users/${alice.id}/follow`, {});
+    assert.equal(res.statusCode, 404);
+
+    // And nothing was written — the earlier shape reported success here while
+    // recording nothing, so the client showed "Following" over an empty table.
+    const { rows } = await harness.store.pool.query('SELECT count(*)::int AS n FROM follows');
+    assert.equal(rows[0].n, 0);
+  });
+
   test('a blocked user\'s profile is a 404', async () => {
     const alice = await registerUser(app);
     const bob = await registerUser(app);

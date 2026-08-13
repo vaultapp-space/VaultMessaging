@@ -684,6 +684,23 @@ export async function markNotificationsRead() {
   return request('POST', '/notifications/read');
 }
 
+/**
+ * Everyone this account has muted.
+ *
+ * This endpoint shipped with mutes and nothing ever called it, which made mute
+ * a one-way door: muting hides that person's posts from your feed, so their
+ * profile — the only place with an unmute button — became unreachable through
+ * the feed. The only way back was remembering the exact username.
+ */
+export async function fetchMutes() {
+  return request('GET', '/mutes');
+}
+
+/** Irreversible. Requires the password again — see the route. */
+export async function deleteAccount(password) {
+  return request('POST', '/auth/delete-account', { password });
+}
+
 export async function muteUser(userId) {
   return request('POST', `/users/${userId}/mute`);
 }
@@ -704,6 +721,13 @@ export async function deletePost(postId) {
   return request('DELETE', `/posts/${postId}`);
 }
 
-export async function repostPost(postId) {
-  return request('POST', '/posts', { repostOfId: postId });
+/**
+ * Repost, optionally with your own text on top — a quote post.
+ *
+ * The server has accepted `body` alongside `repostOfId` since the feature
+ * shipped (both are just columns on the same row); only the client never sent
+ * one, so quoting was impossible for no reason.
+ */
+export async function repostPost(postId, body = null) {
+  return request('POST', '/posts', { repostOfId: postId, body: body || null });
 }

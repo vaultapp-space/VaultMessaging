@@ -126,7 +126,12 @@
     }
   }
 
+  // Top is a bounded snapshot, not a page — see posts.repo.top. Paging it
+  // would serve duplicates as posts gain likes between requests.
+  $: paginated = tab !== 'top';
+
   async function loadMore() {
+    if (!paginated) return;
     // Paged on `hasMore`, never on `posts.length === limit`: the global tab
     // caps how many posts one author may take on a page, so a full page can
     // legitimately come back short.
@@ -263,7 +268,7 @@
       </div>
 
       <div class="flex items-center gap-1 mt-2.5">
-        {#each [['global', 'Global'], ['following', 'Following']] as [value, label] (value)}
+        {#each [['global', 'Global'], ['top', 'Top'], ['following', 'Following']] as [value, label] (value)}
           <button
             on:click={() => switchTab(value)}
             class="px-3 py-1 rounded-lg text-xs transition-colors focus:outline-none

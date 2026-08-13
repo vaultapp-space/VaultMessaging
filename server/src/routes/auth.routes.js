@@ -217,6 +217,50 @@ async function authRoutes(fastify) {
       .send({ ok: true });
   });
 
+  // ─── DELETE ACCOUNT ───────────────────────────────────────
+  // Irreversible, and the only route in the app that destroys data belonging
+  // to other people's views as well (your posts leave their timelines, your
+  // messages leave their chats).
+  //
+  // The password is required again even though the caller is authenticated.
+  // A session cookie is enough to read; it should not be enough to destroy an
+  // account from a device someone left unlocked, and this is the one action
+  // with no undo anywhere in the product.
+  fastify.post('/api/auth/delete-account', {
+    preValidation: [fastify.authenticate],
+    // Tight: this is a password oracle otherwise, letting a stolen session be
+    // used to brute-force the password that protects the encrypted vault.
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    schema: {
+      body: {
+        type: 'object',
+        required: ['password'],
+        properties: { password: { type: 'string', minLength: 1, maxLength: 512 } },
+      },
+    },
+  }, async (request, reply) => {
+    const user = await fastify.store.getUserById(request.user.id);
+    if (!user) return reply.code(404).send({ error: 'Account not found' });
+
+    const valid = await verifyPassword(user.password_hash, request.body.password);
+    if (!valid) return reply.code(403).send({ error: 'That password is not correct' });
+
+    // Sockets first. Once the row is gone, every live connection is
+    // authenticated as a user that no longer exists, and each of them would
+    // fail one query at a time rather than being told to go away.
+    await fastify.fanout.closeUserDeviceSockets(request.user.id, request.deviceId);
+    await fastify.store.deleteSession(request.user.jti);
+
+    const deleted = await fastify.repos.users.deleteAccount(request.user.id, {
+      uploadsDir: fastify.store.uploadsDir,
+    });
+    if (!deleted) return reply.code(404).send({ error: 'Account not found' });
+
+    return reply
+      .clearCookie(config.cookieName, { path: '/' })
+      .send({ ok: true });
+  });
+
   // ─── WHO AM I (session check on reload) ───────────────────
   fastify.get('/api/auth/me', {
     preValidation: [fastify.authenticate],

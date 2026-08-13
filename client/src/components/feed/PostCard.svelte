@@ -97,17 +97,25 @@
     }
   }
 
-  async function repost() {
+  // Quoting opens a field on the card itself rather than a modal. The thing
+  // being quoted stays visible while you write about it, which is the whole
+  // point — a dialog would cover it.
+  let quoting = false;
+  let quoteText = '';
+
+  async function repost(comment = null) {
     if (reposting) return;
     menuOpen = false;
     reposting = true;
     try {
-      const { post: created } = await repostPost(post.id);
+      const { post: created } = await repostPost(post.id, comment);
       // Dispatched rather than mutating `post` in place: the prop is owned by
       // whichever list rendered this card, so a local write is reverted the
       // next time that list re-renders and the count silently snaps back.
       dispatch('reposted', { original: post, repost: created });
-      showToast('Reposted', { type: 'success' });
+      quoting = false;
+      quoteText = '';
+      showToast(comment ? 'Quoted' : 'Reposted', { type: 'success' });
     } catch (err) {
       showToast(err?.message || 'Could not repost that');
     } finally {
@@ -179,6 +187,35 @@
           {timeLeft(post.expiresAt)}
         </span>
       </div>
+
+      {#if quoting}
+        <!-- pointer-events-auto: the whole card body sits above a stretched
+             "open thread" button and is pointer-events-none by default, so a
+             field added here is untypeable without it. -->
+        <div class="pointer-events-auto mt-2 rounded-xl border border-vault-accent/30 bg-vault-elevated p-2">
+          <!-- svelte-ignore a11y-autofocus -->
+          <textarea
+            bind:value={quoteText}
+            on:click|stopPropagation
+            autofocus
+            maxlength="500"
+            rows="2"
+            placeholder="Say something about this…"
+            class="w-full bg-transparent text-xs text-vault-text placeholder:text-vault-text-dim resize-none outline-none"
+          ></textarea>
+          <div class="flex items-center justify-end gap-2 mt-1">
+            <button
+              on:click|stopPropagation={() => { quoting = false; quoteText = ''; }}
+              class="px-2.5 py-1 rounded-lg text-[11px] text-vault-text-dim hover:text-vault-text focus:outline-none"
+            >Cancel</button>
+            <button
+              on:click|stopPropagation={() => repost(quoteText.trim() || null)}
+              disabled={reposting}
+              class="px-3 py-1 rounded-lg bg-vault-accent text-vault-black text-[11px] font-semibold disabled:opacity-50 focus:outline-none"
+            >{reposting ? 'Posting…' : 'Quote'}</button>
+          </div>
+        </div>
+      {/if}
 
       {#if tokens.length}
         <p class="text-sm text-vault-text mt-1 whitespace-pre-wrap break-words">
@@ -254,7 +291,8 @@
         </button>
 
         <button
-          on:click|stopPropagation={repost}
+          on:click|stopPropagation={() => repost(null)}
+          on:dblclick|stopPropagation|preventDefault
           disabled={reposting}
           class="pointer-events-auto flex items-center gap-1.5 text-[11px] hover:text-vault-accent focus:outline-none disabled:opacity-50"
           aria-label="Repost"
@@ -289,6 +327,12 @@
                 >Delete this post</button>
                 <div class="my-1 border-t border-vault-border-subtle"></div>
               {/if}
+
+              <button
+                on:click|stopPropagation={() => { menuOpen = false; quoting = true; }}
+                class="w-full text-left px-3 py-1.5 text-[11px] text-vault-text hover:bg-vault-elevated focus:outline-none"
+              >Quote with a comment</button>
+              <div class="my-1 border-t border-vault-border-subtle"></div>
 
               <div class="px-3 py-1.5 text-[9px] uppercase tracking-wider text-vault-text-dim">
                 Report as illegal

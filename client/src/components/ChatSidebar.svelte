@@ -4,7 +4,7 @@
   import { fade, scale } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { currentUser, activePeer, activeChannelId, composeStoryRequested, sidebarOpen, activeSection, activeProfile, activeThreadId, localBackupEnabled, localBackupPassphrase, localBackupKey, vaultMasterKey, identityKeyPair, signedPrekeyPair, recentCalls, ratchetSessions, groupSenderKeys } from '../lib/stores/session.js';
-  import { conversations, conversationsLoaded, typingUsers, clearBackup, restoreBackup, forgetPeerMessages } from '../lib/stores/messages.js';
+  import { conversations, conversationsLoaded, typingUsers, clearBackup, restoreBackup, forgetPeerMessages, clearMessages } from '../lib/stores/messages.js';
   import { openPrivateChat, fetchFolders, createFolder, setFolderChats, deleteFolder,
     fetchChannels, createChannel, searchChannels, subscribeChannel } from '../lib/api/http.js';
   import {
@@ -14,7 +14,7 @@
   import { clickOutside } from '../lib/actions/clickOutside.js';
   import { longpress } from '../lib/actions/longpress.js';
   import { hapticLight } from '../lib/haptics.js';
-  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, deleteChat, API_BASE, PUBLIC_ORIGIN } from '../lib/api/http.js';
+  import { searchUsers, createGroup as createGroupApi, saveEncryptedVault, deleteChat, deleteAccount, API_BASE, PUBLIC_ORIGIN } from '../lib/api/http.js';
   import { wsConnected, onWsEvent } from '../lib/api/ws.js';
   import { getAvatarGradient } from '../lib/avatar.js';
   import { exportIdentityBackup, importIdentityBackup, encryptIdentityVault } from '../lib/crypto/keys.js';
@@ -32,6 +32,7 @@
   import { promptPassphrase } from '../lib/stores/passphrasePrompt.js';
   import WalletSettings from './WalletSettings.svelte';
   import ActiveSessions from './ActiveSessions.svelte';
+  import MutedAndBlocked from './MutedAndBlocked.svelte';
   import DonateBar from './DonateBar.svelte';
   import Stories from './Stories.svelte';
   import QRCode from 'qrcode';
@@ -461,6 +462,50 @@
       showToast('Chat deleted', { type: 'success' });
     } catch (err) {
       showToast(err?.message || 'Could not delete that chat');
+    }
+  }
+
+  let deletingAccount = false;
+
+  async function handleDeleteAccount() {
+    // Two gates, deliberately. The confirm states what is lost; the passphrase
+    // prompt proves it is the account holder and not someone holding an
+    // unlocked device. The server asks for the password again for the same
+    // reason — a session cookie is enough to read, not enough to destroy.
+    const ok = await showConfirm(
+      'Delete your account permanently?\n\n'
+      + 'Your account, your posts and everything you have uploaded are removed. '
+      + 'Messages you sent leave other people\'s chats too.\n\n'
+      + 'Vault holds no email or phone number, so there is nothing to restore from. '
+      + 'This cannot be undone by anyone, including us.',
+      { confirmLabel: 'Continue', danger: true }
+    );
+    if (!ok) return;
+
+    // mode 'enter': one field, no minimum. This is an existing password being
+    // proved, not a new one being chosen — 'create' would ask for it twice and
+    // enforce a length it may not meet.
+    const password = await promptPassphrase({
+      title: 'Confirm your password',
+      message: 'Enter your password to delete this account permanently.',
+      mode: 'enter',
+    });
+    if (!password) return;
+
+    deletingAccount = true;
+    try {
+      await deleteAccount(password);
+      // Everything local goes too. The server has forgotten the account; a
+      // cached message list or an encrypted backup left behind would be the
+      // only remaining copy, on the device of someone who just asked for it
+      // all to be gone.
+      await clearBackup();
+      clearMessages();
+      dispatch('logout');
+    } catch (err) {
+      showToast(err?.message || 'Could not delete the account');
+    } finally {
+      deletingAccount = false;
     }
   }
 
@@ -1760,6 +1805,12 @@
 
         <ActiveSessions />
 
+        <!-- Both lists were previously unreachable: the only undo for each
+             lived on a surface the action itself takes away. -->
+        <div class="border-b border-vault-border pb-4">
+          <MutedAndBlocked />
+        </div>
+
         <!-- Appearance Settings -->
         <div class="flex items-center justify-between border-b border-vault-border pb-4">
           <div>
@@ -1991,6 +2042,25 @@
             class="py-1.5 px-3 text-[10px] bg-vault-accent text-vault-black hover:bg-vault-accent-hover font-semibold rounded-xl cursor-pointer focus:outline-none"
           >
             Generate Sync QR
+          </button>
+        </div>
+
+        <!-- Last, and visually separated. This is the only action in the app
+             with no undo of any kind: it removes the account, every message
+             in it, and the media on the server. -->
+        <div class="border-t border-vault-danger/30 pt-4 space-y-2">
+          <span class="text-xs font-semibold text-vault-danger block">Delete account</span>
+          <span class="text-[10px] text-vault-text-dim block">
+            Permanent. Your account, your posts and everything you have uploaded are removed.
+            Messages you sent leave other people's chats as well. There is no recovery — Vault
+            holds no email or phone number to restore an account from.
+          </span>
+          <button
+            on:click={handleDeleteAccount}
+            disabled={deletingAccount}
+            class="py-1.5 px-3 text-[10px] border border-vault-danger/40 text-vault-danger hover:bg-vault-danger/10 font-semibold rounded-xl cursor-pointer focus:outline-none disabled:opacity-50"
+          >
+            {deletingAccount ? 'Deleting…' : 'Delete my account'}
           </button>
         </div>
       </div>

@@ -345,6 +345,52 @@ export function createPosts({ pool, uploadsDir }) {
     },
 
     /**
+     * The most-liked posts of the last few hours.
+     *
+     * Ranking is normally the expensive part of a feed; here it is nearly
+     * free, because the table never holds more than a day and this window is
+     * a fraction of that. It exists to answer the one real risk in a
+     * chronological global tab: charming at ten posts an hour, unusable at a
+     * thousand.
+     *
+     * **Deliberately not paginated.** Ordering by a number that changes while
+     * you read makes keyset pagination unsound — a post that gains likes
+     * between two pages is served twice, one that loses them is skipped — and
+     * offset pagination over a moving ordering has the same problem more
+     * quietly. A single bounded snapshot is honest about what this is: a look
+     * at what is happening, not an archive to scroll.
+     *
+     * The per-author cap from the global tab applies here too, and matters
+     * more: without it, one account with a handful of friends owns the view.
+     */
+    async top(viewerId, { hours = 6, limit = 30 } = {}) {
+      const { rows } = await this.pool.query(
+        `WITH candidates AS (
+           SELECT ${SELECT_COLUMNS},
+                  row_number() OVER (PARTITION BY p.author_id
+                                     ORDER BY p.likes_count DESC, p.created_at DESC) AS rn
+             FROM posts p ${SELECT_JOINS}
+            WHERE p.reply_to_id IS NULL
+              AND p.removed_at IS NULL
+              AND p.expires_at > now()
+              AND p.created_at > now() - ($2 || ' hours')::interval
+              -- Zero-like posts are the bulk of any feed and are not "top"
+              -- anything; including them makes this identical to Global with
+              -- the order shuffled.
+              AND p.likes_count > 0
+              ${VISIBILITY_PREDICATE}
+         )
+         SELECT * FROM candidates
+          WHERE rn <= ${MAX_PER_AUTHOR_PER_PAGE}
+          ORDER BY likes_count DESC, created_at DESC
+          LIMIT $3`,
+        [viewerId, String(hours), limit]
+      );
+
+      return { posts: rows.map((r) => this.shape(r)), hasMore: false };
+    },
+
+    /**
      * The header of a profile. Returns null for an unknown username, and for
      * one the viewer is blocked by or has blocked — a profile that renders for
      * someone you blocked is a hole in the block.
@@ -440,6 +486,29 @@ export function createPosts({ pool, uploadsDir }) {
 
     /** Idempotent. Returns false if the target does not exist. */
     async follow(followerId, followeeId) {
+      // Blocking must stop a follow. Without this clause someone you blocked
+      // could still follow you: they gained nothing readable (every timeline
+      // applies the block predicate) but they sat in your follower count, and
+      // once notifications existed they generated a row addressed to you from
+      // an account you had blocked. The clause is in the INSERT rather than
+      // the route so no future caller can route around it.
+      //
+      // Checked before the insert rather than folded into it as a NOT EXISTS.
+      // Folded in, a blocked follow matches no rows, and the fallback below
+      // ("no row written, but the user exists, so they were already
+      // following") would report success — the client would show Following
+      // while the server had recorded nothing. Refusing outright reports the
+      // same 404 as an unknown user, which is the right answer here: a
+      // distinguishable response would confirm the block.
+      const { rows: blocked } = await this.pool.query(
+        `SELECT 1 FROM blocks b
+          WHERE (b.blocker_id = $1 AND b.blocked_id = $2)
+             OR (b.blocker_id = $2 AND b.blocked_id = $1)
+          LIMIT 1`,
+        [followerId, followeeId]
+      );
+      if (blocked.length > 0) return false;
+
       const { rowCount } = await this.pool.query(
         `INSERT INTO follows (follower_id, followee_id)
          SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM users WHERE id = $2)
@@ -632,7 +701,34 @@ export function createPosts({ pool, uploadsDir }) {
      * from the ternary below and never from the caller's string — the route
      * additionally constrains `direction` to an enum.
      */
-    async listFollows(userId, direction, { limit = 50, offset = 0 } = {}) {
+    /**
+     * Returns null when the viewer may not see this user at all, which the
+     * route turns into the same 404 the profile gives.
+     *
+     * **Both halves of the filtering here are load-bearing, and neither was
+     * present originally.** The endpoint shipped with follows and nothing ever
+     * called it, so the gap was invisible until the client grew a way in.
+     *
+     *   1. The *subject* check. `/profile` 404s when either party has blocked
+     *      the other, on the stated grounds that a profile rendering for
+     *      someone you blocked is a hole in the block. Without the same check
+     *      here, blocking someone still left them able to enumerate your
+     *      followers and everyone you follow — the social graph is the more
+     *      sensitive half of a profile, not the less.
+     *   2. The *entries* filter. A blocked account must not surface inside
+     *      somebody else's follower list either, or the block is avoidable by
+     *      looking at any mutual connection.
+     */
+    async listFollows(viewerId, userId, direction, { limit = 50, offset = 0 } = {}) {
+      const { rows: blocked } = await this.pool.query(
+        `SELECT 1 FROM blocks b
+          WHERE (b.blocker_id = $1 AND b.blocked_id = $2)
+             OR (b.blocker_id = $2 AND b.blocked_id = $1)
+          LIMIT 1`,
+        [viewerId, userId]
+      );
+      if (blocked.length > 0) return null;
+
       const [self, other] = direction === 'followers'
         ? ['followee_id', 'follower_id']
         : ['follower_id', 'followee_id'];
@@ -641,9 +737,13 @@ export function createPosts({ pool, uploadsDir }) {
         `SELECT u.id, u.username FROM follows f
            JOIN users u ON u.id = f.${other}
           WHERE f.${self} = $1
+            AND NOT EXISTS (
+                  SELECT 1 FROM blocks b
+                   WHERE (b.blocker_id = u.id AND b.blocked_id = $4)
+                      OR (b.blocker_id = $4 AND b.blocked_id = u.id))
           ORDER BY f.created_at DESC
           LIMIT $2 OFFSET $3`,
-        [userId, limit, offset]
+        [userId, limit, offset, viewerId]
       );
       return rows.map((r) => ({ id: r.id, username: r.username }));
     },

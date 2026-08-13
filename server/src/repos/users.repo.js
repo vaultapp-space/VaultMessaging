@@ -8,6 +8,8 @@
 // object returned here, so intra-module calls keep working as before.
 
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import config from '../config.js';
 
@@ -106,6 +108,59 @@ export function createUsers({ pool, dummySaltSecret = config.jwtSecret }) {
       .update(`dummy-salt:${username}`)
       .digest('base64')
       .substring(0, 24);
+  },
+
+  /**
+   * Deletes an account and everything that belongs to it.
+   *
+   * **The media has to be collected before the row goes.** Almost every table
+   * here cascades from `users`, and `posts`, `stories` and `media_files` all
+   * reference files on disk — but a cascade-deleted row is never returned by
+   * `DELETE ... RETURNING`, so deleting the user first makes those files
+   * unreachable by anything, forever. Worse, the `media_files` ledger rows go
+   * with them, so even the orphan sweep loses its record of what to remove.
+   * The result is a permanently public file store belonging to an account
+   * that no longer exists — which is the precise opposite of what someone
+   * pressing "delete my account" is asking for.
+   *
+   * So: gather the file ids, delete the user, then unlink. Rows before files
+   * in this direction rather than the reaper's files-before-rows, because the
+   * user row is what makes the content reachable; once it is gone, a leftover
+   * file is invisible rather than served. A crash between the two leaves files
+   * the next deploy will not find, which is why the ids are gathered from
+   * every table rather than only from posts.
+   *
+   * Returns false when there is no such user.
+   */
+  async deleteAccount(userId, { uploadsDir }) {
+    const { rows: fileRows } = await this.pool.query(
+      `SELECT media->>'fileId' AS file_id FROM posts
+        WHERE author_id = $1 AND media IS NOT NULL
+       UNION
+       SELECT media->>'fileId' FROM stories
+        WHERE user_id = $1 AND media IS NOT NULL
+       UNION
+       SELECT file_id::text FROM media_files
+        WHERE uploader_id = $1`,
+      [userId]
+    );
+
+    const { rowCount } = await this.pool.query('DELETE FROM users WHERE id = $1', [userId]);
+    if (rowCount === 0) return false;
+
+    // Best-effort, and deliberately after the row. A file that fails to
+    // unlink is no longer reachable through any route — the account it
+    // belonged to does not exist — so it must not turn a completed deletion
+    // into a failed request.
+    const mediaDir = path.join(uploadsDir, 'media');
+    for (const row of fileRows) {
+      if (!row.file_id) continue;
+      for (const extension of ['.webp', '.png', '.gif', '.webm']) {
+        await fs.promises.unlink(path.join(mediaDir, `${row.file_id}${extension}`)).catch(() => {});
+      }
+    }
+
+    return true;
   },
   };
 }

@@ -92,6 +92,30 @@ async function notify(fastify, { userId, actorId, kind, postId = null }) {
     // O(1): exactly one recipient, which is what keeps this on the request
     // path at all. Anything needing many recipients belongs in a worker.
     await fastify.fanout.deliverToUser(userId, { type: 'notification_tick' });
+
+    // And a push, for the device that is not open. This matters more here
+    // than it would on a permanent feed: a post is deleted after 24 hours, so
+    // a reply nobody is told about is a reply nobody ever sees.
+    //
+    // **The payload names the actor but never quotes the post.** A push is
+    // rendered by the operating system on a lock screen, outside the app's
+    // control and outside every filter the app applies — so the content of a
+    // post has no business in one. The verb is enough to decide whether to
+    // open the app.
+    const actor = await fastify.repos.users.getUserById(actorId);
+    const verb = {
+      like: 'liked your post',
+      reply: 'replied to your post',
+      repost: 'reposted your post',
+      follow: 'started following you',
+    }[kind] ?? 'interacted with you';
+
+    await fastify.sendPushNotification?.(userId, {
+      title: 'Vault',
+      body: `@${actor?.username ?? 'Someone'} ${verb}`,
+      tag: 'vault-feed',
+      data: { kind, postId },
+    });
   } catch (err) {
     fastify.log?.warn?.({ err, kind }, 'notification failed');
   }
@@ -186,7 +210,7 @@ async function postRoutes(fastify) {
       querystring: {
         type: 'object',
         properties: {
-          tab: { type: 'string', enum: ['global', 'following'], default: 'global' },
+          tab: { type: 'string', enum: ['global', 'following', 'top'], default: 'global' },
           cursor: { type: 'string', maxLength: 128 },
           limit: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
         },
@@ -199,9 +223,11 @@ async function postRoutes(fastify) {
     // the top is the harmless reading of it.
     const cursor = decodeCursor(rawCursor);
 
-    const { posts, hasMore } = await fastify.repos.posts.timeline(request.user.id, {
-      tab, cursor, limit,
-    });
+    // Top is a bounded snapshot rather than a page of the timeline — see
+    // posts.repo.top for why it cannot be paginated soundly.
+    const { posts, hasMore } = tab === 'top'
+      ? await fastify.repos.posts.top(request.user.id, { limit })
+      : await fastify.repos.posts.timeline(request.user.id, { tab, cursor, limit });
 
     return reply.send({
       posts,
@@ -461,10 +487,15 @@ async function postRoutes(fastify) {
     },
   }, async (request, reply) => {
     const users = await fastify.repos.posts.listFollows(
+      request.user.id,
       request.params.userId,
       request.params.direction,
       { limit: request.query.limit, offset: request.query.offset }
     );
+    // Null means blocked in either direction. 404, matching the profile route
+    // exactly — an empty list would confirm the account exists, and a 403
+    // would confirm the block.
+    if (users === null) return reply.code(404).send({ error: 'User not found' });
     return reply.send({ users });
   });
 
