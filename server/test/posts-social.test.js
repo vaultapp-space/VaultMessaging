@@ -496,6 +496,30 @@ describe('profiles', () => {
     }
   });
 
+  test('a follow list says whether the viewer follows each person', async () => {
+    // The list is reachable for your own account and for someone else's, so
+    // "these are people you follow" is only true in one of those cases. The
+    // client needs per-row state to label the button, and fetching it per row
+    // would be a request per entry.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const carol = await registerUser(app);
+
+    // Bob and carol both follow alice. The viewer (bob) follows carol too.
+    await send(bob, 'POST', `/api/users/${alice.id}/follow`, {});
+    await send(carol, 'POST', `/api/users/${alice.id}/follow`, {});
+    await send(bob, 'POST', `/api/users/${carol.id}/follow`, {});
+
+    const res = await send(bob, 'GET', `/api/users/${alice.id}/followers`);
+    const users = JSON.parse(res.body).users;
+
+    const self = users.find((u) => u.username === bob.username);
+    const other = users.find((u) => u.username === carol.username);
+
+    assert.equal(self.isSelf, true, 'the viewer gets no follow button for themselves');
+    assert.equal(other.following, true, 'bob follows carol');
+  });
+
   test('a blocked account does not appear inside someone else\'s follower list', async () => {
     // Otherwise the block is avoidable by looking at any mutual connection.
     const alice = await registerUser(app);

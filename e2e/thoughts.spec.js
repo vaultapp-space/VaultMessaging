@@ -268,6 +268,49 @@ test.describe('thoughts', () => {
     }
   });
 
+  test('you can unfollow from your own following list', async ({ browser }) => {
+    // Reported from the device: the list showed exactly who you followed and
+    // gave you no way to act on it — the only control lived on each person's
+    // own profile, so unfollowing meant opening every one in turn.
+    const aCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+    const bCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+    const alice = await aCtx.newPage();
+    const bob = await bCtx.newPage();
+
+    try {
+      const aliceName = uniqueUsername('tua');
+      await register(alice, aliceName);
+      await register(bob, uniqueUsername('tub'));
+
+      // Bob follows alice from her profile.
+      await bob.getByPlaceholder('Search users...').fill(aliceName);
+      await bob.getByLabel(`View ${aliceName}'s profile`).click();
+      await bob.getByRole('button', { name: 'Follow', exact: true }).click();
+      await expect(bob.getByRole('button', { name: 'Following', exact: true }))
+        .toBeVisible({ timeout: 20_000 });
+
+      // To his own profile via the sidebar footer. Not the feed's "Following"
+      // tab — that is a different control with the same word on it, which is
+      // what the first version of this test grabbed.
+      await bob.getByTitle('View your profile and posts').click();
+      await expect(bob.getByText('followers').first()).toBeVisible({ timeout: 20_000 });
+
+      // The count itself is the button: "<n> following".
+      await bob.getByRole('button', { name: /following/i }).first().click();
+      await expect(bob.getByText(`@${aliceName}`).first()).toBeVisible({ timeout: 20_000 });
+
+      // The button that was missing.
+      const unfollow = bob.getByRole('button', { name: 'Following', exact: true });
+      await expect(unfollow).toBeVisible({ timeout: 10_000 });
+      await unfollow.click();
+      await expect(bob.getByRole('button', { name: 'Follow', exact: true }))
+        .toBeVisible({ timeout: 20_000 });
+    } finally {
+      await aCtx.close();
+      await bCtx.close();
+    }
+  });
+
   test('the Profile tab opens your own profile and keeps the tab bar', async ({ browser }) => {
     // The tab bar hides itself whenever a profile is open, because a profile
     // is normally something you navigated *into* from a post. Your own

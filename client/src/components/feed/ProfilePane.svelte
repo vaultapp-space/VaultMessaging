@@ -38,9 +38,30 @@
 
   onMount(() => {
     popBack = pushBackHandler(() => dispatch('close'));
-    load();
     return () => popBack?.();
   });
+
+  // Reload when the username changes, not only on mount.
+  //
+  // Svelte reuses this component when only the prop changes — which is exactly
+  // what happens when you tap someone in a follower list — so loading in
+  // onMount alone left the header showing the new name above the previous
+  // person's posts, counts and follow state. Worse than stale: toggleFollow
+  // acts on `profile.id`, so the Follow button would have followed or
+  // unfollowed whoever was open before.
+  //
+  // Guarded by the name it last loaded rather than a plain `$: load()`, which
+  // would re-fire on every unrelated reactive update.
+  let loadedFor = null;
+  $: if (username && username !== loadedFor) {
+    loadedFor = username;
+    // Everything below belongs to the previous person.
+    profile = null;
+    posts = [];
+    listDirection = null;
+    kind = 'posts';
+    load();
+  }
 
   // 'posts' or 'replies'. Separate views rather than one merged list: a reply
   // shown outside its thread reads as a non-sequitur, with the half that gave
@@ -114,6 +135,31 @@
       listError = err?.message || 'Could not load that list';
     } finally {
       listLoading = false;
+    }
+  }
+
+  // Follow or unfollow straight from the list. Previously the only control was
+  // on the person's own profile, so unfollowing meant opening each one in turn
+  // and coming back — the list showed you exactly who you followed and gave you
+  // no way to act on it.
+  async function toggleFollowInList(user) {
+    if (busy) return;
+    busy = user.id;
+    const was = user.following;
+    listUsers = listUsers.map((u) => (u.id === user.id ? { ...u, following: !was } : u));
+
+    try {
+      await (was ? unfollowUser(user.id) : followUser(user.id));
+      // The count in the header is now wrong by one. Only when looking at your
+      // own following list, where the list *is* the count.
+      if (isSelf && listDirection === 'following' && profile) {
+        profile = { ...profile, followingCount: profile.followingCount + (was ? -1 : 1) };
+      }
+    } catch (err) {
+      listUsers = listUsers.map((u) => (u.id === user.id ? { ...u, following: was } : u));
+      showToast(err?.message || 'Could not save that');
+    } finally {
+      busy = false;
     }
   }
 
@@ -360,16 +406,32 @@
             </p>
           {:else}
             {#each listUsers as user (user.id)}
-              <button
-                on:click={() => openFromList(user.username)}
-                class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-vault-elevated transition-colors text-left focus:outline-none"
-              >
-                <div
-                  class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0"
-                  style="background: {getAvatarGradient(user.username)}"
-                >{user.username.charAt(0).toUpperCase()}</div>
-                <span class="text-sm text-vault-text truncate">@{user.username}</span>
-              </button>
+              <div class="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-vault-elevated transition-colors">
+                <!-- Two controls, not one: the row opens the profile and the
+                     button toggles the follow. Nesting a button inside a
+                     button is invalid HTML and breaks keyboard navigation. -->
+                <button
+                  on:click={() => openFromList(user.username)}
+                  class="flex items-center gap-3 flex-1 min-w-0 text-left focus:outline-none"
+                >
+                  <div
+                    class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0"
+                    style="background: {getAvatarGradient(user.username)}"
+                  >{user.username.charAt(0).toUpperCase()}</div>
+                  <span class="text-sm text-vault-text truncate">@{user.username}</span>
+                </button>
+
+                {#if !user.isSelf}
+                  <button
+                    on:click|stopPropagation={() => toggleFollowInList(user)}
+                    disabled={busy === user.id}
+                    class="flex-shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all disabled:opacity-50 focus:outline-none
+                      {user.following
+                        ? 'bg-vault-elevated text-vault-text border border-vault-border'
+                        : 'bg-vault-accent text-vault-black'}"
+                  >{user.following ? 'Following' : 'Follow'}</button>
+                {/if}
+              </div>
             {/each}
           {/if}
         </div>

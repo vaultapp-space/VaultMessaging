@@ -844,8 +844,16 @@ export function createPosts({ pool, uploadsDir }) {
         ? ['followee_id', 'follower_id']
         : ['follower_id', 'followee_id'];
 
+      // `following` is from the *viewer's* perspective, not the list owner's.
+      // Without it the client cannot label a row: the same list is reachable
+      // for your own account and for someone else's, so "these are people you
+      // follow" is only true in one of those cases. Computed here rather than
+      // as a second request per row.
       const { rows } = await this.pool.query(
-        `SELECT u.id, u.username FROM follows f
+        `SELECT u.id, u.username,
+                EXISTS (SELECT 1 FROM follows vf
+                         WHERE vf.follower_id = $4 AND vf.followee_id = u.id) AS following
+           FROM follows f
            JOIN users u ON u.id = f.${other}
           WHERE f.${self} = $1
             AND NOT EXISTS (
@@ -856,7 +864,14 @@ export function createPosts({ pool, uploadsDir }) {
           LIMIT $2 OFFSET $3`,
         [userId, limit, offset, viewerId]
       );
-      return rows.map((r) => ({ id: r.id, username: r.username }));
+      return rows.map((r) => ({
+        id: r.id,
+        username: r.username,
+        following: r.following,
+        // So the client can leave its own row without a button — following
+        // yourself is refused by the server and means nothing.
+        isSelf: r.id === viewerId,
+      }));
     },
   };
 }
