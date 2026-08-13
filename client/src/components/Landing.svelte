@@ -397,18 +397,24 @@
           <p>Point your phone at a QR code to bring a laptop or tablet in. No account transfer, no new password.</p>
         </div>
         <div class="feature" use:reveal={300}>
-          <!-- Stated plainly rather than sold. Every other claim on this page
-               is that the server cannot read your messages; Thoughts is the
-               one place that is not true, and a landing page that implied
-               otherwise would undermine the rest of it. -->
-          <div class="plate">THOUGHTS</div>
-          <h3>A public square, on the same clock</h3>
-          <p>Post something anyone on Vault can read, reply to and follow. It's the one part of Vault the server can see — and it says so — and like everything else, it's gone in 24 hours.</p>
-        </div>
-        <div class="feature" use:reveal={360}>
           <div class="plate">MEMORY</div>
           <h3>Nothing lingers after you close it</h3>
           <p>Close the tab and your keys are erased, not just hidden, so there's nothing left to recover.</p>
+        </div>
+        <!-- Full width, and last. Seven cards left an orphan in the final
+             row of a three-column grid with two empty bordered tracks beside
+             it — and six plus a band is even at both breakpoints. It also
+             happens to be the right editorial weight: this is the one part of
+             the product that is public, so it should not be one tile among
+             six identical ones.
+
+             Stated plainly rather than sold. Every other claim on this page is
+             that the server cannot read your messages; a card implying the
+             feed worked the same way would undermine the rest. -->
+        <div class="feature feature-wide" use:reveal={360}>
+          <div class="plate">THOUGHTS</div>
+          <h3>A public square, on the same clock</h3>
+          <p>Post something anyone on Vault can read, reply to and follow. It's the one part of Vault the server can see — and it says so — and like everything else, it's gone in 24 hours.</p>
         </div>
       </div>
     </section>
@@ -860,6 +866,9 @@
   .feature:hover .plate { background: var(--accent-glow-strong); }
   .feature h3 { margin-top: 12px; font-size: 1.02rem; font-weight: 700; }
   .feature p { margin-top: 8px; color: var(--text-secondary); font-size: 0.9rem; }
+  /* Spans whatever the column count happens to be, so it stays a full band at
+     3 columns, at 2, and at 1 — rather than needing a rule per breakpoint. */
+  .feature-wide { grid-column: 1 / -1; }
 
   /* Only one card in this grid now (direct APK) — the shared 3-column
      .feature-grid (and its narrower-viewport 2-column override below)
