@@ -151,18 +151,34 @@ export function createPosts({ pool, uploadsDir }) {
       // never see this row's media and would leave the file on disk forever,
       // publicly readable. Clamping to the parent means one reaper DELETE
       // collects parents and children together.
-      const { rows } = await this.pool.query(
-        `INSERT INTO posts (author_id, body, media, reply_to_id, root_id, repost_of_id, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6,
-                 LEAST(now() + ($7 || ' seconds')::interval,
-                       COALESCE($8::timestamptz, 'infinity')))
-         RETURNING *, false AS liked_by_me`,
-        [
-          author.id, body, media,
-          replyToId, rootId, repostOfId,
-          String(POST_TTL_SECONDS), parent?.expires_at ?? null,
-        ]
-      );
+      // idx_posts_repost_unique allows one plain repost per person per post —
+      // correct, since a second identical repost says nothing new. It was
+      // unhandled, so tapping repost twice (or on two devices) raised a unique
+      // violation that reached the client as a 500 carrying the constraint
+      // name. Caught here and reported as a distinct outcome the route can
+      // turn into a 409.
+      //
+      // A quote is excluded from that index (its body is not null), so quoting
+      // the same post repeatedly stays allowed — different words, different
+      // post.
+      let rows;
+      try {
+        ({ rows } = await this.pool.query(
+          `INSERT INTO posts (author_id, body, media, reply_to_id, root_id, repost_of_id, expires_at)
+           VALUES ($1, $2, $3, $4, $5, $6,
+                   LEAST(now() + ($7 || ' seconds')::interval,
+                         COALESCE($8::timestamptz, 'infinity')))
+           RETURNING *, false AS liked_by_me`,
+          [
+            author.id, body, media,
+            replyToId, rootId, repostOfId,
+            String(POST_TTL_SECONDS), parent?.expires_at ?? null,
+          ]
+        ));
+      } catch (err) {
+        if (err.code === '23505') return { duplicateRepost: true };
+        throw err;
+      }
 
       // username is not on the posts row; the author is the caller, so it is
       // known without a join back to users.

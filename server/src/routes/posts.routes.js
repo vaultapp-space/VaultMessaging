@@ -169,6 +169,12 @@ async function postRoutes(fastify) {
     // whether a post exists is not something to confirm to a stranger.
     if (!post) return reply.code(404).send({ error: 'That post is no longer available' });
 
+    // One plain repost per person per post. Tapping twice is an ordinary thing
+    // to do, not an error worth a 500 — the client shows this sentence.
+    if (post.duplicateRepost) {
+      return reply.code(409).send({ error: 'You have already reposted this' });
+    }
+
     // The file now belongs to content, so the orphan sweep must leave it alone.
     // After the insert, not before: claiming a file for a post that then failed
     // to create would strand it permanently, which is the exact leak the ledger

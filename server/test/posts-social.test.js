@@ -434,6 +434,44 @@ describe('profiles', () => {
     assert.equal(rows[0].n, 0);
   });
 
+  test('reposting the same post twice is a 409, not a 500', async () => {
+    // idx_posts_repost_unique permits one plain repost per person per post,
+    // which is right — but it was unhandled, so a second tap raised a unique
+    // violation that reached the client as a 500 carrying the constraint name.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const p = await post(alice, { body: 'worth sharing' });
+
+    await send(bob, 'POST', '/api/posts', { repostOfId: p.id });
+    const again = await send(bob, 'POST', '/api/posts', { repostOfId: p.id });
+
+    assert.equal(again.statusCode, 409);
+    const body = JSON.parse(again.body);
+    assert.match(body.error, /already reposted/i);
+    // And nothing about the database reaches the caller.
+    assert.doesNotMatch(JSON.stringify(body), /constraint|idx_|23505/i);
+  });
+
+  test('quoting the same post twice is allowed', async () => {
+    // Quotes carry their own words, so repeating one says something new. The
+    // unique index excludes them by requiring body IS NULL.
+    const alice = await registerUser(app);
+    const bob = await registerUser(app);
+    const p = await post(alice, { body: 'worth discussing' });
+
+    await post(bob, { body: 'first thought', repostOfId: p.id });
+    await post(bob, { body: 'second thought', repostOfId: p.id });
+  });
+
+  test('an unexpected server error does not leak the database', async () => {
+    // The general property, not just the repost case: nothing in a 500 should
+    // name a constraint, a table or a SQLSTATE.
+    const alice = await registerUser(app);
+    const res = await send(alice, 'GET', '/api/posts/timeline?tab=global');
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /constraint|SQLSTATE|pg_|23505/i);
+  });
+
   test('a blocked user cannot enumerate your follower list', async () => {
     // /profile 404s for a blocked viewer on the stated grounds that a profile
     // rendering for someone you blocked is a hole in the block. The follow

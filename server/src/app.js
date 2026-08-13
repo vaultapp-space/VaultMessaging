@@ -206,6 +206,32 @@ export async function buildApp({ store, config = defaultConfig, logger, serverOp
   fastify.decorate('feedTicker', feedTicker);
   fastify.addHook('onClose', async () => { await feedTicker.stop(); });
 
+  // ─── Error handling ─────────────────────────────────────────
+  // Without this, Fastify's default handler serialises the raw error to the
+  // client — so an unhandled Postgres exception returned its SQLSTATE and its
+  // message, constraint names and all. A duplicate repost answered with
+  // `duplicate key value violates unique constraint "idx_posts_repost_unique"`,
+  // which hands a stranger the schema one probe at a time. On a product whose
+  // premise is that the server gives away as little as possible, that is the
+  // wrong default.
+  //
+  // Deliberate errors are untouched: anything a route set a status code for —
+  // validation 400s, the 404s used to avoid confirming a resource exists, rate
+  // limit 429s — is already a considered message and passes through unchanged.
+  // Only genuine 5xx are replaced, and the real error is logged in full so
+  // nothing is lost to whoever has to debug it.
+  fastify.setErrorHandler((error, request, reply) => {
+    const status = error.statusCode ?? 500;
+
+    if (status < 500) {
+      reply.code(status).send({ error: error.message });
+      return;
+    }
+
+    request.log.error({ err: error, url: request.url }, 'Unhandled error');
+    reply.code(500).send({ error: 'Something went wrong. Please try again.' });
+  });
+
   // The same SSRF guard link previews use, exposed so the bot webhook route
   // can apply it. A webhook URL is attacker-chosen by definition — anyone can
   // register a bot — so pointing one at a metadata endpoint or an internal
