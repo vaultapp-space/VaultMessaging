@@ -51,8 +51,20 @@ for (const width of widths) {
   await page.goto(url, { waitUntil: 'load' });
 
   if (anchor !== 'top') {
+    // Waited for, not assumed. The first version scrolled with an optional
+    // chain — so against a slow origin, where the element had not rendered
+    // yet, it silently captured the top of the page instead. A screenshot tool
+    // that quietly shows you the wrong section is worse than one that fails:
+    // you check it, see something reasonable, and conclude the layout is fine.
+    try {
+      await page.waitForSelector(`#${anchor}`, { timeout: 15000 });
+    } catch {
+      console.error(`FAILED: no #${anchor} on the page at ${width}px — nothing captured.`);
+      await page.close();
+      continue;
+    }
     await page.evaluate((id) => {
-      document.querySelector(`#${id}`)?.scrollIntoView({ block: 'start' });
+      document.querySelector(`#${id}`).scrollIntoView({ block: 'start' });
     }, anchor);
   }
 
