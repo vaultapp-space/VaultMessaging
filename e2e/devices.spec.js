@@ -66,7 +66,13 @@ test.describe('active sessions', () => {
       await register(page, uniqueUsername('dva'));
       await openSettings(page);
 
-      await expect(page.getByText('this device')).toBeVisible({ timeout: 15_000 });
+      // Exact, and matching the label ActiveSessions actually renders
+      // ("· this device"). A substring match on "this device" also catches
+      // ordinary settings copy — it has now collided twice with wording added
+      // elsewhere in the same panel, which is a property of the locator rather
+      // than of the copy.
+      await expect(page.getByText('· this device', { exact: true }))
+        .toBeVisible({ timeout: 15_000 });
       // Offering "sign out" next to the session you are using is how someone
       // locks themselves out by accident; it is labelled, not actionable.
       await expect(page.getByRole('button', { name: 'Sign out' })).toHaveCount(0);
