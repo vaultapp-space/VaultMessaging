@@ -23,7 +23,16 @@ export const pgConfig = {
   user: process.env.PGUSER || 'vault',
   password: process.env.PGPASSWORD || 'vault_dev_pass',
   database: process.env.PGDATABASE || 'vault',
-  max: 50,
+  // Per process. The server's own max_connections is 100, so at 50 a single
+  // app process could claim half the database's capacity — and each backend
+  // costs the box 5-10MB of RAM whether or not it is doing anything. Measured
+  // usage is 6 connections; 15 leaves an order of magnitude of headroom while
+  // making it impossible for one process to starve psql, the migration CLI or
+  // a second instance during a deploy.
+  //
+  // Raise this if the pool is ever genuinely exhausted (it surfaces as
+  // requests queueing rather than failing), not pre-emptively.
+  max: 15,
   idleTimeoutMillis: 30000,
 };
 

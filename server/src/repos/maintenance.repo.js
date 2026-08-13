@@ -35,9 +35,17 @@ export function createMaintenance({ pool, uploadsDir, media }) {
     // Delete records from DB
     await this.pool.query(`DELETE FROM files WHERE expires_at < $1`, [now]);
 
-    // Delete expired messages
+    // Delete expired messages, and record which chats they were in.
+    //
+    // The chat ids are the point. reconcileUnread() with no argument
+    // recomputes every user-and-chat pair in the database — it joins
+    // chat_members against chat_read_state and LEFT JOINs messages, the
+    // largest table — and the caller ran it once a minute for as long as
+    // anything was expiring. Free on an empty database and the most expensive
+    // recurring query in the system on a busy one. Only the chats that just
+    // lost a message can have a stale counter, so only they need recomputing.
     const expiredMsgs = await this.pool.query(
-      `DELETE FROM messages WHERE expires_at < $1 RETURNING id`,
+      `DELETE FROM messages WHERE expires_at < $1 RETURNING id, chat_id`,
       [now]
     );
 
@@ -153,11 +161,18 @@ export function createMaintenance({ pool, uploadsDir, media }) {
       await this.media.forget(reapedFileIds);
     }
 
-    // Deliberately not adding expiredPosts to this. The caller uses the return
-    // value to decide whether to run chats.reconcileUnread(), and posts have
-    // no bearing on chat unread counters — folding them in would trigger a
-    // full recalculation every 60s for as long as the feed is active.
-    return expiredMsgs.rowCount;
+    // Deliberately not counting expiredPosts here. The caller uses this to
+    // decide whether to reconcile chat unread counters, and posts have no
+    // bearing on those — folding them in would trigger a recalculation every
+    // 60s for as long as the feed is active.
+    //
+    // Legacy rows can have a null chat_id (messages predate the chat model),
+    // so those are dropped rather than passed on as nulls.
+    const chatIds = [...new Set(
+      expiredMsgs.rows.map((r) => r.chat_id).filter(Boolean)
+    )];
+
+    return { messages: expiredMsgs.rowCount, chatIds };
   },
   };
 }

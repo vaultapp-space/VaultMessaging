@@ -25,30 +25,76 @@ const fastify = await buildApp({ store, config });
 
 // ─── Reaper Worker (expired message/attachment deletion) ────
 
-const reaperInterval = setInterval(async () => {
+// Backs off while there is nothing to do. Seven queries a minute forever is a
+// small constant, but it is a constant paid on an idle instance at three in
+// the morning as surely as at peak — roughly twenty thousand passes over a
+// fortnight, almost all finding nothing.
+//
+// **The 24-hour guarantee is unaffected.** Expiry is enforced by the queries
+// themselves (`expires_at > now()` is a predicate on every read), not by how
+// often the reaper runs; the reaper only reclaims storage. The worst case here
+// is that an expired row occupies disk for five minutes longer than it used
+// to, while remaining invisible to every route the whole time.
+//
+// Any deletion snaps the cadence straight back to the base interval, so a
+// sudden burst is followed at full speed rather than at the idle rate.
+const IDLE_PASSES_BEFORE_BACKOFF = 5;
+const MAX_REAPER_INTERVAL_MS = 5 * 60 * 1000;
+
+let idlePasses = 0;
+let reaperInterval = null;
+
+async function reaperPass() {
+  let nextDelay = config.reaperIntervalMs;
+
   try {
-    const reaped = await store.reap();
-    if (reaped > 0) {
+    const { messages, chatIds } = await store.reap();
+
+    if (messages > 0) {
       // Messages expire but chats do not, so unread counters must be brought
       // back in line with what actually remains — otherwise a chat sits at
       // "3 unread" with an empty message list.
-      const corrected = await store.chats.reconcileUnread();
+      //
+      // Scoped to the chats that just lost a message. Called with no argument
+      // this recomputes every user-and-chat pair in the database, joining
+      // against the messages table, once a minute for as long as anything is
+      // expiring. Nothing else can have gone stale, so nothing else needs
+      // looking at.
+      const corrected = await store.chats.reconcileUnread(chatIds);
       fastify.log.info(
-        `Reaper: purged ${reaped} expired items, corrected ${corrected} unread counters`
+        `Reaper: purged ${messages} expired items across ${chatIds.length} chats, `
+        + `corrected ${corrected} unread counters`
       );
     }
+
+    idlePasses = messages > 0 ? 0 : idlePasses + 1;
+    if (idlePasses >= IDLE_PASSES_BEFORE_BACKOFF) {
+      nextDelay = MAX_REAPER_INTERVAL_MS;
+    }
+
     // Recorded on every pass, not only when something was deleted: an idle
     // hour with nothing to reap is still a healthy reaper, and treating it as
     // silence would fire the alarm on a quiet night.
-    fastify.recordReaperRun({ rowsDeleted: reaped });
+    fastify.recordReaperRun({ rowsDeleted: messages });
   } catch (err) {
     fastify.log.error(err, 'Reaper task failed');
     // The failure is recorded as well as logged. The reaper is the only thing
     // bounding database size *and* the only thing enforcing the 24-hour rule,
     // so a stall has to surface on /health rather than in a log nobody reads.
     fastify.recordReaperRun({ error: err });
+    // A failing pass does not count as idle — backing off while broken would
+    // slow down the recovery as well as the work.
+    idlePasses = 0;
   }
-}, config.reaperIntervalMs);
+
+  // setTimeout rather than setInterval, so the delay can change and so a slow
+  // pass can never overlap the next one.
+  reaperInterval = setTimeout(reaperPass, nextDelay);
+  reaperInterval.unref?.();
+}
+
+reaperInterval = setTimeout(reaperPass, config.reaperIntervalMs);
+reaperInterval.unref?.();
 
 // ─── Start ──────────────────────────────────────────────────
 
@@ -57,7 +103,7 @@ try {
   fastify.log.info(`Vault server running on http://${config.host}:${config.port}`);
 } catch (err) {
   fastify.log.error(err);
-  clearInterval(reaperInterval);
+  clearTimeout(reaperInterval);
   await store.close().catch(() => {});
   process.exit(1);
 }
@@ -73,7 +119,7 @@ try {
 const SHUTDOWN_GRACE_MS = parseInt(process.env.SHUTDOWN_GRACE_MS || '5000', 10);
 
 const shutdown = async () => {
-  clearInterval(reaperInterval);
+  clearTimeout(reaperInterval);
 
   // Stage 1: at the end of the grace period, drop any remaining sockets.
   const forceClose = setTimeout(() => {
