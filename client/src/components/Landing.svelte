@@ -1025,12 +1025,19 @@
 
   /* Tablets get two columns; a single column wastes most of the width there. */
   @media (max-width: 860px) {
-    .steps, .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    /* Steps stack instead. There are three of them and they are numbered One,
+       Two, Three — two columns splits that into "One | Two" with "Three"
+       alone underneath, which breaks the sequence the numbering promises as
+       well as leaving an orphan. Three columns below this width would put
+       each step in about 210px, too narrow for a heading and a sentence, so
+       stacking is the honest option rather than a compromise. */
+    .steps { grid-template-columns: 1fr; }
     table.compare { min-width: 520px; }
     .scroll-hint { display: block; }
   }
   @media (max-width: 600px) {
-    .steps, .feature-grid { grid-template-columns: 1fr; }
+    .feature-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 700px) {
     nav.top .links a { display: none; }
