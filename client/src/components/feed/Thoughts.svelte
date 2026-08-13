@@ -201,6 +201,21 @@
     }, 300);
   }
 
+  let searchOpen = false;
+  let searchInput;
+
+  function toggleSearch() {
+    searchOpen = !searchOpen;
+    if (searchOpen) {
+      // preventScroll: focusing an element the browser considers off-screen
+      // scrolls it into view by default, which on a phone yanks the timeline
+      // as the keyboard opens.
+      requestAnimationFrame(() => searchInput?.focus({ preventScroll: true }));
+    } else {
+      clearSearch();
+    }
+  }
+
   function clearSearch() {
     clearTimeout(searchTimer);
     searchQuery = '';
@@ -311,16 +326,36 @@
             Public — anyone can read this. Deleted within 24 hours, like everything else.
           </p>
         </div>
-        <!-- Top right, beside the title rather than in the tab row: it is not
-             a view of the feed, it is a view of what happened to you. -->
-        <NotificationsBell on:open={openThread} on:profile={openProfile} />
+        <div class="flex items-center gap-0.5 flex-shrink-0">
+          <!-- Folded away until wanted. This is the app's home screen on
+               Android, and a permanently open search box put roughly 150px of
+               chrome above the first post — the same reason the sidebar hides
+               its message search behind an icon rather than stacking two
+               boxes. -->
+          <button
+            on:click={toggleSearch}
+            class="p-1.5 rounded-lg transition-colors focus:outline-none
+              {searchOpen ? 'text-vault-accent bg-vault-elevated' : 'text-vault-text-dim hover:text-vault-text'}"
+            aria-label="Search posts"
+            aria-expanded={searchOpen}
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" stroke-linecap="round" />
+            </svg>
+          </button>
+          <!-- Top right, beside the title rather than in the tab row: it is not
+               a view of the feed, it is a view of what happened to you. -->
+          <NotificationsBell on:open={openThread} on:profile={openProfile} />
+        </div>
       </div>
 
-      <div class="relative mt-2">
+      {#if searchOpen}
+      <div class="relative mt-2" transition:fade={{ duration: 120 }}>
         <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-vault-text-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" stroke-linecap="round" />
         </svg>
         <input
+          bind:this={searchInput}
           bind:value={searchQuery}
           on:input={onSearchInput}
           placeholder="Search posts…"
@@ -338,6 +373,7 @@
           </button>
         {/if}
       </div>
+      {/if}
 
       <div class="flex items-center gap-1 mt-2.5">
         {#each [['global', 'Global'], ['top', 'Top'], ['following', 'Following']] as [value, label] (value)}
@@ -455,6 +491,15 @@
             <p class="text-xs text-vault-text-dim">Nothing from anyone you follow</p>
             <p class="text-[10px] text-vault-text-dim mt-1">
               Find people on Global and follow them to fill this up.
+            </p>
+          {:else if tab === 'top'}
+            <!-- Top has its own reason for being empty, and it is not expiry:
+                 it only holds posts somebody liked. Reusing the "everything
+                 expires" copy here told people their posts had been deleted
+                 when in fact none had been liked yet. -->
+            <p class="text-xs text-vault-text-dim">Nothing has been liked yet</p>
+            <p class="text-[10px] text-vault-text-dim mt-1">
+              Top shows the most-liked posts of the last few hours. Global has everything.
             </p>
           {:else}
             <!-- Says "expired", not "nobody has posted". A quiet feed on a

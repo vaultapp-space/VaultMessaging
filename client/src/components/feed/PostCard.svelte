@@ -97,6 +97,13 @@
     }
   }
 
+  function focusQuietly(node) {
+    // rAF so the element is laid out before focus; preventScroll so focusing
+    // it does not move the timeline underneath.
+    requestAnimationFrame(() => node.focus({ preventScroll: true }));
+    return {};
+  }
+
   // Quoting opens a field on the card itself rather than a modal. The thing
   // being quoted stays visible while you write about it, which is the whole
   // point — a dialog would cover it.
@@ -210,11 +217,16 @@
              "open thread" button and is pointer-events-none by default, so a
              field added here is untypeable without it. -->
         <div class="pointer-events-auto mt-2 rounded-xl border border-vault-accent/30 bg-vault-elevated p-2">
-          <!-- svelte-ignore a11y-autofocus -->
+          <!-- Focused via an action rather than the autofocus attribute.
+               autofocus scrolls the element into view, and this box lives
+               inside a card partway down a scrolling timeline — on a phone
+               that yanks the feed as the keyboard opens, moving whatever you
+               were reading. focus({ preventScroll: true }) puts the cursor in
+               the field and leaves the scroll position alone. -->
           <textarea
+            use:focusQuietly
             bind:value={quoteText}
             on:click|stopPropagation
-            autofocus
             maxlength="500"
             rows="2"
             placeholder="Say something about this…"

@@ -233,6 +233,41 @@ test.describe('thoughts', () => {
     }
   });
 
+  test('search is folded away until asked for, then finds a post', async ({ browser }) => {
+    // The box is behind an icon because the feed is the app's home screen and
+    // a permanently open search field pushed the first post down the page.
+    // That makes the toggle load-bearing: if it stops working, search becomes
+    // unreachable rather than merely awkward.
+    const aCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+    const bCtx = await browser.newContext({ ignoreHTTPSErrors: true });
+    const alice = await aCtx.newPage();
+    const bob = await bCtx.newPage();
+
+    try {
+      await register(alice, uniqueUsername('tsa'));
+      await register(bob, uniqueUsername('tsb'));
+
+      await openFeed(alice);
+      const needle = `platypus${Date.now()}`;
+      await writeThought(alice, `a post about a ${needle}`);
+      await writeThought(alice, 'an unrelated post');
+
+      await openFeed(bob);
+      const box = bob.getByPlaceholder('Search posts…');
+      await expect(box).toHaveCount(0, 'hidden until the icon is used');
+
+      await bob.getByRole('button', { name: 'Search posts' }).click();
+      await expect(box).toBeVisible({ timeout: 10_000 });
+
+      await box.fill(needle);
+      await expect(postCard(bob, needle)).toBeVisible({ timeout: 30_000 });
+      await expect(postCard(bob, 'an unrelated post')).toHaveCount(0);
+    } finally {
+      await aCtx.close();
+      await bCtx.close();
+    }
+  });
+
   test('the Profile tab opens your own profile and keeps the tab bar', async ({ browser }) => {
     // The tab bar hides itself whenever a profile is open, because a profile
     // is normally something you navigated *into* from a post. Your own
