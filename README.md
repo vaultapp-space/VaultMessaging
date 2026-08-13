@@ -32,7 +32,38 @@ A privacy-first, end-to-end encrypted messenger. Zero PII, zero server-side plai
 - A persistent mini call bar — calls stay connected while you navigate between conversations
 - Passphrase-encrypted cloud vault backup and optional WebAuthn/biometric unlock
 - QR-code based multi-device identity sync
-- Web Push notifications (VAPID) for offline delivery
+- Web Push notifications (VAPID) for offline delivery, for messages and for feed activity
+
+## Thoughts — the public feed
+
+One part of Vault is deliberately **not** private, and it is worth being explicit
+about which: **Thoughts** is a public timeline where a post is readable by anyone
+with an account, stored in a form the operator can read and remove.
+
+Everything else on this page describes content the server cannot read. This is
+the exception, it is labelled as such in the UI, and it obeys the same 24-hour
+rule as the rest of the product — there is no archive and no way to recover a
+post.
+
+- Global, Top (most-liked in the last few hours) and Following timelines
+- Replies, likes, reposts and quote posts; follows, mutes and device-local keyword filters
+- Notifications for likes, replies, reposts and follows, in-app and by push
+- Text search across the last 24 hours
+- Reporting, an operator takedown path, and a published
+  [acceptable-use and takedown page](https://vaultapp.space/acceptable-use.html)
+
+Blocking applies to the feed exactly as it does to messaging: blocked accounts
+disappear from timelines, search, follower lists and notifications, in both
+directions.
+
+## Account and data control
+
+- **Delete your account** — removes the account, its posts and everything it
+  uploaded, confirmed with your password. There is no recovery: Vault holds no
+  email or phone number to restore from.
+- **Delete a chat** — clears it from your device and your view on the server.
+  One-sided by design: the other person keeps their copy and is not told.
+- **Muted and blocked accounts** are listed in Settings, with an undo for each.
 
 ## Tech stack
 
@@ -94,6 +125,10 @@ building an APK, updating the F-Droid index or cutting a GitHub release.
 - The server never sees plaintext messages, attachments, or private keys — only encrypted blobs and routing metadata.
 - All long-term and session key material lives in volatile browser memory by default; nothing is written to disk unless the user explicitly enables encrypted local/cloud backup.
 - Messages carry a server-enforced 24-hour TTL and are hard-deleted by a periodic reaper.
+- **Thoughts is the documented exception.** A public post is stored in a form the
+  server can read, because a public square that only its author can read is not
+  one. Nothing else in the product works that way, and the UI says so where a
+  post is written rather than only here.
 
 This is an active project — see `docs/` for design notes on individual subsystems.
 

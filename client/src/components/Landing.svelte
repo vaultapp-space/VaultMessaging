@@ -397,6 +397,15 @@
           <p>Point your phone at a QR code to bring a laptop or tablet in. No account transfer, no new password.</p>
         </div>
         <div class="feature" use:reveal={300}>
+          <!-- Stated plainly rather than sold. Every other claim on this page
+               is that the server cannot read your messages; Thoughts is the
+               one place that is not true, and a landing page that implied
+               otherwise would undermine the rest of it. -->
+          <div class="plate">THOUGHTS</div>
+          <h3>A public square, on the same clock</h3>
+          <p>Post something anyone on Vault can read, reply to and follow. It's the one part of Vault the server can see — and it says so — and like everything else, it's gone in 24 hours.</p>
+        </div>
+        <div class="feature" use:reveal={360}>
           <div class="plate">MEMORY</div>
           <h3>Nothing lingers after you close it</h3>
           <p>Close the tab and your keys are erased, not just hidden, so there's nothing left to recover.</p>

@@ -188,7 +188,12 @@
         </span>
       </div>
 
-      {#if post.replyingTo || (post.replyToId && post.replyingTo === null && 'replyingTo' in post)}
+      <!-- The key is present only on the profile's Replies view; the server
+           does not send it for the timeline, where a reply already sits under
+           what it answers. Its presence is therefore the whole condition — a
+           null value means the parent was removed, which is worth saying
+           rather than hiding. -->
+      {#if 'replyingTo' in post}
         <!-- Only rendered where the server supplied it (the Replies view). A
              reply in its own thread already sits under what it answers. -->
         <div class="text-[10px] text-vault-text-dim mb-0.5 truncate">
