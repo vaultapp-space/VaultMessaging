@@ -12,6 +12,7 @@
   // rather than deferred. Following is the complete feed. That is why paging
   // reads `hasMore` and never `posts.length === limit`.
   import { onMount, onDestroy } from 'svelte';
+  import { Capacitor } from '@capacitor/core';
   import { fade } from 'svelte/transition';
 
   import {
@@ -65,16 +66,26 @@
   // Android back leaves the feed rather than the app, matching how a chat
   // behaves. Registered while this pane is mounted and popped on destroy.
   onMount(() => {
-    popBack = pushBackHandler(() => {
-      activeSection.set('chats');
-      // Reopen the list on the way out. The tab bar closes the sidebar to
-      // reveal this pane, so leaving without reopening it drops the user on
-      // the empty "select a conversation" state with their chats nowhere in
-      // sight — recoverable only by finding the Chats tab, which is not what
-      // back should mean. Narrow viewports only: on desktop the sidebar is a
-      // permanent column and this store does not govern it.
-      if (window.innerWidth < 768) sidebarOpen.set(true);
-    });
+    // No handler on native, because there the feed is the home screen (see
+    // stores/session.js). backHandler minimizes the app when its stack is
+    // empty, which is what Android's back is supposed to do from home —
+    // pushing a handler here would instead walk sideways to the Chats tab and
+    // take two presses to leave the app.
+    //
+    // A thread or profile opened on top still pushes its own handler, so back
+    // closes those first either way.
+    if (!Capacitor.isNativePlatform()) {
+      popBack = pushBackHandler(() => {
+        activeSection.set('chats');
+        // Reopen the list on the way out. The tab bar closes the sidebar to
+        // reveal this pane, so leaving without reopening it drops the user on
+        // the empty "select a conversation" state with their chats nowhere in
+        // sight — recoverable only by finding the Chats tab, which is not what
+        // back should mean. Narrow viewports only: on desktop the sidebar is a
+        // permanent column and this store does not govern it.
+        if (window.innerWidth < 768) sidebarOpen.set(true);
+      });
+    }
     filters = loadFilters();
     load();
 

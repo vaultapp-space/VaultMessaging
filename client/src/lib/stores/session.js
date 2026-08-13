@@ -5,6 +5,7 @@
 // ============================================================
 
 import { writable, get } from 'svelte/store';
+import { Capacitor } from '@capacitor/core';
 
 // ─── Session State ──────────────────────────────────────────
 
@@ -35,7 +36,7 @@ export const groupKeyRecipients = writable(new Map()); // Map<"groupId:senderId"
 
 export const activeView = writable('landing');        // 'landing' | 'auth' | 'chat'
 export const activePeer = writable(null);          // { id, username } — currently open chat
-export const sidebarOpen = writable(true);
+export const sidebarOpen = writable(!Capacitor.isNativePlatform());
 
 // Which top-level pane the app is showing: the conversation list and its chat,
 // or the public feed.
@@ -46,7 +47,20 @@ export const sidebarOpen = writable(true);
 // branch. Adding a sibling branch for the feed would unmount all of that, so
 // you would stop receiving calls and messages while scrolling. Thoughts is a
 // third pane *inside* Chat.svelte, the same way a channel is.
-export const activeSection = writable('chats'); // 'chats' | 'thoughts'
+//
+// **The Android app opens on the feed; the web opens on chats.** The tab bar
+// only exists below the md breakpoint, and on a phone the feed is the surface
+// worth landing on — it is the one with something new in it every time you
+// open the app, whereas a chat list you have already read is a list of things
+// you have already read. On the web, where the sidebar is a permanent column
+// and the app is usually opened to answer someone, chats remain the landing
+// pane.
+//
+// sidebarOpen has to be false alongside it: below md the sidebar is a
+// full-width overlay, so leaving it open would put the chat list on top of the
+// feed and the app would appear to open on chats anyway — the same trap the
+// Thoughts tab shipped with in v1.26.
+export const activeSection = writable(Capacitor.isNativePlatform() ? 'thoughts' : 'chats');
 
 // The post whose thread is open, if any. Null shows the timeline.
 export const activeThreadId = writable(null);

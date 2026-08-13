@@ -1,7 +1,14 @@
 <script>
   // ============================================================
-  // Mobile bottom tab bar — Chats / Thoughts / Profile / Settings
+  // Mobile bottom tab bar — Thoughts / Chats / Profile / Settings
   // ============================================================
+  // Thoughts sits first, and is where the Android app opens (see
+  // stores/session.js). On a phone it is the surface with something new in it
+  // every time you open the app; a chat list you have already read is a list
+  // of things you have already read. The web still opens on chats, where the
+  // sidebar is a permanent column and the app is usually opened to answer
+  // someone in particular.
+  //
   // Profile used to be folded into Settings, on the reasoning that the
   // sidebar footer already showed who you are and there was no account screen
   // worth a tab. Thoughts changed that: there is now a public profile with
@@ -90,18 +97,6 @@
     style="padding-bottom: env(safe-area-inset-bottom, 0px)"
   >
     <button
-      on:click={openChats}
-      class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 focus:outline-none
-        {chatsActive ? 'text-vault-accent' : 'text-vault-text-dim'}"
-      aria-current={chatsActive}
-    >
-      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      </svg>
-      <span class="text-[10px] font-medium">Chats</span>
-    </button>
-
-    <button
       on:click={openThoughts}
       class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 focus:outline-none
         {thoughtsActive ? 'text-vault-accent' : 'text-vault-text-dim'}"
@@ -126,6 +121,18 @@
         {/if}
       </div>
       <span class="text-[10px] font-medium">Thoughts</span>
+    </button>
+
+    <button
+      on:click={openChats}
+      class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 focus:outline-none
+        {chatsActive ? 'text-vault-accent' : 'text-vault-text-dim'}"
+      aria-current={chatsActive}
+    >
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+      <span class="text-[10px] font-medium">Chats</span>
     </button>
 
     <button
