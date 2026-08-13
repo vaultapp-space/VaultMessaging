@@ -24,16 +24,16 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshot-desktop.png",
+      "src": "/screenshot-desktop.webp",
       "sizes": "1024x576",
-      "type": "image/png",
+      "type": "image/webp",
       "form_factor": "wide",
       "label": "Vault Desktop Dashboard"
     },
     {
-      "src": "/screenshot-mobile.png",
+      "src": "/screenshot-mobile.webp",
       "sizes": "576x1024",
-      "type": "image/png",
+      "type": "image/webp",
       "form_factor": "narrow",
       "label": "Vault Mobile Chat"
     }

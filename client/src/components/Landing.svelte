@@ -426,11 +426,11 @@
       </div>
       <div class="showcase-grid">
         <figure class="showcase-desktop" use:reveal={0}>
-          <img src="/landing-app-preview.png" width="2600" height="1553" alt="Vault desktop app showing an encrypted conversation with an active end-to-end encrypted call" loading="lazy" decoding="async" />
+          <img src="/landing-app-preview.webp" width="2600" height="1553" alt="Vault desktop app showing an encrypted conversation with an active end-to-end encrypted call" loading="lazy" decoding="async" />
           <figcaption>Desktop</figcaption>
         </figure>
         <figure class="showcase-mobile" use:reveal={140}>
-          <img src="/landing-mobile-preview.png" width="900" height="1948" alt="Vault mobile app showing the same encrypted conversation" loading="lazy" decoding="async" />
+          <img src="/landing-mobile-preview.webp" width="900" height="1948" alt="Vault mobile app showing the same encrypted conversation" loading="lazy" decoding="async" />
           <figcaption>Mobile</figcaption>
         </figure>
       </div>
