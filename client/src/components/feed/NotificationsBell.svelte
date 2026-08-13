@@ -53,12 +53,17 @@
   }
 
   onMount(() => {
-    load();
     unsubscribe = onWsEvent('notification_tick', () => {
-      // Refetch rather than incrementing a local counter: the server applies
-      // block filtering, and a counter maintained here would drift from the
-      // list the moment anything was blocked or expired.
-      load();
+      // Only while the panel is open. The badge is driven by the shared count
+      // in stores/notifications.js, which Chat.svelte keeps fresh for the
+      // whole app — this component subscribing as well meant every
+      // notification cost two HTTP requests, and two more at launch now that
+      // the feed is the app's home screen.
+      //
+      // Refetching rather than incrementing is still right: the server applies
+      // block filtering, so a locally maintained list would drift the moment
+      // anything was blocked or expired.
+      if (open) load();
     });
   });
 
