@@ -1,4 +1,31 @@
+# https://vaultapp.space/robots.txt
+
+# The default posture is open: this is a marketing site and everything under /
+# that renders is meant to be found.
 User-agent: *
 Allow: /
+# The API answers 401 to anonymous requests, so crawling it produces nothing
+# but error pages that dilute the crawl budget for the pages that matter.
+Disallow: /api/
+# Uploaded post and story media. Public by URL, but a UUID filename is not
+# content anyone searches for, and these are deleted after 24 hours — indexing
+# them manufactures a permanent supply of 404s.
+Disallow: /uploads/
+# The self-hosted F-Droid repository: package indexes and APK binaries.
+Disallow: /fdroid/
+
+# AI crawlers — GPTBot, ClaudeBot, PerplexityBot, Google-Extended — are allowed
+# deliberately, and are covered by the group above rather than by groups of
+# their own. That is not laziness: a crawler obeys exactly one group, the most
+# specific one matching its name, and the groups do not merge. Naming GPTBot
+# and granting it "Allow: /" would therefore have *removed* the three Disallow
+# rules above for it, which is the opposite of the intent.
+#
+# The intent itself: Vault's case rests on specifics — no phone number, 24-hour
+# expiry, X3DH and the Double Ratchet — and answer engines are increasingly
+# where someone first asks which messenger doesn't need a phone number. Being
+# absent from that answer is a real cost, and nothing here is worth withholding.
+#
+# To exclude one of them later, copy the three Disallow lines into its group.
 
 Sitemap: https://vaultapp.space/sitemap.xml

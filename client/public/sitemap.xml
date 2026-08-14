@@ -1,8 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Two URLs, because two URLs exist. A sitemap listing pages that 404, or
+  omitting one that is linked from every page in the footer, is worse than a
+  short one: it is the file search engines use to decide what is canonical.
+
+  changefreq is advisory and largely ignored by Google; lastmod is not, and is
+  the reason to keep this file updated by hand at each release rather than
+  generating a plausible-looking date at build time. A lastmod that moves every
+  deploy while the content does not is noise the crawler learns to discount.
+-->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://vaultapp.space/</loc>
+    <lastmod>2026-08-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://vaultapp.space/acceptable-use.html</loc>
+    <lastmod>2026-08-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
   </url>
 </urlset>

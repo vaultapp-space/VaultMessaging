@@ -7,6 +7,22 @@
     <meta name="description" content="What is not allowed on Vault's public feed, and how to report illegal content." />
     <link rel="icon" href="/favicon.svg" />
     <link rel="canonical" href="https://vaultapp.space/acceptable-use.html" />
+    <!-- Indexable on purpose. The whole value of this page is that someone who
+         needs it — an abuse desk, a registrar, a lawyer acting for a person in
+         an image — can find it by searching rather than by having been sent
+         the link. noindex here would route the first complaint to the hosting
+         provider instead, who resolves complaints by suspending the server. -->
+    <meta name="robots" content="index, follow, max-snippet:-1" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Vault" />
+    <meta property="og:url" content="https://vaultapp.space/acceptable-use.html" />
+    <meta property="og:title" content="Acceptable Use and Takedown — Vault" />
+    <meta property="og:description" content="What is not allowed on Vault's public feed, how to report illegal content, and what the operator can and cannot see." />
+    <meta property="og:image" content="https://vaultapp.space/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Acceptable Use and Takedown — Vault" />
+    <meta name="twitter:description" content="What is not allowed on Vault's public feed, how to report illegal content, and what the operator can and cannot see." />
+    <meta name="twitter:image" content="https://vaultapp.space/og-image.png" />
     <!--
       A plain static file rather than a route in the app, on purpose. Whoever
       reads this page next is most likely a lawyer, a registrar or an abuse desk

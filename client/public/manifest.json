@@ -1,8 +1,11 @@
 {
   "id": "vault-anonymous-messaging",
-  "name": "Vault Secure Messaging",
+  "name": "Vault — Encrypted Messaging, No Phone Number",
   "short_name": "Vault",
-  "description": "End-to-end encrypted anonymous messaging. Zero PII, zero persistence, 24-hour auto-delete.",
+  "description": "A free end-to-end encrypted messenger that never asks for your phone number or email. Messages, calls and files vanish after 24 hours.",
+  "categories": ["social", "communication", "utilities"],
+  "lang": "en",
+  "dir": "ltr",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#09090b",

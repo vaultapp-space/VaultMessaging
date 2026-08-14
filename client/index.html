@@ -3,11 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="Vault — End-to-end encrypted anonymous messaging. Zero PII, zero persistence, 24-hour auto-delete. Privacy without compromise." />
-    <meta name="theme-color" content="#fafafa" />
-    <meta name="color-scheme" content="light" />
+    <!-- Written for what people actually type into a search box ("encrypted
+         messenger no phone number") rather than for how the product describes
+         itself internally. "Zero PII, zero persistence" was accurate and
+         matched nothing anyone searches for. -->
+    <!-- Held under ~160 characters so it survives intact in a result snippet.
+         The og: and twitter: variants below are deliberately the longer
+         wording: those are rendered in full by link-preview cards, which have
+         no such limit, so truncating them too would lose detail for nothing. -->
+    <meta name="description" content="A free end-to-end encrypted messenger that never asks for your phone number or email. Messages, calls and files vanish after 24 hours." />
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0b" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
 
-    <title>Vault — Secure Anonymous Messaging</title>
+    <!-- max-image-preview:large is what allows a full-width thumbnail in
+         results instead of a 90px one; max-snippet:-1 removes the description
+         length cap. Both default to conservative values when unset. -->
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="author" content="Vault" />
+    <meta name="application-name" content="Vault" />
+    <meta name="apple-mobile-web-app-title" content="Vault" />
+
+    <title>Vault — Encrypted Messaging, No Phone Number Needed</title>
 
     <!-- Declares vaultapp.space (not www.vaultapp.space, which nginx now
          redirects here — see deploy/nginx/vaultapp.space.conf) as the one
@@ -16,37 +33,189 @@
          instead of splitting. -->
     <link rel="canonical" href="https://vaultapp.space/" />
 
-    <!-- Open Graph / Facebook -->
+    <!-- Open Graph / Facebook.
+         og:image:width and :height are not decoration — without them a crawler
+         that has not yet fetched the image renders a small-card fallback, so
+         the first share of a new link often loses the large preview. -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vault" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://vaultapp.space/" />
-    <meta property="og:title" content="Vault — Secure Anonymous Messaging" />
-    <meta property="og:description" content="Vault combines double-ratcheted E2EE messaging with confidential voice/video calls. Zero PII, zero persistence, 24-hour auto-delete." />
+    <meta property="og:title" content="Vault — Encrypted Messaging, No Phone Number Needed" />
+    <meta property="og:description" content="A free end-to-end encrypted messenger that never asks for your phone number or email. Messages, calls and files lock on your device and delete themselves after 24 hours." />
     <meta property="og:image" content="https://vaultapp.space/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Vault — end-to-end encrypted messaging with no phone number required" />
 
-    <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://vaultapp.space/" />
-    <meta property="twitter:title" content="Vault — Secure Anonymous Messaging" />
-    <meta property="twitter:description" content="Vault combines double-ratcheted E2EE messaging with confidential voice/video calls. Zero PII, zero persistence, 24-hour auto-delete." />
-    <meta property="twitter:image" content="https://vaultapp.space/og-image.png" />
+    <!-- Twitter. name= rather than property=: the card parser reads the name
+         attribute, and property= works only because most parsers are lenient. -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@VaultMessenger" />
+    <meta name="twitter:creator" content="@VaultMessenger" />
+    <meta name="twitter:url" content="https://vaultapp.space/" />
+    <meta name="twitter:title" content="Vault — Encrypted Messaging, No Phone Number Needed" />
+    <meta name="twitter:description" content="A free end-to-end encrypted messenger that never asks for your phone number or email. Messages, calls and files lock on your device and delete themselves after 24 hours." />
+    <meta name="twitter:image" content="https://vaultapp.space/og-image.png" />
+    <meta name="twitter:image:alt" content="Vault — end-to-end encrypted messaging with no phone number required" />
 
-    <!-- Structured data: makes Vault eligible for richer search-result
-         treatment (an app card rather than a bare blue link). Price 0 is
-         literal, not a placeholder — there is no paid tier. -->
+    <!-- Structured data.
+         One @graph rather than several separate <script> blocks, so the nodes
+         can reference each other by @id — the publisher of the WebSite is the
+         same entity as the author of the app, and saying so once beats
+         repeating an unlinked copy of the organisation in each node.
+
+         Deliberately absent: aggregateRating and reviewCount. They are the
+         two properties that most reliably produce a star rating in results,
+         and there is no rating data to base them on. Inventing one is
+         straightforward grounds for a manual spam action against the domain.
+
+         Also note softwareVersion is omitted on purpose: it would need a bump
+         in this file at every release and would silently go stale the first
+         time someone forgot. downloadUrl points at /latest/, which never does.
+
+         FAQPage is included for Bing and for AI answer engines, which do read
+         it. Google restricted FAQ rich results to government and health sites
+         in 2023, so expect no star treatment there — this is not the reason
+         to keep it, and removing it would cost the engines that still use it. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "Vault",
-        "url": "https://vaultapp.space/",
-        "description": "End-to-end encrypted anonymous messaging. Zero PII, zero persistence, 24-hour auto-delete.",
-        "applicationCategory": "SocialNetworkingApplication",
-        "operatingSystem": "Android, Web",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
-        }
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://vaultapp.space/#organization",
+            "name": "Vault",
+            "url": "https://vaultapp.space/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://vaultapp.space/icon-512.png",
+              "width": 512,
+              "height": 512
+            },
+            "sameAs": [
+              "https://github.com/vaultapp-space/VaultMessaging",
+              "https://x.com/VaultMessenger",
+              "https://discord.gg/VZyvTsJcFQ"
+            ]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://vaultapp.space/#website",
+            "url": "https://vaultapp.space/",
+            "name": "Vault",
+            "description": "End-to-end encrypted messaging with no phone number, no email and 24-hour auto-delete.",
+            "publisher": { "@id": "https://vaultapp.space/#organization" },
+            "inLanguage": "en"
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://vaultapp.space/#app",
+            "name": "Vault",
+            "url": "https://vaultapp.space/",
+            "description": "A free end-to-end encrypted messenger that never asks for your phone number or email. Messages, calls and files lock on your device and delete themselves after 24 hours.",
+            "applicationCategory": "CommunicationApplication",
+            "applicationSubCategory": "Encrypted Messaging",
+            "operatingSystem": "Android, Web",
+            "downloadUrl": "https://github.com/vaultapp-space/VaultMessaging/releases/latest/download/Vault.apk",
+            "installUrl": "https://vaultapp.space/",
+            "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+            "isAccessibleForFree": true,
+            "author": { "@id": "https://vaultapp.space/#organization" },
+            "publisher": { "@id": "https://vaultapp.space/#organization" },
+            "screenshot": [
+              "https://vaultapp.space/landing-app-preview.webp",
+              "https://vaultapp.space/landing-mobile-preview.webp"
+            ],
+            "featureList": [
+              "End-to-end encrypted one-to-one and group messaging",
+              "Signs up with no phone number and no email address",
+              "Encrypted voice and video calls routed through a relay so neither side learns the other's IP address",
+              "Every message, file and call automatically deleted after 24 hours",
+              "Passkey and biometric unlock",
+              "Add a second device by scanning a QR code",
+              "Open source under AGPL-3.0-or-later"
+            ],
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD",
+              "availability": "https://schema.org/InStock"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://vaultapp.space/#faq",
+            "isPartOf": { "@id": "https://vaultapp.space/#website" },
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Can anyone at Vault read my messages?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Your messages are locked on your device with a key we never receive. Even if someone asked us to hand over a conversation, we'd have nothing readable to give them."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What happens if I lose my password?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Your key lives on your device, protected by your password. We don't keep a backup copy on our servers, on purpose. If you lose both, that conversation history can't be recovered. You can opt into an encrypted backup ahead of time if you want a safety net."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Vault really free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Vault is free to use, and the code is open for anyone to inspect."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What if Vault's servers go down?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "New messages can't send until they're back, but nothing already delivered to your device is affected, and nothing is exposed while it's down."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What key exchange protocol does Vault use?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Sessions are bootstrapped with X3DH (Extended Triple Diffie-Hellman) against pre-published identity, signed prekey, and one-time prekey bundles, allowing asynchronous session establishment with an offline recipient."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How is forward secrecy maintained?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Post-handshake messaging uses the Double Ratchet: a per-message symmetric-key ratchet combined with a Diffie-Hellman ratchet on each direction change, so compromise of one message key doesn't expose past or future messages."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Vault open source?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes — licensed AGPL-3.0-or-later, with the full client and server source public on GitHub."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I self-host Vault?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Not yet. Vault currently runs on centralized infrastructure with no peer-to-peer fallback. Self-hosting is on the roadmap."
+                }
+              }
+            ]
+          }
+        ]
       }
     </script>
 
@@ -84,6 +253,54 @@
   </head>
   <body>
     <div id="app"></div>
+    <!--
+      Vault's landing page is client-rendered, so #app is empty in the HTML a
+      crawler receives. Googlebot executes JavaScript and sees the real page;
+      most AI crawlers do not, and robots.txt now invites them explicitly.
+
+      This block is what those agents get, and it is a genuine <noscript> —
+      shown to any visitor without JavaScript — rather than a copy of the hero
+      that script removes on mount. The removal trick renders better, and was
+      rejected twice over: text present only for crawlers is cloaking, and a
+      second hand-maintained copy of the marketing prose drifts from the real
+      one until the two contradict each other.
+
+      Kept short on purpose. The substantive machine-readable content is the
+      JSON-LD graph in <head> — description, seven featureList entries and all
+      eight FAQ answers, as plain text, with no rendering required. Duplicating
+      the full page here would add the drift problem back for no gain.
+
+      The real fix is prerendering the landing route at build time. That is a
+      build-pipeline change, not a markup one, and it is not in this commit.
+    -->
+    <noscript>
+      <div style="max-width:46rem;margin:0 auto;padding:3rem 1.25rem;font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#18181b;">
+        <h1>Vault — a conversation only the two of you can ever read</h1>
+        <p>
+          Vault is a free, open-source, end-to-end encrypted messenger. It asks
+          for no phone number and no email address, because it never collects
+          them. Messages are locked on your device before they reach the
+          server, and everything — messages, files and calls — is deleted
+          automatically after 24 hours.
+        </p>
+        <p>
+          Encryption uses X3DH for key exchange and the Double Ratchet for
+          per-message keys, the same cryptography Signal uses. Voice and video
+          calls run over WebRTC with DTLS-SRTP and are routed through a relay,
+          so neither side learns the other's IP address.
+        </p>
+        <p>
+          <strong>Vault needs JavaScript to run.</strong> The app performs all
+          encryption in your browser, so there is no server-rendered version —
+          a page that worked without JavaScript would be one where the server
+          held your keys.
+        </p>
+        <p>
+          <a href="https://github.com/vaultapp-space/VaultMessaging">Source code on GitHub</a> ·
+          <a href="/acceptable-use.html">Acceptable use and takedown</a>
+        </p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
