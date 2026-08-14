@@ -2,6 +2,7 @@
   import { activeView } from '../lib/stores/session.js';
   import { onMount, onDestroy } from 'svelte';
   import { applyTheme } from '../lib/theme.js';
+  import LandingIcon from './LandingIcon.svelte';
 
   let isLight = false;
   let techOpen = false;
@@ -94,7 +95,17 @@
   /* Fade + rise elements in as they scroll into view.
      The reveal classes are stripped once the animation finishes: leaving them on
      would keep the 0.7s reveal transition (and its delay) overriding each card's
-     own faster hover transition. */
+     own faster hover transition.
+
+     `in-view` is the exception and is deliberately never removed. Child
+     animations that run *once* on entry — the icon line-draw, the step
+     connector, the table cascade — key off it, and stripping it would replay
+     them on every subsequent style recalculation.
+
+     It is additive on purpose: the early-return path below (no
+     IntersectionObserver, or reduced motion) never sets it, so every rule that
+     depends on it must treat "absent" as the finished state, not the starting
+     one. Getting that backwards renders an undrawn icon — i.e. nothing. */
   function reveal(node, delay = 0) {
     if (typeof IntersectionObserver === 'undefined' || reduceMotion) {
       if (node.dataset.mock === 'chat') playChatMock();
@@ -118,7 +129,7 @@
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            node.classList.add('revealed');
+            node.classList.add('revealed', 'in-view');
             io.unobserve(node);
             node.addEventListener('transitionend', onEnd);
             // Fallback: transitionend never fires if the tab is backgrounded mid-reveal.
@@ -274,7 +285,14 @@
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.522 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>
               Discord
             </a>
-            <a href="https://x.com/VaultMessenger" target="_blank" rel="noopener noreferrer">✖️ Twitter</a>
+            <!-- The X wordmark as a path, not the ✖️ emoji it replaced. That
+                 rendered as a red-and-white cross on most platforms, sat next
+                 to a hand-drawn Discord glyph, and looked like a placeholder
+                 nobody had got round to. -->
+            <a href="https://x.com/VaultMessenger" target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+              Twitter
+            </a>
           </div>
         </div>
       </div>
@@ -305,18 +323,32 @@
         <h2>Three things happen. We're only ever holding a locked box.</h2>
         <p>No math, no key exchange diagrams, just what actually happens when you hit send.</p>
       </div>
+      <!-- The connector is decorative and sits behind the cards, drawn left to
+           right as the section enters. It is hidden below 860px, where .steps
+           collapses to one column and a horizontal line between vertically
+           stacked cards would point at nothing. -->
       <div class="steps">
+        <!-- No use:reveal here. The draw animation is triggered by the *first
+             step* entering the viewport, via :has(.step.in-view) below — the
+             connector should follow the cards, not observe itself. Adding
+             reveal on top set opacity and a translateY that the scaleX
+             animation then overrode, which is two mechanisms competing to
+             animate one 1px line. -->
+        <div class="step-connector" aria-hidden="true"></div>
         <div class="step" use:reveal={0}>
+          <div class="step-icon"><LandingIcon name="lock" size={20} /></div>
           <div class="num">One</div>
           <h3>You write a message</h3>
           <p>It's locked on your own device, using a key that never leaves it, before it ever touches our servers.</p>
         </div>
         <div class="step" use:reveal={110}>
+          <div class="step-icon"><LandingIcon name="transit" size={20} /></div>
           <div class="num">Two</div>
           <h3>It travels sealed</h3>
           <p>Our servers move the locked box from one device to the other. We can see it exists, but never what's inside.</p>
         </div>
         <div class="step" use:reveal={220}>
+          <div class="step-icon"><LandingIcon name="key" size={20} /></div>
           <div class="num">Three</div>
           <h3>Only they can open it</h3>
           <p>Your friend's device holds the one key that fits. We never had a copy, so we can't hand one over to anyone.</p>
@@ -372,31 +404,37 @@
       </div>
       <div class="feature-grid">
         <div class="feature" use:reveal={0}>
+          <div class="feat-icon"><LandingIcon name="groups" /></div>
           <div class="plate">GROUPS</div>
           <h3>Group chats stay private</h3>
           <p>Every member gets their own lock, so a large group is never a weak point.</p>
         </div>
         <div class="feature" use:reveal={60}>
+          <div class="feat-icon"><LandingIcon name="files" /></div>
           <div class="plate">FILES</div>
           <h3>Share files without a trace</h3>
           <p>Photos and files travel straight between devices, encrypted the whole way, never stored in the open.</p>
         </div>
         <div class="feature" use:reveal={120}>
+          <div class="feat-icon"><LandingIcon name="calls" /></div>
           <div class="plate">CALLS</div>
           <h3>Calls no one can listen to</h3>
           <p>Locked with a key only the two of you hold. Calls route through our relay, so the other person never sees your IP address or location.</p>
         </div>
         <div class="feature" use:reveal={180}>
+          <div class="feat-icon"><LandingIcon name="signin" /></div>
           <div class="plate">SIGN-IN</div>
           <h3>Unlock with your face or fingerprint</h3>
           <p>No password to steal or forget. Your device's own lock protects the key.</p>
         </div>
         <div class="feature" use:reveal={240}>
+          <div class="feat-icon"><LandingIcon name="devices" /></div>
           <div class="plate">DEVICES</div>
           <h3>Add a device with a scan</h3>
           <p>Point your phone at a QR code to bring a laptop or tablet in. No account transfer, no new password.</p>
         </div>
         <div class="feature" use:reveal={300}>
+          <div class="feat-icon"><LandingIcon name="memory" /></div>
           <div class="plate">MEMORY</div>
           <h3>Nothing lingers after you close it</h3>
           <p>Close the tab and your keys are erased, not just hidden, so there's nothing left to recover.</p>
@@ -412,6 +450,7 @@
              that the server cannot read your messages; a card implying the
              feed worked the same way would undermine the rest. -->
         <div class="feature feature-wide" use:reveal={360}>
+          <div class="feat-icon"><LandingIcon name="thoughts" /></div>
           <div class="plate">THOUGHTS</div>
           <h3>A public square, on the same clock</h3>
           <p>Post something anyone on Vault can read, reply to and follow. It's the one part of Vault the server can see — and it says so — and like everything else, it's gone in 24 hours.</p>
@@ -472,7 +511,7 @@
           <p>Your key lives on your device, protected by your password. We don't keep a backup copy on our servers, on purpose. If you lose both, that conversation history can't be recovered. You can opt into an encrypted backup ahead of time if you want a safety net.</p>
         </details>
         <details class="faq-item">
-          <summary>Is this really free?</summary>
+          <summary>Is Vault really free?</summary>
           <p>Yes. Vault is free to use, and the code is open for anyone to inspect.</p>
         </details>
         <details class="faq-item">
@@ -495,7 +534,7 @@
           <p>Yes — licensed AGPL-3.0-or-later, with the full client and server source public on GitHub.</p>
         </details>
         <details class="faq-item">
-          <summary>Can I self-host it?</summary>
+          <summary>Can I self-host Vault?</summary>
           <p>Not yet. Vault currently runs on centralized infrastructure with no peer-to-peer fallback. Self-hosting is on the roadmap.</p>
         </details>
       </div>
@@ -598,16 +637,57 @@
     .vault-landing :global(.reveal-init) { opacity: 1; transform: none; transition: none; }
   }
 
+  /* ---------- ICON LINE-DRAW ---------- */
+  /* Resting state is *drawn*, and the animation is what un-draws and redraws
+     it. That ordering matters: `in-view` is only ever added by the reveal
+     action, so anything that bypasses it — reduced motion, no
+     IntersectionObserver, a crawler, a static render — must land on a
+     complete icon. Starting from dashoffset: 1 and relying on the class to
+     finish the job would show an empty box to exactly those visitors.
+     Each path carries pathLength="1", so a dasharray of 1 is one full stroke
+     regardless of the path's real length, and --i staggers them in sequence. */
+  .vault-landing :global(.li-icon path) { stroke-dasharray: 1; stroke-dashoffset: 0; }
+  .vault-landing :global(.in-view .li-icon path) {
+    animation: drawLine 0.8s cubic-bezier(0.16,1,0.3,1) both;
+    animation-delay: calc(var(--i, 0) * 90ms + 140ms);
+  }
+  @keyframes drawLine {
+    from { stroke-dashoffset: 1; opacity: 0; }
+    to { stroke-dashoffset: 0; opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vault-landing :global(.in-view .li-icon path) { animation: none; }
+  }
+
   h1, h2, h3 { font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
   a, button { color: inherit; }
   .eyebrow, .plate { font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace; }
 
   .bg-field {
     position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    background:
-      radial-gradient(600px 400px at 15% 0%, var(--accent-glow), transparent 60%),
-      radial-gradient(500px 380px at 100% 30%, var(--accent-glow), transparent 55%);
+    overflow: hidden;
     opacity: 0.6;
+  }
+  /* The glow lives on a pseudo-element rather than on .bg-field itself so it
+     can be transformed. Drifting it is a transform on a composited layer — no
+     repaint, no layout — whereas animating the gradient's own colour stops or
+     background-position repaints a full-viewport element every frame.
+     inset: -25% keeps the enlarged, offset layer covering the viewport at the
+     extremes of the animation instead of exposing a hard edge. */
+  .bg-field::before {
+    content: ""; position: absolute; inset: -25%;
+    background:
+      radial-gradient(600px 400px at 15% 20%, var(--accent-glow), transparent 60%),
+      radial-gradient(500px 380px at 85% 45%, var(--accent-glow), transparent 55%);
+    animation: fieldDrift 42s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+  @keyframes fieldDrift {
+    from { transform: translate3d(-2%, -1.5%, 0) scale(1); }
+    to   { transform: translate3d(3%, 2.5%, 0) scale(1.08); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bg-field::before { animation: none; }
   }
   .bg-field::after {
     content: ""; position: absolute; inset: 0;
@@ -803,8 +883,36 @@
   .bubble-meta .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent-glow-strong); }
 
   /* ---------- HOW IT WORKS ---------- */
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; position: relative; }
+  /* Sits behind the cards and spans the gaps between them, so three separate
+     boxes read as one sequence. Default transform is scaleX(1): if :has() is
+     unsupported the line is simply static rather than permanently collapsed
+     to nothing. */
+  .step-connector {
+    position: absolute; top: 43px; left: 16%; right: 16%; height: 1px; z-index: 0;
+    /* Solid rather than dashed. The cards are opaque, so only the two gap
+       segments are ever visible — and a dashed line reduced to a 22px window
+       shows two or three specks that read as a rendering artefact rather than
+       as a connection. */
+    background: var(--accent);
+    opacity: 0.5; transform: scaleX(1); transform-origin: 0 50%;
+  }
+  .vault-landing :global(.steps:has(.step.in-view) .step-connector) {
+    animation: drawConnector 1.15s cubic-bezier(0.16,1,0.3,1) 0.1s both;
+  }
+  @keyframes drawConnector { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @media (prefers-reduced-motion: reduce) {
+    .vault-landing :global(.steps:has(.step.in-view) .step-connector) { animation: none; }
+  }
+  .step-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px; border-radius: 0.65rem; margin-bottom: 14px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--accent);
+    transition: border-color 0.35s ease, background 0.35s ease, box-shadow 0.35s ease;
+  }
+  .step:hover .step-icon { border-color: var(--accent); background: var(--elevated); box-shadow: 0 0 14px var(--accent-glow); }
   .step {
+    position: relative; z-index: 1;
     background: var(--surface); border: 1px solid var(--border); border-radius: 0.75rem; padding: 24px 22px;
     transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), border-color 0.35s ease, box-shadow 0.35s ease;
   }
@@ -858,6 +966,17 @@
   }
   .feature:hover { background: var(--elevated); }
   .feature:hover::before { transform: scaleX(1); }
+  .feat-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 0.7rem; margin-bottom: 15px;
+    background: var(--accent-glow); color: var(--accent); border: 1px solid transparent;
+    transition: background 0.3s ease, border-color 0.3s ease, transform 0.3s cubic-bezier(0.16,1,0.3,1);
+  }
+  .feature:hover .feat-icon {
+    background: var(--accent-glow-strong); border-color: var(--accent-glow-strong);
+    transform: translateY(-2px);
+  }
+  @media (prefers-reduced-motion: reduce) { .feature:hover .feat-icon { transform: none; } }
   .feature .plate {
     display: inline-block; font-size: 0.62rem; color: var(--accent); letter-spacing: 0.06em;
     background: var(--accent-glow); padding: 3px 8px; border-radius: 9999px; font-weight: 600;
@@ -885,9 +1004,22 @@
   /* ---------- SHOWCASE ---------- */
   .showcase-grid { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; }
   .showcase-desktop, .showcase-mobile {
+    position: relative;
     margin: 0; border: 1px solid var(--border); border-radius: 0.85rem; overflow: hidden;
     background: var(--surface); box-shadow: 0 20px 48px rgba(0,0,0,0.25);
     transition: transform 0.45s cubic-bezier(0.16,1,0.3,1), box-shadow 0.45s ease, border-color 0.45s ease;
+  }
+  /* A light sweep across the glass on hover. Sells these as screens rather
+     than as two pasted-in PNGs, and costs one composited transform. */
+  .showcase-desktop::after, .showcase-mobile::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 2;
+    background: linear-gradient(105deg, transparent 36%, rgba(255,255,255,0.14) 48%, transparent 60%);
+    transform: translateX(-120%);
+    transition: transform 0.9s cubic-bezier(0.16,1,0.3,1);
+  }
+  .showcase-desktop:hover::after, .showcase-mobile:hover::after { transform: translateX(120%); }
+  @media (prefers-reduced-motion: reduce) {
+    .showcase-desktop::after, .showcase-mobile::after { display: none; }
   }
   .showcase-desktop:hover, .showcase-mobile:hover {
     transform: translateY(-5px); border-color: var(--accent);
@@ -924,6 +1056,25 @@
   }
   table.compare tbody tr { transition: background 0.2s ease; }
   table.compare tbody tr:hover { background: var(--surface); }
+  /* The Vault column gets a tint and a capping rule so the eye lands on it
+     before reading a single cell. */
+  table.compare th:nth-child(2), table.compare td:nth-child(2) { background: var(--accent-glow); }
+  table.compare th:nth-child(2) { border-top: 2px solid var(--accent); border-radius: 0.4rem 0.4rem 0 0; }
+  table.compare tbody tr:last-child td:nth-child(2) { border-radius: 0 0 0.4rem 0.4rem; }
+  /* Rows cascade rather than the whole table appearing at once — five rows is
+     enough for the sequence to read as "go through these one by one". */
+  .table-scroll:global(.in-view) tbody tr {
+    animation: rowIn 0.5s cubic-bezier(0.16,1,0.3,1) both;
+  }
+  .table-scroll:global(.in-view) tbody tr:nth-child(1) { animation-delay: 0.06s; }
+  .table-scroll:global(.in-view) tbody tr:nth-child(2) { animation-delay: 0.14s; }
+  .table-scroll:global(.in-view) tbody tr:nth-child(3) { animation-delay: 0.22s; }
+  .table-scroll:global(.in-view) tbody tr:nth-child(4) { animation-delay: 0.30s; }
+  .table-scroll:global(.in-view) tbody tr:nth-child(5) { animation-delay: 0.38s; }
+  @keyframes rowIn { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .table-scroll:global(.in-view) tbody tr { animation: none; }
+  }
 
   /* ---------- FAQ ---------- */
   .faq-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 9999px; padding: 3px; margin-bottom: 8px; }
@@ -1033,6 +1184,9 @@
        each step in about 210px, too narrow for a heading and a sentence, so
        stacking is the honest option rather than a compromise. */
     .steps { grid-template-columns: 1fr; }
+    /* Stacked cards: a horizontal line across the top of the first one joins
+       nothing to nothing. */
+    .step-connector { display: none; }
     table.compare { min-width: 520px; }
     .scroll-hint { display: block; }
   }
