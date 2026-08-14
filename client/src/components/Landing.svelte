@@ -317,6 +317,92 @@
       </div>
     </section>
 
+    <!-- Sits directly after the chat mock and before "how it works": someone
+         who has just watched an encrypted conversation play out is at exactly
+         the moment where "…and there is a public half too" is surprising
+         rather than confusing. Below the fold it would read as a bolted-on
+         feature; above it, it competes with the hero's single claim.
+
+         Every line about the public half is written to match
+         public/acceptable-use.html rather than to sell harder than it. The
+         takedown page is the one a registrar or a lawyer reads, and a landing
+         page promising broader speech than that page delivers is the pair of
+         documents that becomes a problem. -->
+    <section id="both">
+      <div class="section-head" use:reveal={0}>
+        <div class="eyebrow">Two halves, one app</div>
+        <h2>A private messenger and a public square. The line between them is the point.</h2>
+        <p>Most apps are one or the other. Vault is both, and it never leaves you guessing which one you're in.</p>
+      </div>
+
+      <div class="duo">
+        <div class="duo-card" use:reveal={0}>
+          <div class="duo-head">
+            <span class="duo-icon"><LandingIcon name="lock" size={20} /></span>
+            <span class="plate">PRIVATE</span>
+          </div>
+          <h3>Chats nobody can read</h3>
+          <p>One-to-one messages, groups and calls, all end-to-end encrypted. The server moves a locked box it has no key to. Not us, not someone who steals the server, not anyone holding a court order.</p>
+          <ul class="duo-list">
+            <li>Locked on your device before it's sent</li>
+            <li>A new key for every single message</li>
+            <li>Calls relayed, so neither side learns the other's IP</li>
+          </ul>
+        </div>
+
+        <div class="duo-card duo-public" use:reveal={110}>
+          <div class="duo-head">
+            <span class="duo-icon"><LandingIcon name="thoughts" size={20} /></span>
+            <span class="plate">PUBLIC</span>
+          </div>
+          <h3>Thoughts anyone can read</h3>
+          <p>A public feed on the same 24-hour clock. Say what you actually think to nobody in particular, follow people worth reading, and watch all of it expire by tomorrow.</p>
+          <ul class="duo-list">
+            <li>Unpopular, offensive and wrong opinions stay up</li>
+            <li>No algorithm deciding who deserves an audience</li>
+            <li>Nothing accumulates into a permanent record of you</li>
+          </ul>
+          <p class="duo-caveat">
+            This half is stored where the server can read it — that's what
+            makes it public. The app says so every time you post, because a
+            feed pretending to be encrypted would undermine the half that is.
+          </p>
+        </div>
+      </div>
+
+      <div class="speech" use:reveal={0}>
+        <h3>What "free to speak" means here, exactly</h3>
+        <div class="speech-grid">
+          <div class="speech-item">
+            <div class="speech-label">Not moderated</div>
+            <p>Being rude, wrong, disliked or argumentative isn't a removable offence. Reports on those grounds are closed without action, and we say that out loud rather than running a queue that quietly does nothing.</p>
+          </div>
+          <div class="speech-item">
+            <div class="speech-label">Removed</div>
+            <p>Content that is illegal: sexual content involving minors, intimate images shared without consent, credible threats of violence, and material promoting terrorism.</p>
+          </div>
+          <div class="speech-item">
+            <div class="speech-label">Yours to control</div>
+            <p>Mute hides someone and tells them nothing. Block hides you from each other everywhere. Keyword filters hide whatever you choose — and never leave your device.</p>
+          </div>
+        </div>
+        <a class="speech-link" href="/acceptable-use.html">Read the full policy →</a>
+      </div>
+
+      <div class="switch-strip" use:reveal={0}>
+        <div class="switch-copy">
+          <h3>You don't have to switch</h3>
+          <p>Keep whatever you already use. Vault runs alongside it, for the conversations that shouldn't live there.</p>
+        </div>
+        <ul class="switch-list">
+          <li>No phone number to hand over</li>
+          <li>No contact list to import</li>
+          <li>Nobody to convince to migrate</li>
+          <li>Opens in a browser, nothing to install</li>
+        </ul>
+      </div>
+    </section>
+
     <section id="how">
       <div class="section-head" use:reveal={0}>
         <div class="eyebrow">How it works</div>
@@ -881,6 +967,92 @@
   .bubble-row.out .bubble { background: var(--text); color: var(--black); border-bottom-right-radius: 0.3rem; font-weight: 600; }
   .bubble-meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; font-size: 0.68rem; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
   .bubble-meta .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent-glow-strong); }
+
+  /* ---------- TWO HALVES ---------- */
+  /* Stretch, not start. The public card carries an extra caveat paragraph, so
+     `align-items: start` left the two at visibly different heights — the same
+     ragged-grid problem the feature section already had to be fixed for. */
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: stretch; }
+  .duo-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 0.9rem;
+    padding: 26px 24px; position: relative; overflow: hidden;
+    transition: border-color 0.35s ease, box-shadow 0.35s ease;
+  }
+  /* The two cards are deliberately not mirror images. The public one carries
+     a tinted wash and an accent edge so that "this half is different" is
+     visible before a word is read — the whole section exists to make that
+     boundary obvious, and two identical cards would say the opposite. */
+  .duo-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--border); transition: background 0.35s ease;
+  }
+  .duo-card:hover { border-color: var(--accent); box-shadow: 0 14px 34px rgba(0,0,0,0.18); }
+  .duo-card:hover::before { background: var(--accent); }
+  .duo-public { background: linear-gradient(180deg, var(--accent-glow), transparent 62%), var(--surface); }
+  .duo-public::before { background: var(--accent); }
+  .duo-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .duo-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border-radius: 0.6rem; flex-shrink: 0;
+    background: var(--accent-glow); color: var(--accent);
+  }
+  .duo-card h3 { font-size: 1.1rem; font-weight: 700; }
+  .duo-card > p { margin-top: 9px; color: var(--text-secondary); font-size: 0.93rem; }
+  .duo-list { margin: 14px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+  .duo-list li {
+    position: relative; padding-left: 20px; font-size: 0.88rem; color: var(--text-secondary);
+  }
+  .duo-list li::before {
+    content: ""; position: absolute; left: 4px; top: 0.55em; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--accent); box-shadow: 0 0 7px var(--accent-glow-strong);
+  }
+  .duo-caveat {
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-subtle);
+    font-size: 0.82rem; color: var(--text-dim); line-height: 1.5;
+  }
+
+  .speech {
+    margin-top: 26px; border: 1px solid var(--border); border-radius: 0.9rem;
+    padding: 24px 26px; background: var(--surface);
+  }
+  .speech > h3 { font-size: 1.02rem; font-weight: 700; }
+  .speech-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .speech-label {
+    font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent);
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; margin-bottom: 7px;
+  }
+  .speech-item p { margin: 0; font-size: 0.87rem; color: var(--text-secondary); }
+  .speech-link {
+    display: inline-block; margin-top: 18px; font-size: 0.83rem; font-weight: 700;
+    color: var(--accent); text-decoration: none;
+  }
+  .speech-link:hover { text-decoration: underline; }
+
+  .switch-strip {
+    margin-top: 26px; border: 1px solid var(--border); border-radius: 0.9rem;
+    padding: 24px 26px; background: var(--elevated);
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 26px; align-items: center;
+  }
+  .switch-copy h3 { font-size: 1.08rem; font-weight: 700; }
+  .switch-copy p { margin-top: 8px; color: var(--text-secondary); font-size: 0.9rem; }
+  .switch-list {
+    margin: 0; padding: 0; list-style: none;
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 18px;
+  }
+  .switch-list li {
+    position: relative; padding-left: 22px; font-size: 0.87rem; color: var(--text-secondary);
+  }
+  .switch-list li::before {
+    content: "✓"; position: absolute; left: 0; top: 0; color: var(--accent); font-weight: 700;
+  }
+  @media (max-width: 860px) {
+    .duo { grid-template-columns: 1fr; }
+    .speech-grid { grid-template-columns: 1fr; gap: 18px; }
+    .switch-strip { grid-template-columns: 1fr; gap: 18px; }
+  }
+  @media (max-width: 520px) {
+    .switch-list { grid-template-columns: 1fr; }
+  }
 
   /* ---------- HOW IT WORKS ---------- */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; position: relative; }
