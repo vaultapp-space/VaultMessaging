@@ -1196,7 +1196,7 @@
   // arbitrary CSS would hand anyone you talk to a styling primitive in your
   // browser. The swatches below are only for the picker.
   const CHAT_THEMES = [
-    { name: null,      label: 'Default', swatch: '#10b981' },
+    { name: null,      label: 'Default', swatch: '#c99a44' },
     { name: 'ocean',   label: 'Ocean',   swatch: '#0ea5e9' },
     { name: 'sunset',  label: 'Sunset',  swatch: '#f97316' },
     { name: 'orchid',  label: 'Orchid',  swatch: '#a855f7' },

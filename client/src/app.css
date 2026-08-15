@@ -17,12 +17,18 @@
   --color-vault-text-secondary: #a1a1aa;
   --color-vault-text-dim: #71717a;
 
-  /* Accent — Emerald Cipher */
-  --color-vault-accent: #10b981;
-  --color-vault-accent-hover: #34d399;
-  --color-vault-accent-dim: #059669;
-  --color-vault-accent-glow: rgba(16, 185, 129, 0.15);
-  --color-vault-accent-glow-strong: rgba(16, 185, 129, 0.25);
+  /* Accent — Vault Gold.
+     These are the first-paint values only: App.svelte calls
+     applyAccent(storedAccent()) on boot, which writes the same variables
+     inline on :root and wins from then on. They matter because they are what
+     renders before the bundle parses, so they must match the default palette
+     in lib/theme.js — if they drift, every cold start flashes the old colour
+     across every button on screen. */
+  --color-vault-accent: #c99a44;
+  --color-vault-accent-hover: #dcb264;
+  --color-vault-accent-dim: #a87f34;
+  --color-vault-accent-glow: rgba(201, 154, 68, 0.15);
+  --color-vault-accent-glow-strong: rgba(201, 154, 68, 0.25);
 
   /* Danger */
   --color-vault-danger: #ef4444;
@@ -61,11 +67,13 @@
   --color-vault-text: #09090b;
   --color-vault-text-secondary: #27272a;
   --color-vault-text-dim: #71717a;
-  --color-vault-accent: #059669;
-  --color-vault-accent-hover: #10b981;
-  --color-vault-accent-dim: #047857;
-  --color-vault-accent-glow: rgba(5, 150, 105, 0.08);
-  --color-vault-accent-glow-strong: rgba(5, 150, 105, 0.15);
+  /* The darker gold, matching ACCENTS[0].light. The dark-theme value is about
+     2.2:1 against this background and unusable for text. */
+  --color-vault-accent: #9c7530;
+  --color-vault-accent-hover: #b3873a;
+  --color-vault-accent-dim: #7d5d26;
+  --color-vault-accent-glow: rgba(156, 117, 48, 0.08);
+  --color-vault-accent-glow-strong: rgba(156, 117, 48, 0.15);
   --vault-surface-rgb: 255, 255, 255;
 }
 
