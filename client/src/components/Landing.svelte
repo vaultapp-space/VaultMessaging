@@ -626,10 +626,34 @@
       </div>
     </section>
 
+    <!-- The page's central claim is that everything disappears, and until now
+         it was only ever asserted in words. This draws it: a message dissolves
+         upward, scatters, and comes back to do it again.
+
+         Pure CSS, with no JS timer. A looping animation driven from a
+         stylesheet costs nothing when the section is off-screen — browsers
+         throttle or skip compositing for it — whereas a setInterval would keep
+         firing at the bottom of a page nobody is looking at.
+
+         aria-hidden because it is decoration that happens to contain words:
+         the heading directly beneath it already says the same thing, and a
+         screen reader announcing a looping bubble would be noise. -->
     <section class="final-cta" style="border-top:none;">
-      <h2 use:reveal={0}>Say it once. Then let it disappear.</h2>
-      <p use:reveal={90}>No number, no email, no history left behind, just a private conversation.</p>
-      <div class="actions" use:reveal={160}>
+      <div class="vanish" aria-hidden="true" use:reveal={0}>
+        <div class="vanish-stage">
+          <div class="vanish-bubble">Only the two of us will ever read this.</div>
+          <span class="vanish-dot" style="--dx:-46px; --d:0ms"></span>
+          <span class="vanish-dot" style="--dx:-22px; --d:90ms"></span>
+          <span class="vanish-dot" style="--dx:-6px;  --d:40ms"></span>
+          <span class="vanish-dot" style="--dx:14px;  --d:150ms"></span>
+          <span class="vanish-dot" style="--dx:34px;  --d:70ms"></span>
+          <span class="vanish-dot" style="--dx:56px;  --d:120ms"></span>
+        </div>
+        <div class="vanish-label">Gone in 24 hours</div>
+      </div>
+      <h2 use:reveal={60}>Say it once. Then let it disappear.</h2>
+      <p use:reveal={130}>No number, no email, no history left behind, just a private conversation.</p>
+      <div class="actions" use:reveal={200}>
         <button class="btn-primary" on:click={goToApp}>Start a private chat, it's free</button>
       </div>
     </section>
@@ -1270,7 +1294,58 @@
   .faq-item p { margin: 12px 0 0; color: var(--text-secondary); font-size: 0.92rem; max-width: 62ch; }
 
   /* ---------- FINAL CTA ---------- */
-  .final-cta { text-align: center; padding: 80px 0; }
+  .vanish {
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    margin-bottom: 34px;
+  }
+  /* Fixed height so the bubble leaving does not collapse the row and shunt the
+     heading up and down eight seconds at a time. */
+  .vanish-stage {
+    position: relative; height: 58px; display: flex; align-items: center; justify-content: center;
+  }
+  .vanish-bubble {
+    background: var(--elevated); border: 1px solid var(--border); color: var(--text);
+    font-size: 0.92rem; padding: 11px 17px; border-radius: 1rem;
+    border-bottom-right-radius: 0.3rem; white-space: nowrap;
+    animation: vanishCycle 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @keyframes vanishCycle {
+    0%, 38%  { opacity: 1; filter: blur(0); transform: none; }
+    58%, 78% { opacity: 0; filter: blur(7px); transform: translateY(-16px) scale(0.96); }
+    /* Returns from slightly below rather than from where it left, so the loop
+       reads as a new message arriving instead of the old one rewinding. */
+    79%      { opacity: 0; filter: blur(4px); transform: translateY(10px) scale(0.98); }
+    100%     { opacity: 1; filter: blur(0); transform: none; }
+  }
+  .vanish-dot {
+    position: absolute; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--accent); opacity: 0; pointer-events: none;
+    box-shadow: 0 0 6px var(--accent-glow-strong);
+    animation: dotDrift 8s ease-out infinite;
+    animation-delay: var(--d, 0ms);
+  }
+  @keyframes dotDrift {
+    0%, 42%   { opacity: 0; transform: translate(0, 0) scale(0.5); }
+    52%       { opacity: 0.85; transform: translate(calc(var(--dx) * 0.4), -12px) scale(1); }
+    72%, 100% { opacity: 0; transform: translate(var(--dx), -40px) scale(0.3); }
+  }
+  .vanish-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.66rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-dim);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vanish-bubble { animation: none; }
+    .vanish-dot { display: none; }
+  }
+  @media (max-width: 600px) {
+    .vanish-bubble { font-size: 0.82rem; padding: 10px 14px; white-space: normal; max-width: 17rem; }
+    .vanish-stage { height: 66px; }
+  }
+
+  /* Less on top than it used to have: the vanish block adds about 100px of its
+     own above the heading, and keeping the old 80px left the closing statement
+     marooned in whitespace. */
+  .final-cta { text-align: center; padding: 56px 0 80px; }
   .final-cta h2 { font-size: clamp(1.7rem, 3vw, 2.2rem); }
   .final-cta p { margin: 14px auto 0; color: var(--text-secondary); max-width: 44ch; }
   .final-cta .actions { margin-top: 28px; display: flex; justify-content: center; gap: 18px; }
