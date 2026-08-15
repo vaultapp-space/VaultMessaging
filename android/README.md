@@ -95,6 +95,40 @@ will reject the next index update as untrusted (same failure shape as an APK
 signing-key loss, one layer up); nobody would be able to (re-)add the repo
 under its old identity either.
 
+### First: does this change need an app release at all?
+
+Often it does not, and cutting one anyway has a cost — every installed app
+prompts for an update.
+
+`cap sync` copies `client/dist` wholesale into the APK, so the landing page is
+bundled into every build. It is never rendered there: `App.svelte` branches on
+`Capacitor.isNativePlatform()` and shows `NativeWelcome`, so `<Landing />` is
+dead code on Android.
+
+v1.42 and v1.43 were both landing-page releases. Each bumped `versionCode`,
+signed an APK, published an F-Droid index and cut a GitHub release, and changed
+nothing an Android user could see.
+
+So there are two paths now:
+
+```bash
+# Website only — landing page, robots.txt, sitemap, nginx, OG image.
+# No version bump, no APK, no F-Droid, no tag.
+bash deploy/release-web.sh
+```
+
+It diffs against the last `v*` tag and refuses unless every changed path is on
+its allowlist, so you do not have to make the judgement yourself. An
+unrecognised path fails the check and sends you here, which is only slower.
+
+Note what is *not* on that allowlist: `client/index.html` and
+`client/src/main.js`. Both are the app's own shell and run on Android. That is
+exactly why v1.44 was a full release while its two predecessors should not have
+been.
+
+Everything else — anything under `client/src` beyond `Landing.svelte`, anything
+in `android/`, any dependency change — takes the full path below.
+
 ### Publishing a new release
 
 ```bash
