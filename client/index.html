@@ -247,68 +247,62 @@
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.json" />
 
+    <!--
+      Applies the stored theme before first paint. App.svelte calls
+      applyTheme(localStorage.getItem('vault_theme')) too, but that runs only
+      once the JS bundle has parsed — so a dark-theme user has always had a
+      light flash on every cold load. That was tolerable when the first paint
+      was an empty div; with the landing page prerendered into the document it
+      would be a whole page changing colour under them.
+
+      Wrapped because localStorage throws outright in some privacy modes, in
+      which case the hard-coded class="light" below stands, exactly as before.
+    -->
+    <script>
+      try {
+        var t = localStorage.getItem('vault_theme');
+        if (t === 'dark') {
+          document.documentElement.classList.remove('light');
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) { /* storage blocked; the hard-coded default stands */ }
+    </script>
+
     <style>
       /* Critical inline CSS for instant FCP */
       body { margin: 0; background: #fafafa; color: #09090b; }
       #app { min-height: 100vh; }
+      /* The prerendered landing shell (see scripts/prerender.mjs). Fixed and
+         layered above #app so it neither contributes to page height — an empty
+         #app is already min-height:100vh, and a static sibling would stack
+         below it and produce a scrollbar over dead space — nor shifts anything
+         when main.js removes it. */
+      #prerender { position: fixed; inset: 0; z-index: 1; }
     </style>
   </head>
   <body>
     <div id="app"></div>
     <!--
-      Vault's landing page is client-rendered, so #app is empty in the HTML a
-      crawler receives. Googlebot executes JavaScript and sees the real page;
-      most AI crawlers do not, and robots.txt now invites them explicitly.
+      This used to carry a hand-written copy of the marketing prose, because
+      #app was empty and that text was the only thing a non-rendering crawler
+      could read. scripts/prerender.mjs now injects the real landing page, so
+      that copy would be duplicate content sitting underneath the genuine
+      article — and a second copy of the prose to keep in sync by hand.
 
-      This block is what those agents get, and it is a genuine <noscript> —
-      shown to any visitor without JavaScript — rather than a copy of the hero
-      that script removes on mount. The removal trick renders better, and was
-      rejected twice over: text present only for crawlers is cloaking, and a
-      second hand-maintained copy of the marketing prose drifts from the real
-      one until the two contradict each other.
+      What is still needed is narrower, and is new: with JavaScript disabled
+      the prerendered page looks completely functional and every control on it
+      is dead. Saying so is the honest thing; a visitor clicking "Start a
+      private chat" and getting nothing has no way to guess why.
 
-      Kept short on purpose. The substantive machine-readable content is the
-      JSON-LD graph in <head> — description, seven featureList entries and all
-      eight FAQ answers, as plain text, with no rendering required. Duplicating
-      the full page here would add the drift problem back for no gain.
-
-      The real fix is prerendering the landing route at build time. That is a
-      build-pipeline change, not a markup one, and it is not in this commit.
+      Fixed and above the shell (which is z-index 1), or it would render
+      underneath the very page it is explaining.
     -->
     <noscript>
-      <div style="max-width:46rem;margin:0 auto;padding:3rem 1.25rem;font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#18181b;">
-        <h1>Vault — a conversation only the two of you can ever read</h1>
-        <p>
-          Vault is a free, open-source, end-to-end encrypted messenger. It asks
-          for no phone number and no email address, because it never collects
-          them. Messages are locked on your device before they reach the
-          server, and everything — messages, files and calls — is deleted
-          automatically after 24 hours.
-        </p>
-        <p>
-          Encryption uses X3DH for key exchange and the Double Ratchet for
-          per-message keys, the same cryptography Signal uses. Voice and video
-          calls run over WebRTC with DTLS-SRTP and are routed through a relay,
-          so neither side learns the other's IP address.
-        </p>
-        <p>
-          Vault also has a public half. Thoughts is a feed anyone with an
-          account can read, on the same 24-hour clock as everything else.
-          Unpopular, offensive and wrong opinions are not moderated; illegal
-          content is removed on report. Unlike the messaging side, the server
-          can read what is posted there, and the app says so at the point of
-          posting. Mute, block and keyword filters run on your own device.
-        </p>
-        <p>
-          <strong>Vault needs JavaScript to run.</strong> The app performs all
-          encryption in your browser, so there is no server-rendered version —
-          a page that worked without JavaScript would be one where the server
-          held your keys.
-        </p>
-        <p>
-          <a href="https://github.com/vaultapp-space/VaultMessaging">Source code on GitHub</a> ·
-          <a href="/acceptable-use.html">Acceptable use and takedown</a>
-        </p>
+      <div style="position:fixed;top:0;left:0;right:0;z-index:2;padding:12px 18px;background:#18181b;color:#fafafa;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;text-align:center;">
+        <strong>Vault needs JavaScript to run.</strong>
+        The page below is readable, but nothing on it will respond — all
+        encryption happens in your browser, and a version that worked without
+        JavaScript would be one where the server held your keys.
       </div>
     </noscript>
     <script type="module" src="/src/main.js"></script>

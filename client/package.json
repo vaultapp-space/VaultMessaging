@@ -6,14 +6,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/prerender.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check": "svelte-check --threshold error",
-    "check:types": "svelte-check --threshold error --compiler-warnings unused-export-let:ignore || true"
+    "check:types": "svelte-check --threshold error --compiler-warnings unused-export-let:ignore || true",
+    "build:native": "vite build"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
