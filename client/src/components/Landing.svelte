@@ -28,6 +28,21 @@
     }
   }
 
+  const FDROID_REPO = 'https://vaultapp.space/fdroid/repo';
+  let repoCopied = false;
+  let repoCopyTimer;
+
+  async function copyRepo() {
+    try {
+      await navigator.clipboard.writeText(FDROID_REPO);
+      repoCopied = true;
+      clearTimeout(repoCopyTimer);
+      repoCopyTimer = setTimeout(() => (repoCopied = false), 1800);
+    } catch (err) {
+      console.error('Clipboard copy failed:', err);
+    }
+  }
+
   let scrollEl;
   let progress = 0;
   let activeSection = '';
@@ -567,26 +582,55 @@
         <h2>The web app needs nothing installed — the Android app is there if you want it.</h2>
         <p>Not on the Play Store yet (official listing is in review). A single signed APK, built directly by the Vault developer.</p>
       </div>
+      <!-- Two cards, because there are genuinely two ways to install it. The
+           self-hosted F-Droid repository has been live since the app shipped
+           and was documented only in android/README.md — so the option that
+           gives normal update-check and one-tap-install existed and nobody
+           visiting the site could discover it.
+           It also fixes the shape of this section: a single card in a grid
+           built for three sat centred with an empty track beside it, which
+           read as something having failed to load. -->
       <div class="feature-grid download-grid">
         <div class="feature" use:reveal={0}>
+          <div class="feat-icon"><LandingIcon name="files" /></div>
           <div class="plate">DIRECT DOWNLOAD</div>
           <h3>Direct APK</h3>
           <p>Signed and built by the Vault developer. The app checks for new versions itself and prompts you when one's available.</p>
           <a class="download-link" href="https://github.com/vaultapp-space/VaultMessaging/releases/latest/download/Vault.apk" target="_blank" rel="noopener noreferrer">Download APK →</a>
         </div>
+        <div class="feature" use:reveal={90}>
+          <div class="feat-icon"><LandingIcon name="devices" /></div>
+          <div class="plate">F-DROID REPO</div>
+          <h3>Automatic updates</h3>
+          <p>Add this repository in F-Droid, Droid-ify or any compatible client and updates arrive the same way as any other app.</p>
+          <div class="repo-row">
+            <code>{FDROID_REPO}</code>
+            <button class="repo-copy" on:click={copyRepo}>{repoCopied ? 'Copied' : 'Copy'}</button>
+          </div>
+          <p class="repo-note">Not the official f-droid.org listing — this is Vault's own repository, so releases arrive without waiting on review.</p>
+        </div>
       </div>
     </section>
 
+    <!-- Two columns: the heading and the mode switch stay put on the left while
+         the answers scroll past on the right. Full width, the questions were a
+         column of short rows with the right half of a 1120px container empty
+         beside them, and the answers ran to a line length nothing else on the
+         page uses. -->
     <section id="faq">
-      <div class="section-head" use:reveal={0}>
-        <div class="eyebrow">Questions</div>
-        <h2>Whatever level of detail you want.</h2>
-        <div class="faq-toggle">
-          <button class:active={faqMode === 'simple'} on:click={() => faqMode = 'simple'}>In plain terms</button>
-          <button class:active={faqMode === 'tech'} on:click={() => faqMode = 'tech'}>Technical details</button>
+      <div class="faq-layout">
+      <div class="faq-aside" use:reveal={0}>
+        <div class="section-head">
+          <div class="eyebrow">Questions</div>
+          <h2>Whatever level of detail you want.</h2>
+          <div class="faq-toggle">
+            <button class:active={faqMode === 'simple'} on:click={() => faqMode = 'simple'}>In plain terms</button>
+            <button class:active={faqMode === 'tech'} on:click={() => faqMode = 'tech'}>Technical details</button>
+          </div>
         </div>
       </div>
 
+      <div class="faq-body">
       <div class="faq-panel" class:active={faqMode === 'simple'}>
         <details class="faq-item" open>
           <summary>Can anyone at Vault read my messages?</summary>
@@ -623,6 +667,19 @@
           <summary>Can I self-host Vault?</summary>
           <p>Not yet. Vault currently runs on centralized infrastructure with no peer-to-peer fallback. Self-hosting is on the roadmap.</p>
         </details>
+      </div>
+      </div>
+
+      <!-- A sibling of the aside rather than a child of it, so that on one
+           column it falls after the questions instead of offering somewhere to
+           ask before any of them have been read. -->
+      <div class="faq-contact" use:reveal={0}>
+        <p>Not answered here?</p>
+        <div class="faq-contact-links">
+          <a href="https://discord.gg/VZyvTsJcFQ" target="_blank" rel="noopener noreferrer">Ask on Discord →</a>
+          <a href="https://github.com/vaultapp-space/VaultMessaging" target="_blank" rel="noopener noreferrer">Read the source →</a>
+        </div>
+      </div>
       </div>
     </section>
 
@@ -1185,12 +1242,17 @@
      3 columns, at 2, and at 1 — rather than needing a rule per breakpoint. */
   .feature-wide { grid-column: 1 / -1; }
 
-  /* Only one card in this grid now (direct APK) — the shared 3-column
-     .feature-grid (and its narrower-viewport 2-column override below)
-     would otherwise stretch it across part of the row with empty bordered
-     tracks next to it. Two-class selector so this outranks those at every
-     breakpoint regardless of source order. */
-  .feature-grid.download-grid { grid-template-columns: 1fr; max-width: 420px; margin: 0 auto; }
+  /* Two cards, full width. It was one card capped at 420px and centred, which
+     left a left-aligned heading above a floating box with a large empty gap
+     beside it — the section read as though something had failed to load. Full
+     width also matches the features grid directly above it, so the two do not
+     appear to belong to different pages.
+     Two-class selector so it outranks the shared .feature-grid breakpoints
+     regardless of source order. */
+  .feature-grid.download-grid { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 700px) {
+    .feature-grid.download-grid { grid-template-columns: 1fr; }
+  }
   .download-link {
     display: inline-block; margin-top: 14px; color: var(--accent); font-weight: 700;
     font-size: 0.85rem; text-decoration: none;
@@ -1272,7 +1334,54 @@
     .table-scroll:global(.in-view) tbody tr { animation: none; }
   }
 
+  /* ---------- DOWNLOAD ---------- */
+  .repo-row {
+    display: flex; align-items: center; gap: 8px; margin-top: 13px;
+  }
+  .repo-row code {
+    flex: 1; min-width: 0; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+    color: var(--text-secondary); background: var(--black); border: 1px solid var(--border-subtle);
+    padding: 7px 9px; border-radius: 0.4rem; overflow-x: auto; white-space: nowrap;
+  }
+  .repo-copy {
+    flex-shrink: 0; background: none; border: 1px solid var(--border); color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; font-weight: 700;
+    padding: 7px 11px; border-radius: 0.4rem; cursor: pointer; min-width: 56px;
+    transition: all 0.2s ease;
+  }
+  .repo-copy:hover { border-color: var(--accent); color: var(--accent); }
+  .repo-note { font-size: 0.78rem !important; color: var(--text-dim) !important; }
+
   /* ---------- FAQ ---------- */
+  /* Explicit placement rather than source order: the contact block is last in
+     the DOM so that one column reads heading → questions → where to ask, but
+     on two columns it belongs under the heading, not under the answers.
+     No sticky aside. It would need a containing block taller than itself to
+     have anywhere to travel, which conflicts with putting the contact block in
+     the same column, and with four questions per tab the list is too short to
+     gain anything from it. */
+  .faq-layout {
+    display: grid; grid-template-columns: 330px 1fr; column-gap: 52px; align-items: start;
+  }
+  .faq-aside { grid-column: 1; grid-row: 1; }
+  .faq-body { grid-column: 2; grid-row: 1 / span 2; min-width: 0; }
+  .faq-contact { grid-column: 1; grid-row: 2; }
+  .faq-aside .section-head { margin-bottom: 0; }
+  .faq-contact {
+    margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-subtle);
+  }
+  .faq-contact p { margin: 0 0 10px; font-size: 0.85rem; color: var(--text-dim); }
+  .faq-contact-links { display: flex; flex-direction: column; gap: 7px; }
+  .faq-contact-links a {
+    font-size: 0.85rem; font-weight: 600; color: var(--accent); text-decoration: none;
+  }
+  .faq-contact-links a:hover { text-decoration: underline; }
+  @media (max-width: 860px) {
+    /* Back to source order, which is already the right reading order. */
+    .faq-layout { grid-template-columns: 1fr; }
+    .faq-aside, .faq-body, .faq-contact { grid-column: 1; grid-row: auto; }
+    .faq-aside .section-head { margin-bottom: 26px; }
+  }
   .faq-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 9999px; padding: 3px; margin-bottom: 8px; }
   .faq-toggle button {
     border: none; background: transparent; color: var(--text-secondary); font-size: 0.78rem; font-weight: 700;
