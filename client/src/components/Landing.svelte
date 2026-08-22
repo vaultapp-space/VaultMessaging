@@ -256,27 +256,10 @@
     </div>
   </div>
 
-  <div class="donate-banner">
-    <div class="wrap donate-banner-inner">
-      <div class="donate-banner-text">
-        <span class="donate-banner-icon">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M18 8h1a4 4 0 010 8h-1" />
-            <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
-            <line x1="6" y1="1" x2="6" y2="4" />
-            <line x1="10" y1="1" x2="10" y2="4" />
-            <line x1="14" y1="1" x2="14" y2="4" />
-          </svg>
-        </span>
-        <span>Enjoying Vault? Buy the developer a coffee.</span>
-      </div>
-      <button class="donate-btn" on:click={() => (donateOpen = true)}>Buy me a coffee →</button>
-    </div>
-  </div>
-
   <div class="wrap">
     <section class="hero" style="border-top:none;">
       <div class="hero-inner">
+        <div class="hero-copy">
         <h1 use:reveal={0}>A conversation only the two of you can ever read.</h1>
         <p class="sub" use:reveal={90}>No phone number. No email. Nothing to hand over, because we never collect it. Messages lock on your device and disappear after 24 hours.</p>
         <div class="actions" use:reveal={180}>
@@ -308,6 +291,27 @@
               <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
               Twitter
             </a>
+          </div>
+        </div>
+        </div>
+
+        <!-- The fold had no visual anchor: seven centred text blocks stacked
+             before any imagery, with the actual product not appearing until
+             #showcase several screens down. This is the same asset that
+             section uses. Hidden below 960px, where the single column has no
+             room for it and the chat mock right underneath already does the
+             job. -->
+        <div class="hero-visual" aria-hidden="true">
+          <div class="hero-visual-frame">
+            <!-- loading="lazy", not fetchpriority="high". The wrapper is
+                 display:none below 960px, and an eager image inside a hidden
+                 container is still fetched — every phone would have paid 73K
+                 for a picture it never renders, competing with the real
+                 content for bandwidth. A lazy image in a hidden container is
+                 deferred until it is displayed, and one already inside the
+                 viewport (which this is, at desktop widths) is fetched
+                 immediately rather than on scroll. -->
+            <img src="/landing-app-preview.webp" width="2600" height="1553" alt="" loading="lazy" decoding="async" />
           </div>
         </div>
       </div>
@@ -612,6 +616,30 @@
       </div>
     </section>
 
+    <!-- Deliberately *after* the download section rather than above the hero.
+         Full-bleed under the nav, this was the second thing a first-time
+         visitor saw, and its filled accent button out-competed the page's own
+         primary CTA a few hundred pixels below — the page asked for money
+         before it had said what the product does. Here it reads as a thank-you
+         to someone already sold, which is who actually donates. -->
+    <div class="donate-banner">
+      <div class="donate-banner-inner">
+        <div class="donate-banner-text">
+          <span class="donate-banner-icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M18 8h1a4 4 0 010 8h-1" />
+              <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
+              <line x1="6" y1="1" x2="6" y2="4" />
+              <line x1="10" y1="1" x2="10" y2="4" />
+              <line x1="14" y1="1" x2="14" y2="4" />
+            </svg>
+          </span>
+          <span>Enjoying Vault? Buy the developer a coffee.</span>
+        </div>
+        <button class="donate-btn" on:click={() => (donateOpen = true)}>Buy me a coffee →</button>
+      </div>
+    </div>
+
     <!-- Two columns: the heading and the mode switch stay put on the left while
          the answers scroll past on the right. Full width, the questions were a
          column of short rows with the right half of a 1120px container empty
@@ -767,6 +795,7 @@
     --black: #0b0c0e; --surface: #131417; --elevated: #1b1c20; --border: #2a2c30; --border-subtle: #1f2023;
     --text: #f4f2ec; --text-secondary: #a7a9ac; --text-dim: #75777a;
     --accent: #c99a44; --accent-glow: rgba(201,154,68,0.15); --accent-glow-strong: rgba(201,154,68,0.28);
+    --grid-line: rgba(244,242,236,0.055);
 
     background: var(--black);
     color: var(--text);
@@ -779,10 +808,18 @@
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
   }
+  /* Light is what most first-time visitors land on — index.html ships
+     class="light" — and it was the weaker of the two themes by a wide margin:
+     the accent, the glow and the borders all lost their footing on #f7f5f0 and
+     the page read as an unstyled document next to the dark version. The tint
+     alphas roughly double (they are multiplied against a near-white ground,
+     where the dark theme's are multiplied against near-black) and the borders
+     take a step down in lightness so panels have edges. */
   :global(html.light) .vault-landing {
-    --black: #f7f5f0; --surface: #ffffff; --elevated: #efece4; --border: #ddd8cd; --border-subtle: #eae6dc;
-    --text: #17140f; --text-secondary: #4b463d; --text-dim: #7a7469;
-    --accent: #9c7530; --accent-glow: rgba(156,117,48,0.10); --accent-glow-strong: rgba(156,117,48,0.18);
+    --black: #f6f3ec; --surface: #ffffff; --elevated: #ece8dd; --border: #d3ccbb; --border-subtle: #e3ded1;
+    --text: #14110c; --text-secondary: #453f36; --text-dim: #726c60;
+    --accent: #8f6a29; --accent-glow: rgba(156,117,48,0.20); --accent-glow-strong: rgba(156,117,48,0.34);
+    --grid-line: rgba(20,17,12,0.055);
   }
 
   .vault-landing :global(*) { box-sizing: border-box; }
@@ -830,10 +867,15 @@
   a, button { color: inherit; }
   .eyebrow, .plate { font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace; }
 
+  /* opacity was 0.6, multiplying an already-faint 0.10-alpha glow down to
+     ~0.06 over an off-white background — the drift animation ran a
+     full-viewport composited layer for something no capture could show. Full
+     opacity now; the tint strength lives in --accent-glow, where the two
+     themes can differ. */
   .bg-field {
     position: fixed; inset: 0; z-index: -1; pointer-events: none;
     overflow: hidden;
-    opacity: 0.6;
+    opacity: 1;
   }
   /* The glow lives on a pseudo-element rather than on .bg-field itself so it
      can be transformed. Drifting it is a transform on a composited layer — no
@@ -844,8 +886,9 @@
   .bg-field::before {
     content: ""; position: absolute; inset: -25%;
     background:
-      radial-gradient(600px 400px at 15% 20%, var(--accent-glow), transparent 60%),
-      radial-gradient(500px 380px at 85% 45%, var(--accent-glow), transparent 55%);
+      radial-gradient(760px 520px at 12% 14%, var(--accent-glow-strong), transparent 62%),
+      radial-gradient(620px 460px at 88% 42%, var(--accent-glow), transparent 58%),
+      radial-gradient(520px 400px at 50% 92%, var(--accent-glow), transparent 60%);
     animation: fieldDrift 42s ease-in-out infinite alternate;
     will-change: transform;
   }
@@ -858,8 +901,12 @@
   }
   .bg-field::after {
     content: ""; position: absolute; inset: 0;
-    background-image: linear-gradient(var(--border-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
-    background-size: 48px 48px; opacity: 0.35;
+    background-image: linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 48px 48px; opacity: 1;
+    /* Faded out toward the bottom so the grid reads as depth behind the hero
+       rather than as graph paper running the whole length of the page. */
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 42%, transparent 88%);
+    mask-image: linear-gradient(180deg, #000 0%, #000 42%, transparent 88%);
   }
 
   .wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
@@ -953,6 +1000,50 @@
   /* ---------- HERO ---------- */
   .hero { padding: 76px 0 8px; position: relative; text-align: center; }
   .hero-inner { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; }
+  .hero-copy { display: flex; flex-direction: column; align-items: center; }
+  /* Single column is the base case and stays exactly as it was — the split
+     below is additive, so nothing about the phone layout depends on it. */
+  .hero-visual { display: none; }
+
+  @media (min-width: 960px) {
+    .hero { text-align: left; padding-top: 64px; }
+    .hero-inner {
+      max-width: 1120px; display: grid; align-items: center; gap: 52px;
+      grid-template-columns: minmax(0, 1.18fr) minmax(0, 0.82fr);
+    }
+    .hero-copy { align-items: flex-start; }
+    .hero .sub { max-width: 44ch; }
+    /* Scoped under .hero to outrank the base .trust-row / .community-links
+       rules, which are declared later in this file: at equal specificity they
+       were winning, and both rows stayed centred inside a left-aligned
+       column. */
+    .hero .actions, .hero .trust-row, .hero .community-links { justify-content: flex-start; }
+    .hero .trust-row { gap: 14px 22px; margin-top: 30px; }
+    .hero .community-row { align-items: flex-start; }
+    .hero-visual { display: block; }
+  }
+
+  /* Tilted a few degrees and lit from the accent so it reads as a product
+     shot rather than a screenshot pasted into the page. The frame carries the
+     same blur as the nav, which is the one piece of glass the page already
+     had. */
+  .hero-visual-frame {
+    position: relative; border-radius: 1rem; overflow: hidden;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 30px 70px rgba(0,0,0,0.32), 0 0 40px var(--accent-glow);
+    transform: perspective(1400px) rotateY(-7deg) rotateX(2deg) translateZ(0);
+    transition: transform 0.6s cubic-bezier(0.16,1,0.3,1), box-shadow 0.6s ease;
+  }
+  .hero-visual-frame:hover {
+    transform: perspective(1400px) rotateY(-3deg) rotateX(1deg) translateZ(0);
+    box-shadow: 0 34px 80px rgba(0,0,0,0.38), 0 0 56px var(--accent-glow-strong);
+  }
+  .hero-visual-frame img { display: block; width: 100%; height: auto; }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-visual-frame, .hero-visual-frame:hover { transform: none; transition: none; }
+  }
   .hero h1 {
     font-size: clamp(2.3rem, 4.6vw, 3.4rem); line-height: 1.1;
     background: linear-gradient(180deg, var(--text), var(--text-secondary));
@@ -1016,7 +1107,10 @@
   /* ---------- PREVIEW ---------- */
   .preview-caption { font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; margin: 0 0 18px; }
   .chat-mock {
-    max-width: 480px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border);
+    max-width: 480px; margin: 0 auto; border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 76%, transparent);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.16), 0 0 34px var(--accent-glow);
     border-radius: 1rem; padding: 22px; display: flex; flex-direction: column; gap: 12px;
     min-height: 268px; justify-content: flex-end;
   }
@@ -1054,10 +1148,17 @@
      `align-items: start` left the two at visibly different heights — the same
      ragged-grid problem the feature section already had to be fixed for. */
   .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: stretch; }
+  /* Translucent over the (now visible) background field rather than an opaque
+     slab, matching the blur the nav shell already used. `overflow: hidden` is
+     what makes this safe: a backdrop-filter creates a containing block, and
+     the ::before accent edge below is absolutely positioned inside it. */
   .duo-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 0.9rem;
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border); border-radius: 0.9rem;
     padding: 26px 24px; position: relative; overflow: hidden;
-    transition: border-color 0.35s ease, box-shadow 0.35s ease;
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent) inset;
+    transition: border-color 0.35s ease, box-shadow 0.35s ease, background 0.35s ease;
   }
   /* The two cards are deliberately not mirror images. The public one carries
      a tinted wash and an accent edge so that "this half is different" is
@@ -1212,7 +1313,12 @@
   /* ---------- FEATURES ---------- */
   .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 0.75rem; overflow: hidden; }
   /* Cards sit in a 1px-gap grid, so hover reads as depth via an accent edge, not a lift. */
-  .feature { position: relative; background: var(--surface); padding: 26px 24px; transition: background 0.25s ease; }
+  .feature {
+    position: relative; padding: 26px 24px;
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    transition: background 0.25s ease;
+  }
   .feature::before {
     content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent);
     transform: scaleX(0); transform-origin: 0 50%; transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
@@ -1466,13 +1572,16 @@
   .footer-links a:hover { color: var(--text); }
 
   /* ---------- DONATE BANNER + MODAL ---------- */
+  /* An in-flow strip now, not a full-bleed bar under the nav, so it no longer
+     needs its own .wrap or a border-bottom spanning the viewport. */
   .donate-banner {
-    background: linear-gradient(180deg, var(--accent-glow-strong), var(--accent-glow));
-    border-bottom: 1px solid var(--border-subtle);
+    margin-top: 46px;
+    background: linear-gradient(180deg, var(--accent-glow), transparent);
+    border: 1px solid var(--border-subtle); border-radius: 0.9rem;
   }
   .donate-banner-inner {
     display: flex; align-items: center; justify-content: center; gap: 22px;
-    padding: 18px 28px; flex-wrap: wrap; text-align: center;
+    padding: 16px 24px; flex-wrap: wrap; text-align: center;
   }
   .donate-banner-text { display: flex; align-items: center; gap: 13px; color: var(--text); font-size: 0.95rem; font-weight: 500; text-align: left; }
   .donate-banner-icon {
@@ -1482,11 +1591,14 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
   .donate-btn {
-    background: var(--accent); border: 1px solid var(--accent); color: var(--surface); font-weight: 700;
+    background: none; border: 1px solid var(--accent); color: var(--accent); font-weight: 700;
     font-size: 0.88rem; padding: 10px 20px; border-radius: 0.7rem; cursor: pointer; white-space: nowrap;
-    transition: all 0.25s ease; box-shadow: 0 2px 10px var(--accent-glow-strong);
+    transition: all 0.25s ease;
   }
-  .donate-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 18px var(--accent-glow-strong); }
+  .donate-btn:hover {
+    transform: translateY(-1px); background: var(--accent); color: var(--surface);
+    box-shadow: 0 6px 18px var(--accent-glow-strong);
+  }
   @media (prefers-reduced-motion: reduce) { .donate-btn:hover { transform: none; } }
 
   .donate-overlay {
