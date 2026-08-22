@@ -301,18 +301,37 @@
         <p class="text-xs text-vault-text-dim">{error}</p>
       </div>
     {:else}
-      <div class="px-4 py-5 border-b border-vault-border-subtle">
-        <div class="flex items-center gap-3">
+      <!-- A banner drawn from the same gradient as the avatar, so a profile
+           has an identity at a glance rather than being a name on an empty
+           page. It is generated from the username (lib/avatar.js), not
+           uploaded — there is no profile image to store, and storing one
+           would be the first piece of durable personal data in a product
+           whose whole claim is that it holds none. -->
+      <div class="relative border-b border-vault-border-subtle">
+        <div
+          class="h-20 w-full"
+          style="background: {getAvatarGradient(profile.username)}"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="absolute inset-0 h-20"
+          style="background: linear-gradient(180deg, transparent 30%, var(--color-vault-black) 100%)"
+          aria-hidden="true"
+        ></div>
+
+        <div class="px-4 pb-5 -mt-8 relative">
           <div
-            class="w-14 h-14 rounded-full flex items-center justify-center text-lg font-semibold text-white"
+            class="w-16 h-16 rounded-full flex items-center justify-center text-xl font-semibold text-white
+              ring-4 ring-vault-black shadow-lg"
             style="background: {getAvatarGradient(profile.username)}"
           >{initial}</div>
-          <div class="min-w-0">
-            <div class="text-sm font-semibold text-vault-text truncate">@{profile.username}</div>
+
+          <div class="mt-3 min-w-0">
+            <div class="text-base font-bold text-vault-text truncate">@{profile.username}</div>
             <!-- Tappable. These were plain text, so the one question a
                  follower count raises — who? — had no answer anywhere in the
                  app, despite the server having served it all along. -->
-            <div class="text-[11px] text-vault-text-dim mt-0.5">
+            <div class="text-[11px] text-vault-text-dim mt-1.5 flex items-center gap-1">
               <button
                 on:click={() => openList('followers')}
                 class="hover:text-vault-text transition-colors focus:outline-none"
@@ -327,8 +346,12 @@
                 <strong class="text-vault-text">{profile.followingCount}</strong> following
               </button>
             </div>
+            {#if isSelf}
+              <p class="mt-2 text-[10px] text-vault-text-dim">
+                This is what everyone else sees. Posts here expire after 24 hours, like the rest of Vault.
+              </p>
+            {/if}
           </div>
-        </div>
 
         {#if !isSelf}
           <div class="flex gap-2 mt-4">
@@ -353,6 +376,7 @@
             >{profile.muted ? 'Muted' : 'Mute'}</button>
           </div>
         {/if}
+        </div>
       </div>
 
       <!-- Posts / Replies. Shown for everyone, not just yourself: a reply you

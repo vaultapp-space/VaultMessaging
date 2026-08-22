@@ -27,6 +27,7 @@
   import { toBase64 } from '../lib/crypto/utils.js';
   import { applyTheme as applyThemeGlobal, applyAccent, storedAccent, ACCENTS } from '../lib/theme.js';
   import { showToast } from '../lib/stores/toast.js';
+  import { unreadNotifications } from '../lib/stores/notifications.js';
   import { pushBackHandler } from '../lib/backHandler.js';
   import { showConfirm } from '../lib/stores/confirm.js';
   import { promptPassphrase } from '../lib/stores/passphrasePrompt.js';
@@ -539,6 +540,22 @@
   // posts are content, not configuration, and burying them under the same
   // panel as key backup and biometrics implies they are something you
   // administer rather than something you have.
+  $: onThoughts = $activeSection === 'thoughts' && !$activeProfile && !$activeThreadId;
+  $: onOwnProfile = $activeSection === 'thoughts'
+    && Boolean($activeProfile)
+    && $activeProfile?.toLowerCase() === $currentUser?.username?.toLowerCase();
+
+  // Clears the detail views on the way. Without this, choosing Thoughts while
+  // a profile or thread is open leaves that on screen and the row appears to
+  // do nothing — the bug the mobile feed tab shipped with in v1.26.
+  function openThoughts() {
+    showBackupModal = false;
+    activeThreadId.set(null);
+    activeProfile.set(null);
+    activeSection.set('thoughts');
+    if (isNarrowViewport) sidebarOpen.set(false);
+  }
+
   function openOwnProfile() {
     if (!$currentUser?.username) return;
     showBackupModal = false;
@@ -1105,24 +1122,6 @@
         {/if}
       </div>
 
-      <!-- Desktop entry point to the public feed. Mobile reaches it from the
-           bottom tab bar instead. It sits here rather than becoming a third
-           `activeTab` beside Chats/Calls because Thoughts is a full pane, not
-           another list to show inside the sidebar. -->
-      <button
-        on:click={() => activeSection.set('thoughts')}
-        class="max-md:hidden p-2 rounded-lg transition-all focus:outline-none
-          {$activeSection === 'thoughts'
-            ? 'text-vault-accent bg-vault-accent/10'
-            : 'text-vault-text-dim hover:text-vault-accent hover:bg-vault-elevated'}"
-        title="Thoughts — the public feed"
-        aria-current={$activeSection === 'thoughts'}
-      >
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M3 12h4l3 8 4-16 3 8h4" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-      </button>
-
       <!-- Hidden on mobile: the bottom tab bar's Settings tab (MobileTabBar,
            bound to the same showBackupModal) does this job there, and a
            second entry point to the identical modal is clutter, not choice. -->
@@ -1151,6 +1150,63 @@
       </button>
     </div>
   </div>
+
+  <!-- Destinations, above the Chats/Calls tabs.
+       Thoughts and your profile are not lists to show *inside* the sidebar —
+       they are full panes that replace it — so they are not tabs beside
+       Chats and Calls. But the previous treatment, a 16px unlabelled glyph in
+       a row of four other unlabelled glyphs, made the whole public half of
+       the product something you had to already know about: it read as
+       "activity", it had no name, and there was no desktop entry point to
+       your own profile at all outside the footer identity strip.
+       max-md:hidden — the bottom tab bar (MobileTabBar) is this, on a phone. -->
+  <nav class="max-md:hidden px-2 pt-2 pb-1 flex flex-col gap-0.5" aria-label="Destinations">
+    <button
+      on:click={openThoughts}
+      class="group flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all focus:outline-none
+        {onThoughts
+          ? 'bg-vault-accent/10 text-vault-accent'
+          : 'text-vault-text-secondary hover:bg-vault-elevated hover:text-vault-text'}"
+      title="Thoughts — the public feed"
+      aria-current={onThoughts}
+    >
+      <span class="relative flex-shrink-0">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        {#if $unreadNotifications > 0}
+          <span
+            class="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-vault-accent
+              text-[9px] font-bold leading-[14px] text-center text-vault-black"
+          >{$unreadNotifications > 99 ? '99+' : $unreadNotifications}</span>
+        {/if}
+      </span>
+      <span class="flex-1 min-w-0">
+        <span class="block text-xs font-semibold leading-tight">Thoughts</span>
+        <span class="block text-[10px] text-vault-text-dim leading-tight">Public feed · 24h</span>
+      </span>
+    </button>
+
+    <button
+      on:click={openOwnProfile}
+      class="flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all focus:outline-none
+        {onOwnProfile
+          ? 'bg-vault-accent/10 text-vault-accent'
+          : 'text-vault-text-secondary hover:bg-vault-elevated hover:text-vault-text'}"
+      title="Your profile"
+      aria-current={onOwnProfile}
+    >
+      <span
+        class="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold text-white"
+        style="background: {getAvatarGradient($currentUser?.username)}"
+      >{$currentUser?.username?.[0]?.toUpperCase() || '?'}</span>
+      <span class="flex-1 min-w-0">
+        <span class="block text-xs font-semibold leading-tight truncate">Your profile</span>
+        <span class="block text-[10px] text-vault-text-dim leading-tight truncate">How others see you</span>
+      </span>
+    </button>
+  </nav>
 
   <DonateBar />
 
