@@ -8,20 +8,17 @@
 // Three things follow from that and are enforced here rather than left to the
 // caller:
 //
-// **Rate limits are IP-keyed, like every other route here — but they should
-// not be.** What deserves limiting on this surface is an *account's* behaviour:
-// IP keying both under-limits (one spammer, many IPs) and over-limits (a
-// university NAT shares one bucket for a whole campus, which on a public feed
-// is a visible failure). Keying on `request.user.id` does not work today:
-// @fastify/rate-limit runs its keyGenerator on the `onRequest` hook, which is
-// before the `preValidation` that authenticates, so `request.user` is always
-// undefined there and the key silently falls back to the IP — worse than
-// leaving it alone, because it looks correct.
+// **Rate limits here are account-keyed, not IP-keyed.** What deserves limiting
+// on this surface is an *account's* behaviour: IP keying both under-limits
+// (one spammer, many IPs) and over-limits (a university or carrier NAT shares
+// one bucket for a whole campus, which on a public feed is a visible failure
+// — the second person to post gets a 429 they did nothing to earn). Every
+// route below therefore takes its config from `perAccount()`, which moves its
+// limiter to the `preHandler` hook so `request.user` actually exists when the
+// key is computed. See utils/rate-limit.js. The global IP-keyed limiter
+// registered in app.js is untouched and still covers unauthenticated traffic.
 //
-// Fixing it properly means registering the plugin with `hook: 'preHandler'`
-// (see app.js), which changes limiting for every route in the app. That has
-// its own blast radius and does not belong in the same change as a new
-// feature. Until then these numbers assume an IP bucket.
+// The numbers below are per account, per window.
 //
 // **Posts expire in 24h like everything else**, which is what keeps a
 // chronological global timeline cheap — the table never holds more than a day.
@@ -32,6 +29,7 @@
 // that later reaches an <img src>. That is not copied here.
 
 import { UUID_PATTERN } from '../utils/constants.js';
+import { perAccount } from '../utils/rate-limit.js';
 import { ALLOWED_MEDIA_MIME } from './media.routes.js';
 
 const MAX_BODY_LENGTH = 500;
@@ -126,7 +124,7 @@ async function postRoutes(fastify) {
   // ─── CREATE ───────────────────────────────────────────────
   fastify.post('/api/posts', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    config: { rateLimit: perAccount({ max: 20, timeWindow: '1 hour' }) },
     schema: {
       body: {
         type: 'object',
@@ -211,7 +209,7 @@ async function postRoutes(fastify) {
   // ─── TIMELINE ─────────────────────────────────────────────
   fastify.get('/api/posts/timeline', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 120, timeWindow: '1 minute' }) },
     schema: {
       querystring: {
         type: 'object',
@@ -250,7 +248,7 @@ async function postRoutes(fastify) {
   // table entirely and most are ciphertext the server cannot read.
   fastify.get('/api/posts/search', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 60, timeWindow: '1 minute' }) },
     schema: {
       querystring: {
         type: 'object',
@@ -273,7 +271,7 @@ async function postRoutes(fastify) {
   // ─── READ ONE ─────────────────────────────────────────────
   fastify.get('/api/posts/:postId', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 240, timeWindow: '1 minute' }) },
     schema: {
       params: { type: 'object', required: ['postId'], properties: { postId: postParam } },
     },
@@ -288,7 +286,7 @@ async function postRoutes(fastify) {
   // ─── DELETE OWN ───────────────────────────────────────────
   fastify.delete('/api/posts/:postId', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+    config: { rateLimit: perAccount({ max: 60, timeWindow: '1 hour' }) },
     schema: {
       params: { type: 'object', required: ['postId'], properties: { postId: postParam } },
     },
@@ -306,7 +304,7 @@ async function postRoutes(fastify) {
   // ─── REPLIES ──────────────────────────────────────────────
   fastify.get('/api/posts/:postId/replies', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 240, timeWindow: '1 minute' }) },
     schema: {
       params: { type: 'object', required: ['postId'], properties: { postId: postParam } },
       querystring: {
@@ -341,7 +339,7 @@ async function postRoutes(fastify) {
   // tapping — so the limit is per minute rather than per hour.
   fastify.post('/api/posts/:postId/like', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 120, timeWindow: '1 minute' }) },
     schema: {
       params: { type: 'object', required: ['postId'], properties: { postId: postParam } },
     },
@@ -371,7 +369,7 @@ async function postRoutes(fastify) {
 
   fastify.delete('/api/posts/:postId/like', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 120, timeWindow: '1 minute' }) },
     schema: {
       params: { type: 'object', required: ['postId'], properties: { postId: postParam } },
     },
@@ -397,7 +395,7 @@ async function postRoutes(fastify) {
   // ─── PROFILES ─────────────────────────────────────────────
   fastify.get('/api/users/:username/profile', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 240, timeWindow: '1 minute' }) },
     schema: {
       params: {
         type: 'object',
@@ -415,7 +413,7 @@ async function postRoutes(fastify) {
 
   fastify.get('/api/users/:username/posts', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 240, timeWindow: '1 minute' }) },
     schema: {
       params: {
         type: 'object',
@@ -456,7 +454,7 @@ async function postRoutes(fastify) {
   // Mass-follow is the classic growth-hack abuse, so this is capped hard.
   fastify.post('/api/users/:userId/follow', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+    config: { rateLimit: perAccount({ max: 60, timeWindow: '1 hour' }) },
     schema: {
       params: { type: 'object', required: ['userId'], properties: { userId: postParam } },
     },
@@ -479,7 +477,7 @@ async function postRoutes(fastify) {
 
   fastify.delete('/api/users/:userId/follow', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 60, timeWindow: '1 hour' } },
+    config: { rateLimit: perAccount({ max: 60, timeWindow: '1 hour' }) },
     schema: {
       params: { type: 'object', required: ['userId'], properties: { userId: postParam } },
     },
@@ -498,7 +496,7 @@ async function postRoutes(fastify) {
 
   fastify.get('/api/users/:userId/:direction(followers|following)', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 60, timeWindow: '1 minute' }) },
     schema: {
       params: {
         type: 'object',
@@ -535,7 +533,7 @@ async function postRoutes(fastify) {
   // id parameter that could be pointed at another account.
   fastify.get('/api/notifications', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 240, timeWindow: '1 minute' }) },
     schema: {
       querystring: {
         type: 'object',
@@ -552,7 +550,7 @@ async function postRoutes(fastify) {
 
   fastify.post('/api/notifications/read', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 120, timeWindow: '1 minute' }) },
   }, async (request, reply) => {
     await fastify.repos.notifications.markAllRead(request.user.id);
     return reply.code(204).send();
@@ -564,7 +562,7 @@ async function postRoutes(fastify) {
   // wire, which makes "I don't want to see this" cosmetic.
   fastify.post('/api/users/:userId/mute', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 120, timeWindow: '1 hour' } },
+    config: { rateLimit: perAccount({ max: 120, timeWindow: '1 hour' }) },
     schema: {
       params: { type: 'object', required: ['userId'], properties: { userId: postParam } },
     },
@@ -579,7 +577,7 @@ async function postRoutes(fastify) {
 
   fastify.delete('/api/users/:userId/mute', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 120, timeWindow: '1 hour' } },
+    config: { rateLimit: perAccount({ max: 120, timeWindow: '1 hour' }) },
     schema: {
       params: { type: 'object', required: ['userId'], properties: { userId: postParam } },
     },
@@ -590,7 +588,7 @@ async function postRoutes(fastify) {
 
   fastify.get('/api/mutes', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    config: { rateLimit: perAccount({ max: 60, timeWindow: '1 minute' }) },
   }, async (request, reply) => {
     return reply.send({ users: await fastify.repos.posts.listMutes(request.user.id) });
   });
@@ -603,7 +601,7 @@ async function postRoutes(fastify) {
   // version of the promise, and it is enforced by a CHECK constraint too.
   fastify.post('/api/posts/:postId/report', {
     preValidation: [fastify.authenticate],
-    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+    config: { rateLimit: perAccount({ max: 20, timeWindow: '1 hour' }) },
     schema: {
       params: { type: 'object', required: ['postId'], properties: { postId: postParam } },
       body: {
